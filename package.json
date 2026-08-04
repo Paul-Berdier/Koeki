@@ -12,12 +12,12 @@
     "test": "pnpm -r --if-present test",
     "test:e2e": "pnpm --filter @koeki/web test:e2e",
     "format:check": "prettier --check .",
-    "db:generate": "pnpm --filter @koeki/database generate",
-    "db:migrate": "pnpm --filter @koeki/database migrate",
-    "db:deploy": "pnpm --filter @koeki/database deploy",
-    "db:seed": "pnpm --filter @koeki/database seed",
-    "db:seed:bootstrap": "pnpm --filter @koeki/database seed:bootstrap",
-    "db:invite": "pnpm --filter @koeki/database invite",
+    "db:generate": "pnpm --filter @koeki/database run generate",
+    "db:migrate": "pnpm --filter @koeki/database run migrate",
+    "db:deploy": "pnpm --filter @koeki/database run deploy",
+    "db:seed": "pnpm --filter @koeki/database run seed",
+    "db:seed:bootstrap": "pnpm --filter @koeki/database run seed:bootstrap",
+    "db:invite": "pnpm --filter @koeki/database run invite",
     "worker": "pnpm --filter @koeki/worker start"
   },
   "devDependencies": {
