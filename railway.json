@@ -2,7 +2,7 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": { "builder": "DOCKERFILE" },
   "deploy": {
-    "startCommand": "pnpm db:deploy && pnpm db:seed:bootstrap && pnpm --filter @koeki/database run invite:bootstrap && pnpm --filter @koeki/web start",
+    "startCommand": "pnpm run start:prod",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
