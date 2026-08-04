@@ -1,7 +1,8 @@
 // Production bootstrap: reference data only — no fictional ninjas, taxes or stocks.
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, RoleCode } from "@prisma/client";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "postgresql://koeki:koeki@127.0.0.1:5432/koeki?schema=public" }) });
 const gradeSeed = [
   ["GENIN_APPRENTICE", "Genin apprenti", 0], ["GENIN", "Genin simple", 0], ["GENIN_CONFIRMED", "Genin confirmé", 10_000],
   ["CHUNIN", "Chunin", 15_000], ["KONIN", "Konin", 20_000], ["TOKUBETSU_JONIN", "Tokubetsu Jonin", 25_000],

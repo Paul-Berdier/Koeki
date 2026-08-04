@@ -3,9 +3,10 @@
 // Safe to run on every deploy — it no-ops once an admin account exists or an
 // invitation is still pending.
 import { createHash, randomBytes } from "node:crypto";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "postgresql://koeki:koeki@127.0.0.1:5432/koeki?schema=public" }) });
 
 async function main() {
   const pepper = process.env.INVITE_TOKEN_PEPPER;
