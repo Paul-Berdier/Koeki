@@ -127,6 +127,7 @@ enum NotificationStatus {
 model User {
   id                 String         @id @default(cuid())
   email              String?        @unique
+  emailVerified      DateTime?
   name               String?
   image              String?
   discordId          String?        @unique
@@ -145,19 +146,20 @@ model User {
   notifications      Notification[]
 }
 
+// OAuth token fields keep the snake_case names the Auth.js adapter writes verbatim.
 model Account {
   id                String  @id @default(cuid())
   userId            String
   type              String
   provider          String
   providerAccountId String
-  refreshToken      String? @db.Text
-  accessToken       String? @db.Text
-  expiresAt         Int?
-  tokenType         String?
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
   scope             String?
-  idToken           String? @db.Text
-  sessionState      String?
+  id_token          String? @db.Text
+  session_state     String?
   user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
@@ -168,7 +170,7 @@ model Session {
   sessionToken   String   @unique
   userId         String
   expires        DateTime
-  sessionVersion Int
+  sessionVersion Int      @default(1)
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expires])
