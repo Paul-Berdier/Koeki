@@ -32,8 +32,8 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
 
     <section className="metric-grid" aria-label="Situation fiscale">
       <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : "good"} />
+      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats, dépensable sur les taxes" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
       <MetricCard label="Retard" value={lateYearsLabel(data.lateYears)} detail={data.lateYears >= 2 ? "Dossier prioritaire" : "Sous surveillance normale"} tone={data.lateYears >= 2 ? "danger" : data.lateYears > 0 ? "warn" : "good"} />
-      <MetricCard label="Prochaine échéance" value={data.nextDue} detail="Calculée par le service de temps RP" />
       <MetricCard label="Points" value={<PointDisplay points={data.pointsBalance} />} detail="Solde explicable depuis le registre" tone="neutral" />
     </section>
 
@@ -83,7 +83,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
             <input type="hidden" name="amount" value={String(data.preview.amount)} />
             <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
             <div className="form-row">
-              <label>Moyen de paiement<select name="method" defaultValue="ESPECES"><option value="ESPECES">Espèces</option><option value="TRANSFERT">Transfert</option><option value="AUTRE">Autre</option></select></label>
+              <label>Moyen de paiement<select name="method" defaultValue={data.exemptionBalance > 0n ? "EXONERATION" : "ESPECES"}><option value="EXONERATION">Crédit d’exonération ({new Intl.NumberFormat("fr-FR").format(Number(data.exemptionBalance))} ¥ dispo)</option><option value="ESPECES">Espèces</option><option value="TRANSFERT">Transfert</option><option value="AUTRE">Autre</option></select></label>
               <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} /></label>
             </div>
             <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Confirmer le paiement</button></div>

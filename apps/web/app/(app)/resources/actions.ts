@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { awardPoints, isUniqueViolation, nextTransactionReceipt, withReceiptRetry, writeAudit, type Tx } from "@/lib/finance";
+import { awardPoints, grantExemption, isUniqueViolation, nextTransactionReceipt, withReceiptRetry, writeAudit, type Tx } from "@/lib/finance";
 import { hasPermission, requireWriteAccess } from "@/lib/session";
 
 const QUANTITY_SCALE = 10_000n;
@@ -14,13 +14,19 @@ async function activePrice(tx: Tx, resourceId: string) {
   return price?.pricePerUnit ?? null;
 }
 
-async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint }>, actorId: string) {
+const scaledTimes = (quantity: number, rate: bigint) => (BigInt(Math.round(quantity * 10_000)) * rate) / 10_000n;
+
+async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint }>, actorId: string) {
   for (const item of items) await tx.inventoryMovement.create({ data: {
     resourceId: item.resourceId, type: transaction.type === "BUYBACK" ? "BUYBACK_IN" : "DONATION_IN", quantity: new Prisma.Decimal(item.quantity),
     unitCost: item.unitPrice, transactionId: transaction.id, agentId: actorId, justification: `Reçu ${transaction.receiptNumber}`, idempotencyKey: `${transaction.idempotencyKey}:${item.resourceId}`
   } });
   const points = await awardPoints(tx, { ninjaId: transaction.ninjaId, eventType: transaction.type === "BUYBACK" ? "RESOURCE_SALE" : "DONATION", amount: transaction.totalAmount, sourceType: "ResourceTransaction", sourceId: transaction.id });
   if (points > 0) await tx.resourceTransaction.update({ where: { id: transaction.id }, data: { totalPoints: points } });
+  // Old-register economy: giving resources earns tax-exemption credit, never direct Ryo.
+  // Donations use each resource's per-unit exemption rate; buybacks credit the buyback price.
+  const exemption = transaction.type === "BUYBACK" ? transaction.totalAmount : items.reduce((total, item) => total + scaledTimes(item.quantity, item.exemptionPerUnit), 0n);
+  await grantExemption(tx, { ninjaId: transaction.ninjaId, amount: exemption, sourceType: "ResourceTransaction", sourceId: transaction.id, reason: `${transaction.type === "BUYBACK" ? "Rachat" : "Don"} ${transaction.receiptNumber}` });
 }
 
 const transactionSchema = z.object({
@@ -52,14 +58,14 @@ export async function recordResourceTransaction(formData: FormData) {
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
-      const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint }> = [];
+      const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint; exemptionPerUnit: bigint }> = [];
       for (const line of lines) {
         const resource = await tx.resource.findUnique({ where: { id: line.resourceId } });
         if (!resource || !resource.isActive) throw new Error("VALIDATION:Ressource inconnue ou inactive");
         const price = await activePrice(tx, line.resourceId);
         if (type === "BUYBACK" && (price === null || price <= 0n)) throw new Error(`VALIDATION:Aucun prix actif pour ${resource.name} — configurez-le avant tout rachat`);
         const unitPrice = price ?? 0n;
-        items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: (unitPrice * toScaled(line.quantity)) / QUANTITY_SCALE });
+        items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: (unitPrice * toScaled(line.quantity)) / QUANTITY_SCALE, exemptionPerUnit: resource.exemptionPerUnit });
       }
       const totalAmount = items.reduce((total, item) => total + item.lineTotal, 0n);
       const approvalSetting = await tx.appSetting.findUnique({ where: { key: "approvalThreshold" } });
@@ -88,10 +94,10 @@ export async function approveTransaction(formData: FormData) {
   if (typeof transactionId !== "string" || !transactionId) redirect("/resources");
   try {
     await prisma.$transaction(async (tx) => {
-      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: true } });
+      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true } } } } } });
       if (!transaction || transaction.status !== "PENDING_APPROVAL") throw new Error("VALIDATION:Transaction déjà traitée");
       await tx.resourceTransaction.update({ where: { id: transactionId }, data: { status: "VALIDATED", validatedAt: new Date() } });
-      await applyValidatedTransaction(tx, { id: transaction.id, type: transaction.type, ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey }, transaction.items.map((item) => ({ resourceId: item.resourceId, quantity: Number(item.quantity), unitPrice: item.unitPriceSnapshot })), transaction.agentId);
+      await applyValidatedTransaction(tx, { id: transaction.id, type: transaction.type, ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey }, transaction.items.map((item) => ({ resourceId: item.resourceId, quantity: Number(item.quantity), unitPrice: item.unitPriceSnapshot, exemptionPerUnit: item.resource.exemptionPerUnit })), transaction.agentId);
       await writeAudit(tx, { actorId: session.userId, action: "BUYBACK_APPROVED", entityType: "ResourceTransaction", entityId: transactionId, reason: `Validation managériale du reçu ${transaction.receiptNumber}` });
     });
   } catch (error) {

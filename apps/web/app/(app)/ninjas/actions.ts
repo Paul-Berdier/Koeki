@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { allocatePayment, ryo } from "@koeki/domain";
 import { buildDebtLines, getRpService, loadNinjaFiscal } from "@/lib/data";
-import { awardPoints, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { awardPoints, exemptionBalance, grantExemption, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { demoMode, getSession, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
@@ -128,10 +128,10 @@ export async function deleteNinja(formData: FormData) {
   const session = await requireWriteAccess("ninjas:write");
   const ninjaId = formData.get("ninjaId");
   if (typeof ninjaId !== "string" || !ninjaId || formData.get("confirm") !== "on") redirect(`/ninjas/${ninjaId}/modifier?erreur=Cochez%20la%20confirmation`);
-  const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId as string }, include: { _count: { select: { assessments: true, payments: true, pointEntries: true, resourceTransactions: true, invitations: true } } } });
+  const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId as string }, include: { _count: { select: { assessments: true, payments: true, pointEntries: true, resourceTransactions: true, invitations: true, exemptionEntries: true } } } });
   if (!ninja) redirect("/ninjas?erreur=Dossier%20introuvable");
   const counts = ninja!._count;
-  const hasHistory = counts.assessments + counts.payments + counts.pointEntries + counts.resourceTransactions + counts.invitations > 0;
+  const hasHistory = counts.assessments + counts.payments + counts.pointEntries + counts.resourceTransactions + counts.invitations + counts.exemptionEntries > 0;
   const archive = () => prisma.$transaction(async (tx) => {
     await tx.ninjaProfile.update({ where: { id: ninjaId as string }, data: { status: "ARCHIVED", userId: null, version: { increment: 1 } } });
     await writeAudit(tx, { actorId: session.userId, action: "NINJA_ARCHIVED", entityType: "NinjaProfile", entityId: ninjaId as string, reason: "Historique financier présent : archivage au lieu d’une suppression" });
@@ -157,7 +157,7 @@ export async function deleteNinja(formData: FormData) {
 const paymentSchema = z.object({
   ninjaId: z.string().min(1),
   amount: z.coerce.number().int().positive("Le montant doit être un entier positif"),
-  method: z.enum(["ESPECES", "TRANSFERT", "AUTRE"]),
+  method: z.enum(["ESPECES", "TRANSFERT", "EXONERATION", "AUTRE"]),
   reference: z.string().trim().max(120).optional().transform((value) => value || null),
   idempotencyKey: z.string().uuid()
 });
@@ -183,12 +183,17 @@ export async function recordPayment(formData: FormData) {
       const allocation = allocatePayment(ryo(amount), debtLines);
       if (allocation.unallocated > 0n) throw new Error("VALIDATION:Le montant dépasse la dette ouverte — réduisez le paiement");
       const balanceBefore = debtLines.reduce((total, line) => total + line.remaining, 0n);
+      if (method === "EXONERATION") {
+        const credit = await exemptionBalance(tx, ninjaId);
+        if (credit < BigInt(amount)) throw new Error(`VALIDATION:Crédit d’exonération insuffisant (${credit.toLocaleString("fr-FR")} ¥ disponibles)`);
+      }
       const receiptNumber = await nextPaymentReceipt(tx);
       const payment = await tx.taxPayment.create({ data: {
         receiptNumber, ninjaId, recordedById: session.userId, amount: BigInt(amount), method, reference, status: "VALIDATED",
         balanceBefore, balanceAfter: balanceBefore - BigInt(amount), idempotencyKey, validatedAt: new Date()
       } });
       await tx.taxPaymentAllocation.createMany({ data: allocation.allocations.map((entry, index) => ({ paymentId: payment.id, assessmentId: entry.assessmentId, amount: entry.amount, allocationOrder: index + 1 })) });
+      if (method === "EXONERATION") await grantExemption(tx, { ninjaId, amount: -BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id, reason: `Taxe payée par exonération (${receiptNumber})` });
       const touched = [...new Set(allocation.allocations.map((entry) => entry.assessmentId))];
       const overdueTouched = assessments!.some((assessment) => touched.includes(assessment.id) && assessment.dueAt < new Date());
       for (const assessmentId of touched) await refreshAssessmentStatus(tx, assessmentId, service.currentRpYear());

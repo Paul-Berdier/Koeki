@@ -19,7 +19,7 @@ export interface NinjaDetailData {
   id: string; code: string; name: string; alias: string | null; clan: string | null; statusLabel: string;
   grade: { code: string; label: string }; grades: Array<{ id: string; code: string; label: string }>;
   linkedUserName: string | null; notes: string | null;
-  totalDebt: bigint; lateYears: number; nextDue: string; pointsBalance: number;
+  totalDebt: bigint; lateYears: number; nextDue: string; pointsBalance: number; exemptionBalance: bigint;
   assessments: AssessmentRow[];
   pointEntries: Array<{ id: string; at: string; label: string; points: number; reason: string | null }>;
   operations: Array<{ id: string; receipt: string; label: string; amount: bigint; at: string; statusLabel: string; badge: BadgeStatus }>;
@@ -32,6 +32,7 @@ export interface RecoveryData { metrics: { priorityDebt: bigint; priorityCount: 
 export interface ResourceRow { id: string; code: string; name: string; category: string; unit: string; price: bigint; stock: number; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }
 export interface ResourcesData {
   metrics: { buybackTotal: bigint; buybackCount: number; donationValue: bigint; donationCount: number; activeCount: number; totalCount: number };
+  categories: Array<{ code: string; label: string }>;
   resources: ResourceRow[];
   pendingApprovals: Array<{ id: string; receipt: string; ninja: string; total: bigint; at: string }>;
 }
@@ -60,7 +61,7 @@ export interface EventsData { metrics: { open: number; finished: number; totalPr
 export interface ReportRow { id: string; period: string; agent: string; payments: number; donationBuybacks: string; processed: bigint; statusLabel: string; badge: BadgeStatus; canReview: boolean }
 export interface ReportsData { metrics: { toReview: number; approved: number; covered: number; processed: bigint; corrections: number }; reports: ReportRow[] }
 
-export interface AuditData { rows: Array<{ id: string; at: string; actor: string; action: string; entity: string; summary: string }>; total: number; page: number; pageCount: number }
+export interface AuditData { rows: Array<{ id: string; at: string; actor: string; action: string; entity: string; summary: string }>; actors: Array<{ id: string; name: string }>; total: number; page: number; pageCount: number }
 
 export interface AdminData {
   penalty: { percentBps: number | null; isValidated: boolean; isEnabled: boolean; basis: string; maxApplications: number; maxDebt: string };

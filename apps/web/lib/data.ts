@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { prisma, type TaxAssessmentStatus } from "@koeki/database";
+import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
 import { allocatePayment, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo, simulateCraft, type DebtLine } from "@koeki/domain";
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, type BadgeStatus } from "./format";
@@ -213,12 +213,13 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
   const aggregates = await loadNinjaAggregates();
   const ninja = aggregates.find((entry) => entry.id === id);
   if (!ninja) return null;
-  const [grades, entries, payments, transactions, linked] = await Promise.all([
+  const [grades, entries, payments, transactions, linked, exemption] = await Promise.all([
     prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     prisma.pointLedgerEntry.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.taxPayment.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.resourceTransaction.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
-    ninjaUserName(id)
+    ninjaUserName(id),
+    prisma.exemptionLedgerEntry.aggregate({ where: { ninjaId: id }, _sum: { amount: true } })
   ]);
   const debtLines = buildDebtLines(ninja.assessments);
   const preview = options.previewAmount && options.previewAmount > 0n
@@ -232,7 +233,7 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
     id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, clan: ninja.clan, statusLabel: ninja.status === "ACTIVE" ? "Actif" : ninja.status,
     grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
     linkedUserName: linked, notes: options.canSeeNotes ? ninja.notes : null,
-    totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points,
+    totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points, exemptionBalance: exemption._sum.amount ?? 0n,
     assessments: ninja.assessments.map((assessment) => ({ id: assessment.id, rpYear: assessment.rpYear, gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: assessmentStatusLabels[assessment.status], badge: assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) })),
     pointEntries: entries.map((entry) => ({ id: entry.id, at: formatDate(entry.createdAt), label: pointEventLabels[entry.eventType] ?? entry.eventType, points: entry.points, reason: entry.reason })),
     operations, preview
@@ -259,22 +260,31 @@ export async function getRecovery(): Promise<RecoveryData> {
   };
 }
 
-export async function getResources(canApprove: boolean): Promise<ResourcesData> {
+export interface ResourceFilterParams { q?: string | undefined; categorie?: string | undefined; besoin?: string | undefined; etat?: string | undefined }
+
+export async function getResources(canApprove: boolean, params: ResourceFilterParams = {}): Promise<ResourcesData> {
   if (demoMode) return demoResources;
-  const [service, prices, stocks, resources] = await Promise.all([getRpService(), activePriceMap(), stockMap(), prisma.resource.findMany({ include: { category: true, unit: true }, orderBy: { code: "asc" } })]);
+  const [service, prices, stocks, resources, categories] = await Promise.all([getRpService(), activePriceMap(), stockMap(), prisma.resource.findMany({ include: { category: true, unit: true }, orderBy: { name: "asc" } }), prisma.resourceCategory.findMany({ orderBy: { label: "asc" } })]);
   const since = service.startOfRpYear(service.currentRpYear());
   const [buybacks, donations, pending] = await Promise.all([
     prisma.resourceTransaction.findMany({ where: { type: "BUYBACK", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
     prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
     canApprove ? prisma.resourceTransaction.findMany({ where: { status: "PENDING_APPROVAL" }, include: { ninja: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([])
   ]);
+  const query = params.q?.trim().toLowerCase();
+  const filtered = resources.filter((resource) =>
+    (!query || resource.name.toLowerCase().includes(query) || resource.code.toLowerCase().includes(query))
+    && (!params.categorie || resource.category.code === params.categorie)
+    && (!params.besoin || resource.demand === params.besoin)
+    && (params.etat === "inactives" ? !resource.isActive : params.etat === "toutes" ? true : resource.isActive));
   return {
     metrics: {
       buybackTotal: sumBig(buybacks.map((entry) => entry.totalAmount)), buybackCount: buybacks.length,
       donationValue: sumBig(donations.map((entry) => entry.totalAmount)), donationCount: donations.length,
       activeCount: resources.filter((resource) => resource.isActive).length, totalCount: resources.length
     },
-    resources: resources.map((resource) => {
+    categories: categories.map((category) => ({ code: category.code, label: category.label })),
+    resources: filtered.map((resource) => {
       const stock = stocks.get(resource.id) ?? 0;
       const critical = stock <= Number(resource.criticalStock);
       const low = stock <= Number(resource.minimumStock);
@@ -446,15 +456,36 @@ export async function getReports(session: SessionInfo, canReview: boolean): Prom
   };
 }
 
-export async function getAudit(page: number): Promise<AuditData> {
+/** Action-prefix families used to filter the audit log by theme. */
+export const auditCategories: Record<string, { label: string; prefixes: string[] }> = {
+  finances: { label: "Finances (paiements, dons, rachats, prix)", prefixes: ["PAYMENT", "BUYBACK", "DONATION", "PRICE"] },
+  ninjas: { label: "Ninjas (dossiers, grades)", prefixes: ["NINJA", "GRADE"] },
+  acces: { label: "Accès (invitations, comptes)", prefixes: ["INVITATION", "USER"] },
+  stock: { label: "Stocks et catalogue", prefixes: ["INVENTORY", "RESOURCE", "CRAFT", "RECIPE"] },
+  config: { label: "Configuration et événements", prefixes: ["PENALTY", "APPROVAL", "EVENT"] },
+  rapports: { label: "Rapports", prefixes: ["REPORT"] },
+  import: { label: "Imports de reprise", prefixes: ["LEGACY"] }
+};
+
+export interface AuditFilterParams { categorie?: string | undefined; q?: string | undefined; acteur?: string | undefined }
+
+export async function getAudit(page: number, filters: AuditFilterParams = {}): Promise<AuditData> {
   if (demoMode) return demoAudit;
   const pageSize = 25;
-  const [total, rows] = await Promise.all([
-    prisma.auditLog.count(),
-    prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, skip: (Math.max(1, page) - 1) * pageSize, take: pageSize, include: { actor: { select: { name: true } } } })
+  const conditions: Prisma.AuditLogWhereInput[] = [];
+  const category = filters.categorie ? auditCategories[filters.categorie] : undefined;
+  if (category) conditions.push({ OR: category.prefixes.map((prefix) => ({ action: { startsWith: prefix } })) });
+  if (filters.q?.trim()) { const query = filters.q.trim(); conditions.push({ OR: [{ action: { contains: query, mode: "insensitive" } }, { entityId: { contains: query, mode: "insensitive" } }, { reason: { contains: query, mode: "insensitive" } }] }); }
+  if (filters.acteur) conditions.push({ actorId: filters.acteur });
+  const where: Prisma.AuditLogWhereInput = conditions.length ? { AND: conditions } : {};
+  const [total, rows, actors] = await Promise.all([
+    prisma.auditLog.count({ where }),
+    prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: (Math.max(1, page) - 1) * pageSize, take: pageSize, include: { actor: { select: { name: true } } } }),
+    prisma.user.findMany({ where: { auditLogs: { some: {} } }, select: { id: true, name: true }, orderBy: { name: "asc" } })
   ]);
   return {
     rows: rows.map((row) => ({ id: row.id, at: formatDateTime(row.createdAt), actor: row.actor?.name ?? "Système", action: row.action, entity: `${row.entityType}·${row.entityId.slice(0, 10)}`, summary: row.reason ?? "—" })),
+    actors: actors.map((actor) => ({ id: actor.id, name: actor.name ?? "Sans nom" })),
     total, page: Math.max(1, page), pageCount: Math.max(1, Math.ceil(total / pageSize))
   };
 }

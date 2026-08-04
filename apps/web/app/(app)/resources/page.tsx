@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { EmptyState, MoneyDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
 import { ModulePage } from "@/components/module-page";
+import { ResourceFilters } from "@/components/resource-filters";
 import { getResources } from "@/lib/data";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { approveTransaction, updatePrice } from "./actions";
@@ -11,7 +12,12 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
   const query = await searchParams;
   const canManage = !demoMode && hasPermission(session, "settings:manage");
   const canTransact = !demoMode && hasPermission(session, "inventory:write");
-  const data = await getResources(canManage);
+  const data = await getResources(canManage, {
+    q: typeof query.q === "string" ? query.q : undefined,
+    categorie: typeof query.categorie === "string" && query.categorie ? query.categorie : undefined,
+    besoin: typeof query.besoin === "string" && query.besoin ? query.besoin : undefined,
+    etat: typeof query.etat === "string" && query.etat ? query.etat : undefined
+  });
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const aside = (canManage || data.pendingApprovals.length > 0) ? <aside style={{ display: "grid", gap: 12 }}>
@@ -41,6 +47,7 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
   ]}>
     {receipt && <p className="notice" role="status" style={{ margin: "12px 20px 0" }}>Transaction validée — reçu <code>{receipt}</code>.</p>}
     {error && <p className="notice error" role="alert" style={{ margin: "12px 20px 0" }}>{error}</p>}
+    <ResourceFilters categories={data.categories} />
     {data.resources.length ? <div className="table-scroll"><table><thead><tr><th>Code</th><th>Ressource</th><th>Catégorie</th><th>Prix unitaire</th><th>Stock</th><th>Besoin du village</th><th>Disponibilité</th></tr></thead><tbody>{data.resources.map((resource) => <tr key={resource.id}><td><code>{resource.code}</code></td><td>{canManage ? <Link href={`/resources/${resource.id}/modifier`}><strong>{resource.name}</strong></Link> : <strong>{resource.name}</strong>}</td><td>{resource.category}</td><td>{resource.price > 0n ? <MoneyDisplay amount={resource.price} /> : <span className="muted">Non défini</span>}</td><td>{resource.stock.toLocaleString("fr-FR")} {resource.unit}</td><td>{resource.demand === "CRITICAL" ? <StatusBadge status="overdue">Critique</StatusBadge> : resource.demand === "NEEDED" ? <StatusBadge status="warning">Besoin</StatusBadge> : <span className="muted">—</span>}</td><td><StatusBadge status={resource.badge}>{resource.stateLabel}</StatusBadge></td></tr>)}</tbody></table></div>
       : <EmptyState title="Catalogue vide" description="Créez votre première ressource avec le lien « Nouvelle ressource » ci-dessus." />}
   </ModulePage>;

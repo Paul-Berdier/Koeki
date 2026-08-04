@@ -37,7 +37,7 @@ export const demoNinjas: NinjasData = {
 export const demoNinjaDetail: NinjaDetailData = {
   id: "demo-58", code: "NIN-000058", name: "Araki Hoki", alias: null, clan: "Hoki", statusLabel: "Actif",
   grade: { code: "JONIN", label: "Jonin" }, grades: [{ id: "g1", code: "JONIN", label: "Jonin" }],
-  linkedUserName: null, notes: null, totalDebt: 32000n, lateYears: 2, nextDue: "Dépassée", pointsBalance: 2000,
+  linkedUserName: null, notes: null, totalDebt: 32000n, lateYears: 2, nextDue: "Dépassée", pointsBalance: 2000, exemptionBalance: 12400n,
   assessments: [
     { id: "a47", rpYear: 47, gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 18000n, remaining: 7000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" },
     { id: "a46", rpYear: 46, gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 0n, remaining: 25000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" }
@@ -54,6 +54,7 @@ export const demoRecovery: RecoveryData = {
 
 export const demoResources: ResourcesData = {
   metrics: { buybackTotal: 67400n, buybackCount: 23, donationValue: 22400n, donationCount: 9, activeCount: 42, totalCount: 48 },
+  categories: [{ code: "MINERALS", label: "Minerais" }, { code: "TEXTILES", label: "Textiles" }, { code: "WOOD", label: "Bois" }],
   resources: [
     { id: "r1", code: "RES-CUI-01", name: "Minerai de cuivre", category: "Minerais", unit: "kg", price: 180n, stock: 82, badge: "paid", stateLabel: "Disponible", demand: "NONE" },
     { id: "r2", code: "RES-TIS-03", name: "Tissu renforcé", category: "Textiles", unit: "m", price: 320n, stock: 9, badge: "overdue", stateLabel: "Critique", demand: "NEEDED" },
@@ -124,7 +125,7 @@ export const demoAudit: AuditData = {
     { id: "au3", at: "04 août · 11:42", actor: "Sonemi Hakumei", action: "TAX_ADJUSTED", entity: "ADJ-2026-000012", summary: "Remise partielle — erreur administrative" },
     { id: "au4", at: "04 août · 10:03", actor: "Système", action: "INVENTORY_ALERT", entity: "RES-TIS-03", summary: "Seuil critique atteint" }
   ],
-  total: 4, page: 1, pageCount: 1
+  actors: [{ id: "u1", name: "Sonemi Hakumei" }], total: 4, page: 1, pageCount: 1
 };
 
 export const demoAdmin: AdminData = {

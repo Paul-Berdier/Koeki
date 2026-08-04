@@ -249,11 +249,35 @@ async function taxAmnesty() {
   }, { timeout: 300_000, maxWait: 30_000 });
 }
 
+/** Exemption economy of the old register: per-unit exemption rates on donatable
+ *  resources, and each ninja's cumulative exemption balance as an opening credit. */
+async function importExemptions() {
+  const FLAG_EXO = "legacyExemptions2026-08-05";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_EXO } })) { console.log("import-legacy/exonérations : déjà appliqué"); return; }
+  const RATES: Array<[string, number]> = [["Bois", 800], ["Laine", 1000], ["Plastique", 300], ["Cuivre", 1000], ["Fer", 10000], ["Titane", 10000], ["Chakra Métal", 50000], ["Jade", 10000], ["T1", 200], ["T2", 6000], ["T3", 25000], ["T4", 200000], ["Lavande", 10]];
+  const ninjas = loadJson<NinjaEntry[]>("ninjas.json");
+  await prisma.$transaction(async (tx) => {
+    for (const [name, rate] of RATES) await tx.resource.updateMany({ where: { name: { equals: name, mode: "insensitive" } }, data: { exemptionPerUnit: BigInt(rate) } });
+    let credited = 0; let total = 0n;
+    for (const ninja of ninjas) {
+      if (ninja.exemptions === 0) continue;
+      const profile = await tx.ninjaProfile.findUnique({ where: { code: `NIN-${String(ninja.id).padStart(6, "0")}` }, select: { id: true } });
+      if (!profile) continue;
+      await tx.exemptionLedgerEntry.create({ data: { ninjaId: profile.id, amount: BigInt(ninja.exemptions), sourceType: "Import", sourceId: `${FLAG_EXO}:${ninja.id}`, reason: "Reprise du crédit d’exonération de l’ancien registre" } });
+      credited++; total += BigInt(ninja.exemptions);
+    }
+    await tx.appSetting.create({ data: { key: FLAG_EXO, value: { importedAt: new Date().toISOString(), credited, total: String(total) } } });
+    await tx.auditLog.create({ data: { action: "LEGACY_EXEMPTIONS_IMPORT", entityType: "ExemptionLedgerEntry", entityId: FLAG_EXO, requestId: randomUUID(), reason: `Crédit d’exonération repris pour ${credited} ninjas (${total.toLocaleString("fr-FR")} ¥), barèmes par unité appliqués sur ${RATES.length} ressources` } });
+    console.log(`import-legacy/exonérations : ${credited} soldes repris (${total.toLocaleString("fr-FR")} ¥), ${RATES.length} barèmes appliqués`);
+  }, { timeout: 300_000, maxWait: 30_000 });
+}
+
 async function main() {
   await importCore();
   await importTaxHistory();
   await importEvents();
   await fixCatalog();
   await taxAmnesty();
+  await importExemptions();
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

@@ -266,6 +266,7 @@ model NinjaProfile {
   pointEntries         PointLedgerEntry[]
   resourceTransactions ResourceTransaction[]
   eventsWon            Event[]
+  exemptionEntries     ExemptionLedgerEntry[]
 
   @@index([lastName, firstName])
   @@index([currentGradeId, status])
@@ -455,6 +456,22 @@ model PointLedgerEntry {
   @@index([ninjaId, createdAt])
 }
 
+// Tax-exemption wallet: earned by giving resources to the Koeki (dons, rachats),
+// spent as a tax payment method. Balance = sum of signed amounts.
+model ExemptionLedgerEntry {
+  id         String       @id @default(cuid())
+  ninjaId    String
+  amount     BigInt
+  sourceType String
+  sourceId   String
+  reason     String?
+  createdAt  DateTime     @default(now())
+  ninja      NinjaProfile @relation(fields: [ninjaId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceType, sourceId])
+  @@index([ninjaId, createdAt])
+}
+
 model ResourceCategory {
   id        String     @id @default(cuid())
   code      String     @unique
@@ -482,6 +499,8 @@ model Resource {
   isActive          Boolean                   @default(true)
   // Village demand level: NONE, NEEDED or CRITICAL ("Besoin primaire").
   demand            String                    @default("NONE")
+  // Tax-exemption credit granted per donated unit.
+  exemptionPerUnit  BigInt                    @default(0)
   category          ResourceCategory          @relation(fields: [categoryId], references: [id])
   unit              ResourceUnit              @relation(fields: [unitId], references: [id])
   prices            ResourcePriceHistory[]

@@ -43,6 +43,19 @@ export async function awardPoints(tx: Tx, input: { ninjaId: string; eventType: P
   return total;
 }
 
+/** Grants (or debits, with a negative amount) tax-exemption credit; unique per source. */
+export async function grantExemption(tx: Tx, input: { ninjaId: string; amount: bigint; sourceType: string; sourceId: string; reason?: string | undefined }) {
+  if (input.amount === 0n) return;
+  const existing = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: input.sourceType, sourceId: input.sourceId } } });
+  if (existing) return;
+  await tx.exemptionLedgerEntry.create({ data: { ninjaId: input.ninjaId, amount: input.amount, sourceType: input.sourceType, sourceId: input.sourceId, ...(input.reason !== undefined ? { reason: input.reason } : {}) } });
+}
+
+export async function exemptionBalance(tx: Tx, ninjaId: string): Promise<bigint> {
+  const aggregate = await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId }, _sum: { amount: true } });
+  return aggregate._sum.amount ?? 0n;
+}
+
 /** Recomputes an assessment's stored status from its immutable ledger lines. */
 export async function refreshAssessmentStatus(tx: Tx, assessmentId: string, currentRpYear: number) {
   const assessment = await tx.taxAssessment.findUniqueOrThrow({
