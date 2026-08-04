@@ -1,0 +1,667 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleCode {
+  SUPER_ADMIN
+  KOEKI_MANAGER
+  ECONOMIC_AGENT
+  NINJA
+  AUDITOR
+}
+
+enum InvitationStatus {
+  PENDING
+  USED
+  REVOKED
+  EXPIRED
+}
+
+enum TaxAssessmentStatus {
+  DRAFT
+  UPCOMING
+  DUE
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  EXEMPT
+  WAIVED
+  SUSPENDED
+  CANCELLED
+}
+
+enum PenaltyBasis {
+  ORIGINAL_TAX
+  REMAINING_PRINCIPAL
+  CURRENT_DEBT
+}
+
+enum PaymentStatus {
+  PENDING
+  VALIDATED
+  REVERSED
+  CANCELLED
+}
+
+enum AdjustmentType {
+  DISCOUNT
+  PENALTY_REVERSAL
+  DUE_DATE_EXTENSION
+  SUSPENSION
+  CORRECTION
+  EXCEPTIONAL_DEBT
+  REVERSAL
+}
+
+enum PointMode {
+  FIXED
+  PER_AMOUNT
+  PERCENTAGE
+  MULTIPLIER
+  MANUAL
+}
+
+enum PointEventType {
+  TAX_PAYMENT
+  ON_TIME_PAYMENT
+  EARLY_PAYMENT
+  REGULARIZATION
+  DONATION
+  RESOURCE_SALE
+  SPECIAL_EVENT
+  MANUAL_ADJUSTMENT
+  REVERSAL
+}
+
+enum ResourceTransactionType {
+  DONATION
+  BUYBACK
+}
+
+enum ResourceTransactionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  VALIDATED
+  REVERSED
+  CANCELLED
+}
+
+enum InventoryMovementType {
+  DONATION_IN
+  BUYBACK_IN
+  CRAFT_CONSUMPTION
+  CRAFT_OUTPUT
+  MANUAL_ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  LOSS
+}
+
+enum CraftStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum ReportStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+  RETURNED
+  APPROVED
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+model User {
+  id                 String         @id @default(cuid())
+  email              String?        @unique
+  name               String?
+  image              String?
+  discordId          String?        @unique
+  sessionVersion     Int            @default(1)
+  revokedAt          DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  accounts           Account[]
+  sessions           Session[]
+  roles              UserRole[]
+  ninjaProfile       NinjaProfile?
+  createdInvitations Invitation[]   @relation("InvitationCreator")
+  consumedInvitation Invitation?    @relation("InvitationConsumer")
+  auditLogs          AuditLog[]
+  reports            AgentReport[]  @relation("ReportAuthor")
+  notifications      Notification[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refreshToken      String? @db.Text
+  accessToken       String? @db.Text
+  expiresAt         Int?
+  tokenType         String?
+  scope             String?
+  idToken           String? @db.Text
+  sessionState      String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id             String   @id @default(cuid())
+  sessionToken   String   @unique
+  userId         String
+  expires        DateTime
+  sessionVersion Int
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expires])
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  code        RoleCode     @unique
+  label       String
+  description String?
+  users       UserRole[]
+  invitations Invitation[]
+}
+
+model Permission {
+  id    String @id @default(cuid())
+  code  String @unique
+  label String
+}
+
+model UserRole {
+  userId       String
+  roleId       String
+  assignedAt   DateTime @default(now())
+  assignedById String?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+}
+
+model Invitation {
+  id             String           @id @default(cuid())
+  tokenHash      String           @unique
+  status         InvitationStatus @default(PENDING)
+  roleId         String
+  ninjaProfileId String?          @unique
+  createdById    String
+  consumedById   String?          @unique
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  role           Role             @relation(fields: [roleId], references: [id])
+  ninjaProfile   NinjaProfile?    @relation(fields: [ninjaProfileId], references: [id])
+  createdBy      User             @relation("InvitationCreator", fields: [createdById], references: [id])
+  consumedBy     User?            @relation("InvitationConsumer", fields: [consumedById], references: [id])
+
+  @@index([status, expiresAt])
+}
+
+model NinjaGrade {
+  id        String               @id @default(cuid())
+  code      String               @unique
+  label     String
+  sortOrder Int
+  isActive  Boolean              @default(true)
+  ninjas    NinjaProfile[]
+  histories NinjaGradeHistory[]
+  rates     TaxPolicyGradeRate[]
+}
+
+model NinjaProfile {
+  id                   String                @id @default(cuid())
+  code                 String                @unique
+  firstName            String
+  lastName             String
+  alias                String?
+  imageUrl             String?
+  clan                 String?
+  status               String                @default("ACTIVE")
+  currentGradeId       String
+  referenceAgentId     String?
+  userId               String?               @unique
+  notes                String?               @db.Text
+  version              Int                   @default(1)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  currentGrade         NinjaGrade            @relation(fields: [currentGradeId], references: [id])
+  user                 User?                 @relation(fields: [userId], references: [id])
+  invitations          Invitation[]
+  gradeHistory         NinjaGradeHistory[]
+  assessments          TaxAssessment[]
+  payments             TaxPayment[]
+  pointEntries         PointLedgerEntry[]
+  resourceTransactions ResourceTransaction[]
+
+  @@index([lastName, firstName])
+  @@index([currentGradeId, status])
+}
+
+model NinjaGradeHistory {
+  id            String       @id @default(cuid())
+  ninjaId       String
+  gradeId       String
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  reason        String
+  changedById   String?
+  ninja         NinjaProfile @relation(fields: [ninjaId], references: [id], onDelete: Cascade)
+  grade         NinjaGrade   @relation(fields: [gradeId], references: [id])
+
+  @@index([ninjaId, effectiveFrom])
+}
+
+model TaxPolicy {
+  id                  String               @id @default(cuid())
+  name                String
+  version             Int
+  effectiveFromRpYear Int
+  effectiveToRpYear   Int?
+  isActive            Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  rates               TaxPolicyGradeRate[]
+  taxYears            TaxYear[]
+  assessments         TaxAssessment[]
+
+  @@unique([name, version])
+}
+
+model TaxPolicyGradeRate {
+  id          String     @id @default(cuid())
+  taxPolicyId String
+  gradeId     String
+  amount      BigInt
+  taxPolicy   TaxPolicy  @relation(fields: [taxPolicyId], references: [id], onDelete: Cascade)
+  grade       NinjaGrade @relation(fields: [gradeId], references: [id])
+
+  @@unique([taxPolicyId, gradeId])
+}
+
+model TaxYear {
+  id          String          @id @default(cuid())
+  rpYear      Int             @unique
+  taxPolicyId String
+  startsAt    DateTime
+  endsAt      DateTime
+  dueAt       DateTime
+  generatedAt DateTime?
+  taxPolicy   TaxPolicy       @relation(fields: [taxPolicyId], references: [id])
+  assessments TaxAssessment[]
+}
+
+model TaxAssessment {
+  id                 String                 @id @default(cuid())
+  ninjaId            String
+  taxYearId          String
+  taxPolicyId        String
+  gradeCodeSnapshot  String
+  gradeLabelSnapshot String
+  originalAmount     BigInt
+  dueAt              DateTime
+  status             TaxAssessmentStatus    @default(UPCOMING)
+  generatedAt        DateTime               @default(now())
+  version            Int                    @default(1)
+  ninja              NinjaProfile           @relation(fields: [ninjaId], references: [id])
+  taxYear            TaxYear                @relation(fields: [taxYearId], references: [id])
+  taxPolicy          TaxPolicy              @relation(fields: [taxPolicyId], references: [id])
+  penalties          TaxPenalty[]
+  allocations        TaxPaymentAllocation[]
+  adjustments        TaxAdjustment[]
+  exemptions         TaxExemption[]
+
+  @@unique([ninjaId, taxYearId])
+  @@index([status, dueAt])
+}
+
+model TaxPenalty {
+  id                     String        @id @default(cuid())
+  assessmentId           String
+  applicationIndex       Int
+  rpYearApplied          Int
+  percentBps             Int
+  basis                  PenaltyBasis
+  basisAmount            BigInt
+  amount                 BigInt
+  createdAt              DateTime      @default(now())
+  reversedByAdjustmentId String?       @unique
+  assessment             TaxAssessment @relation(fields: [assessmentId], references: [id])
+
+  @@unique([assessmentId, applicationIndex])
+}
+
+model TaxPayment {
+  id             String                 @id @default(cuid())
+  receiptNumber  String                 @unique
+  ninjaId        String
+  recordedById   String
+  amount         BigInt
+  method         String
+  reference      String?
+  status         PaymentStatus          @default(PENDING)
+  balanceBefore  BigInt
+  balanceAfter   BigInt
+  idempotencyKey String                 @unique
+  validatedAt    DateTime?
+  createdAt      DateTime               @default(now())
+  ninja          NinjaProfile           @relation(fields: [ninjaId], references: [id])
+  allocations    TaxPaymentAllocation[]
+  adjustments    TaxAdjustment[]
+
+  @@index([ninjaId, createdAt])
+}
+
+model TaxPaymentAllocation {
+  id              String        @id @default(cuid())
+  paymentId       String
+  assessmentId    String
+  amount          BigInt
+  allocationOrder Int
+  payment         TaxPayment    @relation(fields: [paymentId], references: [id])
+  assessment      TaxAssessment @relation(fields: [assessmentId], references: [id])
+
+  @@unique([paymentId, assessmentId, allocationOrder])
+}
+
+model TaxAdjustment {
+  id                   String         @id @default(cuid())
+  assessmentId         String
+  paymentId            String?
+  type                 AdjustmentType
+  amount               BigInt
+  reason               String
+  createdById          String
+  reversesAdjustmentId String?        @unique
+  createdAt            DateTime       @default(now())
+  assessment           TaxAssessment  @relation(fields: [assessmentId], references: [id])
+  payment              TaxPayment?    @relation(fields: [paymentId], references: [id])
+}
+
+model TaxExemption {
+  id           String        @id @default(cuid())
+  assessmentId String
+  amount       BigInt
+  reason       String
+  grantedById  String
+  createdAt    DateTime      @default(now())
+  assessment   TaxAssessment @relation(fields: [assessmentId], references: [id])
+}
+
+model PointRule {
+  id            String             @id @default(cuid())
+  name          String
+  eventType     PointEventType
+  mode          PointMode
+  fixedPoints   Int?
+  amountStep    BigInt?
+  pointsPerStep Int?
+  multiplierBps Int?
+  minimum       Int?
+  maximum       Int?
+  startsAt      DateTime
+  endsAt        DateTime?
+  isActive      Boolean            @default(true)
+  entries       PointLedgerEntry[]
+}
+
+model PointLedgerEntry {
+  id              String         @id @default(cuid())
+  ninjaId         String
+  ruleId          String?
+  eventType       PointEventType
+  points          Int
+  sourceType      String
+  sourceId        String
+  reason          String?
+  reversesEntryId String?        @unique
+  createdAt       DateTime       @default(now())
+  ninja           NinjaProfile   @relation(fields: [ninjaId], references: [id])
+  rule            PointRule?     @relation(fields: [ruleId], references: [id])
+
+  @@unique([sourceType, sourceId, eventType])
+  @@index([ninjaId, createdAt])
+}
+
+model ResourceCategory {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  label     String
+  resources Resource[]
+}
+
+model ResourceUnit {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  label     String
+  symbol    String
+  resources Resource[]
+}
+
+model Resource {
+  id                String                    @id @default(cuid())
+  code              String                    @unique
+  name              String
+  description       String?
+  categoryId        String
+  unitId            String
+  minimumStock      Decimal                   @db.Decimal(20, 4)
+  criticalStock     Decimal                   @db.Decimal(20, 4)
+  isActive          Boolean                   @default(true)
+  category          ResourceCategory          @relation(fields: [categoryId], references: [id])
+  unit              ResourceUnit              @relation(fields: [unitId], references: [id])
+  prices            ResourcePriceHistory[]
+  transactionItems  ResourceTransactionItem[]
+  movements         InventoryMovement[]
+  recipeIngredients CraftRecipeIngredient[]
+  recipeOutputs     CraftRecipeOutput[]
+}
+
+model ResourcePriceHistory {
+  id            String    @id @default(cuid())
+  resourceId    String
+  pricePerUnit  BigInt
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdById   String
+  resource      Resource  @relation(fields: [resourceId], references: [id])
+
+  @@unique([resourceId, effectiveFrom])
+}
+
+model ResourceTransaction {
+  id             String                    @id @default(cuid())
+  receiptNumber  String                    @unique
+  type           ResourceTransactionType
+  status         ResourceTransactionStatus @default(DRAFT)
+  ninjaId        String
+  agentId        String
+  totalAmount    BigInt
+  totalPoints    Int                       @default(0)
+  idempotencyKey String                    @unique
+  validatedAt    DateTime?
+  createdAt      DateTime                  @default(now())
+  ninja          NinjaProfile              @relation(fields: [ninjaId], references: [id])
+  items          ResourceTransactionItem[]
+  movements      InventoryMovement[]
+}
+
+model ResourceTransactionItem {
+  id                   String              @id @default(cuid())
+  transactionId        String
+  resourceId           String
+  quantity             Decimal             @db.Decimal(20, 4)
+  qualityMultiplierBps Int                 @default(10000)
+  unitPriceSnapshot    BigInt
+  lineTotal            BigInt
+  transaction          ResourceTransaction @relation(fields: [transactionId], references: [id])
+  resource             Resource            @relation(fields: [resourceId], references: [id])
+}
+
+model InventoryMovement {
+  id               String                @id @default(cuid())
+  resourceId       String
+  type             InventoryMovementType
+  quantity         Decimal               @db.Decimal(20, 4)
+  unitCost         BigInt?
+  transactionId    String?
+  craftExecutionId String?
+  agentId          String
+  justification    String
+  idempotencyKey   String                @unique
+  occurredAt       DateTime              @default(now())
+  resource         Resource              @relation(fields: [resourceId], references: [id])
+  transaction      ResourceTransaction?  @relation(fields: [transactionId], references: [id])
+  craftExecution   CraftExecution?       @relation(fields: [craftExecutionId], references: [id])
+
+  @@index([resourceId, occurredAt])
+}
+
+model CraftRecipe {
+  id                 String                  @id @default(cuid())
+  code               String
+  version            Int
+  name               String
+  category           String
+  description        String
+  difficulty         String
+  durationRpMinutes  Int
+  cost               BigInt
+  minimumGradeCode   String?
+  requiredProfession String?
+  isPublic           Boolean                 @default(false)
+  status             CraftStatus             @default(DRAFT)
+  ingredients        CraftRecipeIngredient[]
+  outputs            CraftRecipeOutput[]
+  executions         CraftExecution[]
+
+  @@unique([code, version])
+}
+
+model CraftRecipeIngredient {
+  id         String      @id @default(cuid())
+  recipeId   String
+  resourceId String
+  quantity   Decimal     @db.Decimal(20, 4)
+  recipe     CraftRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  resource   Resource    @relation(fields: [resourceId], references: [id])
+
+  @@unique([recipeId, resourceId])
+}
+
+model CraftRecipeOutput {
+  id         String      @id @default(cuid())
+  recipeId   String
+  resourceId String
+  quantity   Decimal     @db.Decimal(20, 4)
+  recipe     CraftRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  resource   Resource    @relation(fields: [resourceId], references: [id])
+
+  @@unique([recipeId, resourceId])
+}
+
+model CraftExecution {
+  id             String              @id @default(cuid())
+  recipeId       String
+  quantity       Int
+  status         String
+  confirmedById  String
+  idempotencyKey String              @unique
+  createdAt      DateTime            @default(now())
+  recipe         CraftRecipe         @relation(fields: [recipeId], references: [id])
+  movements      InventoryMovement[]
+}
+
+model AgentReport {
+  id              String       @id @default(cuid())
+  authorId        String
+  periodStart     DateTime
+  periodEnd       DateTime
+  summary         String       @db.Text
+  incidents       String?      @db.Text
+  stockIssues     String?      @db.Text
+  followUps       String?      @db.Text
+  status          ReportStatus @default(DRAFT)
+  paymentCount    Int          @default(0)
+  collectedAmount BigInt       @default(0)
+  donationCount   Int          @default(0)
+  buybackCount    Int          @default(0)
+  processedValue  BigInt       @default(0)
+  correctionCount Int          @default(0)
+  reviewerId      String?
+  createdAt       DateTime     @default(now())
+  author          User         @relation("ReportAuthor", fields: [authorId], references: [id])
+
+  @@unique([authorId, periodStart, periodEnd])
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  status    NotificationStatus @default(UNREAD)
+  createdAt DateTime           @default(now())
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  actorId        String?
+  action         String
+  entityType     String
+  entityId       String
+  previousValues Json?
+  newValues      Json?
+  reason         String?
+  requestId      String
+  createdAt      DateTime @default(now())
+  actor          User?    @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model AppSetting {
+  key         String   @id
+  value       Json
+  version     Int      @default(1)
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+model IdempotencyKey {
+  key            String    @id
+  scope          String
+  requestHash    String
+  responseStatus Int?
+  responseBody   Json?
+  lockedUntil    DateTime
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@index([scope, createdAt])
+}

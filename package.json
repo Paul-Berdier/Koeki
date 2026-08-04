@@ -1,0 +1,26 @@
+{
+  "name": "koeki",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": { "node": ">=20.18.0" },
+  "scripts": {
+    "dev": "pnpm --filter @koeki/web dev",
+    "build": "pnpm -r --if-present build",
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "test:e2e": "pnpm --filter @koeki/web test:e2e",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @koeki/database generate",
+    "db:migrate": "pnpm --filter @koeki/database migrate",
+    "db:deploy": "pnpm --filter @koeki/database deploy",
+    "db:seed": "pnpm --filter @koeki/database seed",
+    "worker": "pnpm --filter @koeki/worker start"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}
