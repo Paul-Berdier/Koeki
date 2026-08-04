@@ -282,7 +282,8 @@ export async function getResources(canApprove: boolean): Promise<ResourcesData> 
         id: resource.id, code: resource.code, name: resource.name, category: resource.category.label, unit: resource.unit.symbol,
         price: prices.get(resource.id) ?? 0n, stock,
         badge: (!resource.isActive ? "draft" : critical ? "overdue" : low ? "warning" : "paid") as BadgeStatus,
-        stateLabel: !resource.isActive ? "Inactive" : critical ? "Critique" : low ? "Stock bas" : "Disponible"
+        stateLabel: !resource.isActive ? "Inactive" : critical ? "Critique" : low ? "Stock bas" : "Disponible",
+        demand: (resource.demand === "CRITICAL" || resource.demand === "NEEDED" ? resource.demand : "NONE") as "NONE" | "NEEDED" | "CRITICAL"
       };
     }),
     pendingApprovals: pending.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, ninja: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, total: transaction.totalAmount, at: formatDate(transaction.createdAt) }))

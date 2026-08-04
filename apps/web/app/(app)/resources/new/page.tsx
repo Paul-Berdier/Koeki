@@ -33,6 +33,7 @@ export default async function NewResourcePage({ searchParams }: { searchParams: 
           <label>Seuil bas (alerte de réapprovisionnement)<input type="number" name="minimumStock" min={0} step="0.01" defaultValue={0} /></label>
           <label>Seuil critique<input type="number" name="criticalStock" min={0} step="0.01" defaultValue={0} /></label>
         </div>
+        <label>Besoin du village<select name="demand" defaultValue="NONE"><option value="NONE">Non besoin</option><option value="NEEDED">Besoin</option><option value="CRITICAL">Critique (besoin primaire)</option></select></label>
         <div className="form-actions"><button className="button button-primary" type="submit"><PackagePlus size={16} /> Créer la ressource</button></div>
       </form>
     </section>}

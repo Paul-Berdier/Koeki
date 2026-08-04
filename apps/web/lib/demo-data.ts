@@ -55,10 +55,10 @@ export const demoRecovery: RecoveryData = {
 export const demoResources: ResourcesData = {
   metrics: { buybackTotal: 67400n, buybackCount: 23, donationValue: 22400n, donationCount: 9, activeCount: 42, totalCount: 48 },
   resources: [
-    { id: "r1", code: "RES-CUI-01", name: "Minerai de cuivre", category: "Minerais", unit: "kg", price: 180n, stock: 82, badge: "paid", stateLabel: "Disponible" },
-    { id: "r2", code: "RES-TIS-03", name: "Tissu renforcé", category: "Textiles", unit: "m", price: 320n, stock: 9, badge: "overdue", stateLabel: "Critique" },
-    { id: "r3", code: "RES-BOI-02", name: "Bois d’aulne", category: "Bois", unit: "planche", price: 95n, stock: 14, badge: "warning", stateLabel: "Stock bas" },
-    { id: "r4", code: "RES-HER-08", name: "Herbe du désert", category: "Herboristerie", unit: "botte", price: 60n, stock: 143, badge: "paid", stateLabel: "Disponible" }
+    { id: "r1", code: "RES-CUI-01", name: "Minerai de cuivre", category: "Minerais", unit: "kg", price: 180n, stock: 82, badge: "paid", stateLabel: "Disponible", demand: "NONE" },
+    { id: "r2", code: "RES-TIS-03", name: "Tissu renforcé", category: "Textiles", unit: "m", price: 320n, stock: 9, badge: "overdue", stateLabel: "Critique", demand: "NEEDED" },
+    { id: "r3", code: "RES-BOI-02", name: "Bois d’aulne", category: "Bois", unit: "planche", price: 95n, stock: 14, badge: "warning", stateLabel: "Stock bas", demand: "CRITICAL" },
+    { id: "r4", code: "RES-HER-08", name: "Herbe du désert", category: "Herboristerie", unit: "botte", price: 60n, stock: 143, badge: "paid", stateLabel: "Disponible", demand: "NONE" }
   ],
   pendingApprovals: []
 };

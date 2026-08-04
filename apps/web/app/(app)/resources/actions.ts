@@ -107,8 +107,9 @@ const resourceSchema = z.object({
   categoryId: z.string().min(1, "La catégorie est obligatoire"),
   unitId: z.string().min(1, "L’unité est obligatoire"),
   description: z.string().trim().max(500).optional().transform((value) => value || null),
-  minimumStock: z.coerce.number().min(0).default(0),
-  criticalStock: z.coerce.number().min(0).default(0)
+  minimumStock: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  criticalStock: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  demand: z.enum(["NONE", "NEEDED", "CRITICAL"]).default("NONE")
 });
 
 const codeBase = (name: string) => name.normalize("NFD").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
@@ -130,7 +131,7 @@ export async function createResource(formData: FormData) {
     const code = `RES-${base}-${String(count + 1 + attempt).padStart(2, "0")}`;
     try {
       await prisma.$transaction(async (tx) => {
-        const resource = await tx.resource.create({ data: { code, name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock) } });
+        const resource = await tx.resource.create({ data: { code, name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock) } });
         if (price !== null && price > 0) await tx.resourcePriceHistory.create({ data: { resourceId: resource.id, pricePerUnit: BigInt(price), effectiveFrom: new Date(), createdById: session.userId } });
         await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_CREATED", entityType: "Resource", entityId: resource.id, newValues: { code, name: data.name, price } });
       });
@@ -151,7 +152,7 @@ export async function updateResource(formData: FormData) {
   const previous = await prisma.resource.findUnique({ where: { id: resourceId } });
   if (!previous) redirect("/resources?erreur=Ressource%20introuvable");
   await prisma.$transaction(async (tx) => {
-    await tx.resource.update({ where: { id: resourceId }, data: { name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), isActive: isActive === "on" } });
+    await tx.resource.update({ where: { id: resourceId }, data: { name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), isActive: isActive === "on" } });
     await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_UPDATED", entityType: "Resource", entityId: resourceId,
       previousValues: { name: previous!.name, minimumStock: Number(previous!.minimumStock), criticalStock: Number(previous!.criticalStock), isActive: previous!.isActive },
       newValues: { name: data.name, minimumStock: data.minimumStock, criticalStock: data.criticalStock, isActive: isActive === "on" } });

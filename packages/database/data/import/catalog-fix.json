@@ -1,0 +1,304 @@
+{
+ "equipment": [
+  {
+   "name": "Bague T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bas Armure T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bas Jutsu T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bottes T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Collier T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Gant T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Haut Armure T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Haut Jutsu T1",
+   "tier": "T1",
+   "planPrice": 0,
+   "craftPrice": 0,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bague T2",
+   "tier": "T2",
+   "planPrice": 50000,
+   "craftPrice": 180000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Bas Armure T2",
+   "tier": "T2",
+   "planPrice": 12500,
+   "craftPrice": 110000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Bas Jutsu T2",
+   "tier": "T2",
+   "planPrice": 17000,
+   "craftPrice": 150000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Bottes T2",
+   "tier": "T2",
+   "planPrice": 50000,
+   "craftPrice": 160000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Collier T2",
+   "tier": "T2",
+   "planPrice": 18000,
+   "craftPrice": 135000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Gant T2",
+   "tier": "T2",
+   "planPrice": 35000,
+   "craftPrice": 130000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Haut Armure T2",
+   "tier": "T2",
+   "planPrice": 12500,
+   "craftPrice": 110000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Haut Jutsu T2",
+   "tier": "T2",
+   "planPrice": 42500,
+   "craftPrice": 155000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Bague T3",
+   "tier": "T3",
+   "planPrice": 250000,
+   "craftPrice": 750000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bas Armure T3",
+   "tier": "T3",
+   "planPrice": 70000,
+   "craftPrice": 600000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bas Jutsu T3",
+   "tier": "T3",
+   "planPrice": 175000,
+   "craftPrice": 700000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Bottes Armure T3",
+   "tier": "T3",
+   "planPrice": 80000,
+   "craftPrice": 600000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Bottes Jutsu T3",
+   "tier": "T3",
+   "planPrice": 120000,
+   "craftPrice": 600000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bottes Ténacité T3",
+   "tier": "T3",
+   "planPrice": 150000,
+   "craftPrice": 700000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Boucle T3",
+   "tier": "T3",
+   "planPrice": 200000,
+   "craftPrice": 600000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Collier T3",
+   "tier": "T3",
+   "planPrice": 180000,
+   "craftPrice": 600000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Gant T3",
+   "tier": "T3",
+   "planPrice": 100000,
+   "craftPrice": 600000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Haut Armure T3",
+   "tier": "T3",
+   "planPrice": 70000,
+   "craftPrice": 600000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Haut Jutsu T3",
+   "tier": "T3",
+   "planPrice": 200000,
+   "craftPrice": 650000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bague T4",
+   "tier": "T4",
+   "planPrice": 1300000,
+   "craftPrice": 2600000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Bas Armure T4",
+   "tier": "T4",
+   "planPrice": 450000,
+   "craftPrice": 1800000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Bas Jutsu T4",
+   "tier": "T4",
+   "planPrice": 800000,
+   "craftPrice": 2000000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bottes Armure T4",
+   "tier": "T4",
+   "planPrice": 700000,
+   "craftPrice": 2000000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bottes Jutsu T4",
+   "tier": "T4",
+   "planPrice": 850000,
+   "craftPrice": 2000000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Bottes Ténacité T4",
+   "tier": "T4",
+   "planPrice": 600000,
+   "craftPrice": 2000000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Boucle T4",
+   "tier": "T4",
+   "planPrice": 700000,
+   "craftPrice": 2000000,
+   "demand": "CRITICAL"
+  },
+  {
+   "name": "Collier T4",
+   "tier": "T4",
+   "planPrice": 600000,
+   "craftPrice": 2000000,
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Gant T4",
+   "tier": "T4",
+   "planPrice": 400000,
+   "craftPrice": 1800000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Haut Armure T4",
+   "tier": "T4",
+   "planPrice": 300000,
+   "craftPrice": 1800000,
+   "demand": "NONE"
+  },
+  {
+   "name": "Haut Jutsu T4",
+   "tier": "T4",
+   "planPrice": 850000,
+   "craftPrice": 2100000,
+   "demand": "NEEDED"
+  }
+ ],
+ "resources": [
+  {
+   "name": "Bois",
+   "demand": "NONE"
+  },
+  {
+   "name": "Chakra Metal",
+   "demand": "NONE"
+  },
+  {
+   "name": "Cuivre",
+   "demand": "NONE"
+  },
+  {
+   "name": "Fer",
+   "demand": "NONE"
+  },
+  {
+   "name": "Jade",
+   "demand": "NEEDED"
+  },
+  {
+   "name": "Laine",
+   "demand": "NONE"
+  },
+  {
+   "name": "Plastique",
+   "demand": "NONE"
+  },
+  {
+   "name": "Titane",
+   "demand": "NEEDED"
+  }
+ ]
+}

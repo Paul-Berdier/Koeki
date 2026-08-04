@@ -36,6 +36,7 @@ export default async function EditResourcePage({ params, searchParams }: { param
           <label>Seuil bas<input type="number" name="minimumStock" min={0} step="0.01" defaultValue={Number(resource.minimumStock)} /></label>
           <label>Seuil critique<input type="number" name="criticalStock" min={0} step="0.01" defaultValue={Number(resource.criticalStock)} /></label>
         </div>
+        <label>Besoin du village<select name="demand" defaultValue={resource.demand}><option value="NONE">Non besoin</option><option value="NEEDED">Besoin</option><option value="CRITICAL">Critique (besoin primaire)</option></select></label>
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" name="isActive" defaultChecked={resource.isActive} style={{ minHeight: 0, width: 16, height: 16 }} /> Ressource active (visible dans les transactions et l’inventaire)</label>
         <div className="form-actions"><button className="button button-primary" type="submit"><Save size={16} /> Enregistrer</button></div>
       </form>

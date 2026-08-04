@@ -29,7 +29,7 @@ export interface NinjaDetailData {
 export interface RecoveryRow { id: string; name: string; code: string; debt: bigint; due: string; agent: string }
 export interface RecoveryData { metrics: { priorityDebt: bigint; priorityCount: number; averageLate: string; totalDebt: bigint; unassigned: number }; rows: RecoveryRow[] }
 
-export interface ResourceRow { id: string; code: string; name: string; category: string; unit: string; price: bigint; stock: number; badge: BadgeStatus; stateLabel: string }
+export interface ResourceRow { id: string; code: string; name: string; category: string; unit: string; price: bigint; stock: number; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }
 export interface ResourcesData {
   metrics: { buybackTotal: bigint; buybackCount: number; donationValue: bigint; donationCount: number; activeCount: number; totalCount: number };
   resources: ResourceRow[];

@@ -163,9 +163,97 @@ async function importEvents() {
   console.log(`import-legacy/événements : ${created} tournois importés`);
 }
 
+/** Catalog correction: each equipment row of the old register is really TWO items —
+ *  the collectable PLAN (bought at plan price) and the crafted EQUIPMENT (bought at
+ *  craft price). Also applies the three-level village demand (Non besoin / Besoin /
+ *  Besoin primaire) to equipment, plans and primary resources. */
+async function fixCatalog() {
+  const FLAG_FIX = "legacyCatalogFix2026-08-05";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_FIX } })) { console.log("import-legacy/catalogue : déjà corrigé"); return; }
+  const fix = loadJson<{ equipment: Array<{ name: string; tier: string; planPrice: number; craftPrice: number; demand: string }>; resources: Array<{ name: string; demand: string }> }>("catalog-fix.json");
+  const [scrolls, unit, systemUser] = await Promise.all([
+    prisma.resourceCategory.findUnique({ where: { code: "SCROLLS" } }),
+    prisma.resourceUnit.findUnique({ where: { code: "UNIT" } }),
+    prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } })
+  ]);
+  if (!scrolls || !unit || !systemUser) { console.log("import-legacy/catalogue : référentiels absents"); return; }
+  await prisma.$transaction(async (tx) => {
+    const usedCodes = new Set((await tx.resource.findMany({ select: { code: true } })).map((resource) => resource.code));
+    const nextCode = (name: string) => { const base = codeBase(name); let code = "", suffix = 1; do { code = `RES-${base}-${String(suffix++).padStart(2, "0")}`; } while (usedCodes.has(code)); usedCodes.add(code); return code; };
+    const now = new Date();
+    let plansCreated = 0, pricesFixed = 0;
+    for (const item of fix.equipment) {
+      const equip = await tx.resource.findFirst({ where: { name: item.name }, include: { prices: { where: { effectiveTo: null } } } });
+      if (equip) {
+        await tx.resource.update({ where: { id: equip.id }, data: { demand: item.demand, description: `Équipement ${item.tier} — se fabrique avec son plan et les ressources adéquates (prix craft ${item.craftPrice.toLocaleString("fr-FR")} ¥)` } });
+        const current = equip.prices[0]?.pricePerUnit ?? null;
+        if (item.craftPrice > 0 && (current === null || Number(current) !== item.craftPrice)) {
+          await tx.resourcePriceHistory.updateMany({ where: { resourceId: equip.id, effectiveTo: null }, data: { effectiveTo: now } });
+          await tx.resourcePriceHistory.create({ data: { resourceId: equip.id, pricePerUnit: BigInt(item.craftPrice), effectiveFrom: now, createdById: systemUser.id } });
+          pricesFixed++;
+        }
+      }
+      const planName = `Plan ${item.name}`;
+      const existingPlan = await tx.resource.findFirst({ where: { name: planName } });
+      if (!existingPlan) {
+        const plan = await tx.resource.create({ data: { code: nextCode(planName), name: planName, categoryId: scrolls.id, unitId: unit.id, demand: item.demand, minimumStock: new Prisma.Decimal(0), criticalStock: new Prisma.Decimal(0), description: `Plan ramassable ${item.tier} — permet de fabriquer ${item.name}` } });
+        if (item.planPrice > 0) await tx.resourcePriceHistory.create({ data: { resourceId: plan.id, pricePerUnit: BigInt(item.planPrice), effectiveFrom: now, createdById: systemUser.id } });
+        plansCreated++;
+      }
+    }
+    for (const item of fix.resources) await tx.resource.updateMany({ where: { name: { equals: item.name, mode: "insensitive" } }, data: { demand: item.demand } });
+    await tx.appSetting.create({ data: { key: FLAG_FIX, value: { fixedAt: now.toISOString(), plansCreated, pricesFixed } } });
+    await tx.auditLog.create({ data: { action: "LEGACY_CATALOG_FIX", entityType: "Resource", entityId: FLAG_FIX, requestId: randomUUID(), reason: `Catalogue corrigé : ${plansCreated} plans créés, ${pricesFixed} prix d’équipement passés au prix craft, niveaux de besoin appliqués` } });
+    console.log(`import-legacy/catalogue : ${plansCreated} plans créés, ${pricesFixed} prix corrigés`);
+  }, { timeout: 300_000, maxWait: 30_000 });
+}
+
+/** Fresh-start amnesty on the imported weekly history: ninjas whose last two Sundays
+ *  (or more, consecutively) were unpaid keep those weeks late and get a note to settle;
+ *  everyone else has their old missed weeks waived. */
+async function taxAmnesty() {
+  const FLAG_AMNESTY = "legacyTaxAmnesty2026-08-05";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_AMNESTY } })) { console.log("import-legacy/amnistie : déjà appliquée"); return; }
+  const policy = await prisma.taxPolicy.findUnique({ where: { name_version: { name: "Ancien registre", version: 1 } } });
+  if (!policy) { console.log("import-legacy/amnistie : historique absent"); return; }
+  const lastSunday = new Date("2026-07-26T22:00:00.000Z");
+  const previousSunday = new Date("2026-07-19T22:00:00.000Z");
+  const legacy = await prisma.taxAssessment.findMany({ where: { taxPolicyId: policy.id }, select: { id: true, ninjaId: true, dueAt: true, status: true } });
+  const byNinja = new Map<string, typeof legacy>();
+  for (const row of legacy) { const list = byNinja.get(row.ninjaId) ?? []; list.push(row); byNinja.set(row.ninjaId, list); }
+  let inDebt = 0, waived = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const [ninjaId, rows] of byNinja) {
+      const past = rows.filter((row) => row.dueAt <= lastSunday).sort((a, b) => b.dueAt.getTime() - a.dueAt.getTime());
+      const isUnpaid = (due: Date) => past.some((row) => row.dueAt.getTime() === due.getTime() && row.status === "OVERDUE");
+      const streakIds: string[] = [];
+      if (isUnpaid(lastSunday) && isUnpaid(previousSunday)) {
+        for (let due = lastSunday.getTime(); ; due -= 604_800_000) {
+          const row = past.find((entry) => entry.dueAt.getTime() === due && entry.status === "OVERDUE");
+          if (!row) break;
+          streakIds.push(row.id);
+        }
+      }
+      const toWaive = past.filter((row) => row.status === "OVERDUE" && !streakIds.includes(row.id)).map((row) => row.id);
+      if (toWaive.length) { await tx.taxAssessment.updateMany({ where: { id: { in: toWaive } }, data: { status: "WAIVED" } }); waived += toWaive.length; }
+      if (streakIds.length) {
+        inDebt++;
+        const profile = await tx.ninjaProfile.findUnique({ where: { id: ninjaId }, select: { notes: true } });
+        const marker = `Reprise du 30/07/2026 : ${streakIds.length} dimanche${streakIds.length > 1 ? "s" : ""} consécutif${streakIds.length > 1 ? "s" : ""} impayé${streakIds.length > 1 ? "s" : ""} — dette à régulariser`;
+        if (!profile?.notes?.includes("dette à régulariser")) await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { notes: profile?.notes ? `${profile.notes}\n${marker}` : marker } });
+      }
+    }
+    await tx.appSetting.create({ data: { key: FLAG_AMNESTY, value: { appliedAt: new Date().toISOString(), inDebt, waived } } });
+    await tx.auditLog.create({ data: { action: "LEGACY_TAX_AMNESTY", entityType: "TaxAssessment", entityId: FLAG_AMNESTY, requestId: randomUUID(), reason: `Reprise : ${inDebt} ninjas gardent leur retard (2+ dimanches consécutifs), ${waived} semaines amnistiées (Remise)` } });
+    console.log(`import-legacy/amnistie : ${inDebt} ninjas en tort conservés, ${waived} semaines amnistiées`);
+  }, { timeout: 300_000, maxWait: 30_000 });
+}
+
 async function main() {
   await importCore();
   await importTaxHistory();
   await importEvents();
+  await fixCatalog();
+  await taxAmnesty();
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
