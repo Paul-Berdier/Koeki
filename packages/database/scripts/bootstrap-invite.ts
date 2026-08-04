@@ -13,6 +13,8 @@ async function main() {
   if (!pepper) { console.log("bootstrap-invite: INVITE_TOKEN_PEPPER absent — étape ignorée"); return; }
   const humanAdmin = await prisma.user.findFirst({ where: { discordId: { not: null }, revokedAt: null, roles: { some: { role: { code: "SUPER_ADMIN" } } } } });
   if (humanAdmin) { console.log("bootstrap-invite: un super-administrateur humain existe déjà — rien à faire"); return; }
+  const consumed = await prisma.invitation.findFirst({ where: { status: "USED", role: { code: "SUPER_ADMIN" }, consumedBy: { revokedAt: null } } });
+  if (consumed) { console.log("bootstrap-invite: une invitation SUPER_ADMIN a déjà été consommée — rien à faire"); return; }
   const pending = await prisma.invitation.findFirst({ where: { status: "PENDING", revokedAt: null, expiresAt: { gt: new Date() }, role: { code: "SUPER_ADMIN" } } });
   if (pending) { console.log("bootstrap-invite: une invitation SUPER_ADMIN est déjà en attente — rien à faire"); return; }
   const role = await prisma.role.findUnique({ where: { code: "SUPER_ADMIN" } });
