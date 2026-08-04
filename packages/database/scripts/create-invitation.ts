@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, RoleCode } from "@prisma/client";
 
@@ -17,7 +17,7 @@ async function main() {
   const token = randomBytes(32).toString("base64url");
   const tokenHash = createHash("sha256").update(`${pepper}:${token}`, "utf8").digest("hex");
   const invitation = await prisma.invitation.create({ data: { tokenHash, roleId: role.id, createdById: creator.id, expiresAt: new Date(Date.now() + expiresDays * 86_400_000) } });
-  await prisma.auditLog.create({ data: { actorId: creator.id, action: "INVITATION_CREATED", entityType: "Invitation", entityId: invitation.id, requestId: crypto.randomUUID(), newValues: { roleCode, expiresAt: invitation.expiresAt.toISOString() } } });
+  await prisma.auditLog.create({ data: { actorId: creator.id, action: "INVITATION_CREATED", entityType: "Invitation", entityId: invitation.id, requestId: randomUUID(), newValues: { roleCode, expiresAt: invitation.expiresAt.toISOString() } } });
   const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   console.log(`Invitation ${roleCode} created (expires ${invitation.expiresAt.toISOString()})`);
   console.log(`${base}/invite/${token}`);

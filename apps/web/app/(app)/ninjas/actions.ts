@@ -72,6 +72,24 @@ export async function createOwnProfile(formData: FormData) {
   redirect(`/ninjas/${ninjaId}`);
 }
 
+/** Links an existing unclaimed record to the signed-in account (imported registers have no linked users). */
+export async function claimOwnProfile(formData: FormData) {
+  if (demoMode) throw new Error("Mode démonstration : les écritures sont désactivées");
+  const session = await getSession();
+  if (!session) throw new Error("UNAUTHENTICATED");
+  const existing = await prisma.ninjaProfile.findUnique({ where: { userId: session.userId } });
+  if (existing) redirect(`/ninjas/${existing.id}`);
+  const ninjaId = formData.get("ninjaId");
+  if (typeof ninjaId !== "string" || !ninjaId) redirect("/profil?erreur=S%C3%A9lectionnez%20une%20fiche");
+  const claimed = await prisma.$transaction(async (tx) => {
+    const updated = await tx.ninjaProfile.updateMany({ where: { id: ninjaId as string, userId: null, status: "ACTIVE" }, data: { userId: session.userId, version: { increment: 1 } } });
+    if (updated.count === 1) await writeAudit(tx, { actorId: session.userId, action: "NINJA_CLAIMED", entityType: "NinjaProfile", entityId: ninjaId as string, reason: "Fiche existante liée au compte lors de l’arrivée" });
+    return updated.count === 1;
+  });
+  if (!claimed) redirect("/profil?erreur=Cette%20fiche%20est%20d%C3%A9j%C3%A0%20li%C3%A9e%20%C3%A0%20un%20autre%20compte");
+  redirect(`/ninjas/${ninjaId}`);
+}
+
 const updateNinjaSchema = createNinjaSchema.extend({
   ninjaId: z.string().min(1),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE")

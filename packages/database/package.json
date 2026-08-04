@@ -12,6 +12,7 @@
     "seed:bootstrap": "tsx prisma/bootstrap.ts",
     "invite": "tsx scripts/create-invitation.ts",
     "invite:bootstrap": "tsx scripts/bootstrap-invite.ts",
+    "import:legacy": "tsx scripts/import-legacy.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json"
   },

@@ -6,7 +6,7 @@
   "engines": { "node": ">=20.18.0" },
   "scripts": {
     "dev": "pnpm --filter @koeki/web dev",
-    "start:prod": "pnpm db:deploy && pnpm db:seed:bootstrap && pnpm --filter @koeki/database run invite:bootstrap && pnpm --filter @koeki/web start",
+    "start:prod": "pnpm db:deploy && pnpm db:seed:bootstrap && pnpm --filter @koeki/database run import:legacy && pnpm --filter @koeki/database run invite:bootstrap && pnpm --filter @koeki/web start",
     "build": "pnpm -r --if-present build",
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",

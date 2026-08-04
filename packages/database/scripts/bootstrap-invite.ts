@@ -2,7 +2,7 @@
 // super-administrator exists (humans authenticate via Discord, so they have a discordId).
 // Safe to run on every deploy — it no-ops once an admin account exists or an
 // invitation is still pending.
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 
@@ -24,7 +24,7 @@ async function main() {
   const tokenHash = createHash("sha256").update(`${pepper}:${token}`, "utf8").digest("hex");
   const expiresAt = new Date(Date.now() + 7 * 86_400_000);
   const invitation = await prisma.invitation.create({ data: { tokenHash, roleId: role.id, createdById: creator.id, expiresAt } });
-  await prisma.auditLog.create({ data: { actorId: creator.id, action: "INVITATION_CREATED", entityType: "Invitation", entityId: invitation.id, requestId: crypto.randomUUID(), reason: "Invitation initiale générée au déploiement", newValues: { roleCode: "SUPER_ADMIN", expiresAt: expiresAt.toISOString() } } });
+  await prisma.auditLog.create({ data: { actorId: creator.id, action: "INVITATION_CREATED", entityType: "Invitation", entityId: invitation.id, requestId: randomUUID(), reason: "Invitation initiale générée au déploiement", newValues: { roleCode: "SUPER_ADMIN", expiresAt: expiresAt.toISOString() } } });
   const base = (process.env.APP_URL ?? "").replace(/\/$/, "");
   console.log("=====================================================");
   console.log("INVITATION SUPER_ADMIN INITIALE (valable 7 jours, usage unique)");

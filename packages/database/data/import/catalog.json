@@ -1,0 +1,377 @@
+{
+ "resources": [
+  {
+   "name": "Bois",
+   "key": "bois",
+   "category": "WOOD",
+   "price": 100,
+   "description": "Ancien registre — 5 pts/unité, exonération 800 ¥/unité, situation rachat : Non Besoin"
+  },
+  {
+   "name": "Laine",
+   "key": "laine",
+   "category": "TEXTILES",
+   "price": 6000,
+   "description": "Ancien registre — 10 pts/unité, exonération 1000 ¥/unité, situation rachat : Non Besoin"
+  },
+  {
+   "name": "Plastique",
+   "key": "plastique",
+   "category": "OTHER",
+   "price": 500,
+   "description": "Ancien registre — 5 pts/unité, exonération 300 ¥/unité, situation rachat : Non Besoin"
+  },
+  {
+   "name": "Cuivre",
+   "key": "cuivre",
+   "category": "METALS",
+   "price": 7500,
+   "description": "Ancien registre — 10 pts/unité, exonération 1000 ¥/unité, situation rachat : Non Besoin"
+  },
+  {
+   "name": "Fer",
+   "key": "fer",
+   "category": "METALS",
+   "price": 25000,
+   "description": "Ancien registre — 125 pts/unité, exonération 10000 ¥/unité, situation rachat : Non Besoin"
+  },
+  {
+   "name": "Titane",
+   "key": "titane",
+   "category": "METALS",
+   "price": 40000,
+   "description": "Ancien registre — 125 pts/unité, exonération 10000 ¥/unité, situation rachat : Besoin"
+  },
+  {
+   "name": "Chakra Métal",
+   "key": "chakra metal",
+   "category": "RARE",
+   "price": 100000,
+   "description": "Ancien registre — 500 pts/unité, exonération 50000 ¥/unité, situation rachat : Non Besoin"
+  },
+  {
+   "name": "Jade",
+   "key": "jade",
+   "category": "CRYSTALS",
+   "price": 25000,
+   "description": "Ancien registre — 125 pts/unité, exonération 10000 ¥/unité, situation rachat : Besoin"
+  },
+  {
+   "name": "T1",
+   "key": "t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Ancien registre — 5 pts/unité, exonération 200 ¥/unité"
+  },
+  {
+   "name": "T2",
+   "key": "t2",
+   "category": "RARE",
+   "price": null,
+   "description": "Ancien registre — 75 pts/unité, exonération 6000 ¥/unité"
+  },
+  {
+   "name": "T3",
+   "key": "t3",
+   "category": "RARE",
+   "price": null,
+   "description": "Ancien registre — 150 pts/unité, exonération 25000 ¥/unité"
+  },
+  {
+   "name": "T4",
+   "key": "t4",
+   "category": "RARE",
+   "price": null,
+   "description": "Ancien registre — 500 pts/unité, exonération 200000 ¥/unité"
+  },
+  {
+   "name": "Ryo",
+   "key": "ryo",
+   "category": "OTHER",
+   "price": null,
+   "description": "Ancien registre — 0 pts/unité, exonération 0 ¥/unité"
+  },
+  {
+   "name": "Lavande",
+   "key": "lavande",
+   "category": "PLANTS",
+   "price": null,
+   "description": "Ancien registre — 2 pts/unité, exonération 10 ¥/unité"
+  },
+  {
+   "name": "Cuir",
+   "key": "cuir",
+   "category": "LEATHER",
+   "price": null,
+   "description": "Ancien registre (vu uniquement dans l’historique des dons)"
+  }
+ ],
+ "equipment": [
+  {
+   "name": "Bague T1",
+   "key": "bague t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bas Armure T1",
+   "key": "bas armure t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bas Jutsu T1",
+   "key": "bas jutsu t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bottes T1",
+   "key": "bottes t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Collier T1",
+   "key": "collier t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Gant T1",
+   "key": "gant t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Haut Armure T1",
+   "key": "haut armure t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Haut Jutsu T1",
+   "key": "haut jutsu t1",
+   "category": "RARE",
+   "price": null,
+   "description": "Équipement T1 — prix plan 0 ¥  prix craft 0 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bague T2",
+   "key": "bague t2",
+   "category": "RARE",
+   "price": 50000,
+   "description": "Équipement T2 — prix plan 50 000 ¥  prix craft 180 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Bas Armure T2",
+   "key": "bas armure t2",
+   "category": "RARE",
+   "price": 12500,
+   "description": "Équipement T2 — prix plan 12 500 ¥  prix craft 110 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Bas Jutsu T2",
+   "key": "bas jutsu t2",
+   "category": "RARE",
+   "price": 17000,
+   "description": "Équipement T2 — prix plan 17 000 ¥  prix craft 150 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Bottes T2",
+   "key": "bottes t2",
+   "category": "RARE",
+   "price": 50000,
+   "description": "Équipement T2 — prix plan 50 000 ¥  prix craft 160 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Collier T2",
+   "key": "collier t2",
+   "category": "RARE",
+   "price": 18000,
+   "description": "Équipement T2 — prix plan 18 000 ¥  prix craft 135 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Gant T2",
+   "key": "gant t2",
+   "category": "RARE",
+   "price": 35000,
+   "description": "Équipement T2 — prix plan 35 000 ¥  prix craft 130 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Haut Armure T2",
+   "key": "haut armure t2",
+   "category": "RARE",
+   "price": 12500,
+   "description": "Équipement T2 — prix plan 12 500 ¥  prix craft 110 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Haut Jutsu T2",
+   "key": "haut jutsu t2",
+   "category": "RARE",
+   "price": 42500,
+   "description": "Équipement T2 — prix plan 42 500 ¥  prix craft 155 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Bague T3",
+   "key": "bague t3",
+   "category": "RARE",
+   "price": 250000,
+   "description": "Équipement T3 — prix plan 250 000 ¥  prix craft 750 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bas Armure T3",
+   "key": "bas armure t3",
+   "category": "RARE",
+   "price": 70000,
+   "description": "Équipement T3 — prix plan 70 000 ¥  prix craft 600 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bas Jutsu T3",
+   "key": "bas jutsu t3",
+   "category": "RARE",
+   "price": 175000,
+   "description": "Équipement T3 — prix plan 175 000 ¥  prix craft 700 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Bottes Armure T3",
+   "key": "bottes armure t3",
+   "category": "RARE",
+   "price": 80000,
+   "description": "Équipement T3 — prix plan 80 000 ¥  prix craft 600 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Bottes Jutsu T3",
+   "key": "bottes jutsu t3",
+   "category": "RARE",
+   "price": 120000,
+   "description": "Équipement T3 — prix plan 120 000 ¥  prix craft 600 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bottes Ténacité T3",
+   "key": "bottes tenacite t3",
+   "category": "RARE",
+   "price": 150000,
+   "description": "Équipement T3 — prix plan 150 000 ¥  prix craft 700 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Boucle T3",
+   "key": "boucle t3",
+   "category": "RARE",
+   "price": 200000,
+   "description": "Équipement T3 — prix plan 200 000 ¥  prix craft 600 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Collier T3",
+   "key": "collier t3",
+   "category": "RARE",
+   "price": 180000,
+   "description": "Équipement T3 — prix plan 180 000 ¥  prix craft 600 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Gant T3",
+   "key": "gant t3",
+   "category": "RARE",
+   "price": 100000,
+   "description": "Équipement T3 — prix plan 100 000 ¥  prix craft 600 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Haut Armure T3",
+   "key": "haut armure t3",
+   "category": "RARE",
+   "price": 70000,
+   "description": "Équipement T3 — prix plan 70 000 ¥  prix craft 600 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Haut Jutsu T3",
+   "key": "haut jutsu t3",
+   "category": "RARE",
+   "price": 200000,
+   "description": "Équipement T3 — prix plan 200 000 ¥  prix craft 650 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bague T4",
+   "key": "bague t4",
+   "category": "RARE",
+   "price": 1300000,
+   "description": "Équipement T4 — prix plan 1 300 000 ¥  prix craft 2 600 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Bas Armure T4",
+   "key": "bas armure t4",
+   "category": "RARE",
+   "price": 450000,
+   "description": "Équipement T4 — prix plan 450 000 ¥  prix craft 1 800 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Bas Jutsu T4",
+   "key": "bas jutsu t4",
+   "category": "RARE",
+   "price": 800000,
+   "description": "Équipement T4 — prix plan 800 000 ¥  prix craft 2 000 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bottes Armure T4",
+   "key": "bottes armure t4",
+   "category": "RARE",
+   "price": 700000,
+   "description": "Équipement T4 — prix plan 700 000 ¥  prix craft 2 000 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bottes Jutsu T4",
+   "key": "bottes jutsu t4",
+   "category": "RARE",
+   "price": 850000,
+   "description": "Équipement T4 — prix plan 850 000 ¥  prix craft 2 000 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Bottes Ténacité T4",
+   "key": "bottes tenacite t4",
+   "category": "RARE",
+   "price": 600000,
+   "description": "Équipement T4 — prix plan 600 000 ¥  prix craft 2 000 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Boucle T4",
+   "key": "boucle t4",
+   "category": "RARE",
+   "price": 700000,
+   "description": "Équipement T4 — prix plan 700 000 ¥  prix craft 2 000 000 ¥  situation : Besoin primaire"
+  },
+  {
+   "name": "Collier T4",
+   "key": "collier t4",
+   "category": "RARE",
+   "price": 600000,
+   "description": "Équipement T4 — prix plan 600 000 ¥  prix craft 2 000 000 ¥  situation : Besoin"
+  },
+  {
+   "name": "Gant T4",
+   "key": "gant t4",
+   "category": "RARE",
+   "price": 400000,
+   "description": "Équipement T4 — prix plan 400 000 ¥  prix craft 1 800 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Haut Armure T4",
+   "key": "haut armure t4",
+   "category": "RARE",
+   "price": 300000,
+   "description": "Équipement T4 — prix plan 300 000 ¥  prix craft 1 800 000 ¥  situation : Non Besoin"
+  },
+  {
+   "name": "Haut Jutsu T4",
+   "key": "haut jutsu t4",
+   "category": "RARE",
+   "price": 850000,
+   "description": "Équipement T4 — prix plan 850 000 ¥  prix craft 2 100 000 ¥  situation : Besoin"
+  }
+ ]
+}

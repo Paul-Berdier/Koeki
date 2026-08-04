@@ -1,0 +1,4539 @@
+[
+ {
+  "id": 1415,
+  "firstName": "Agheel",
+  "lastName": "Ryunii",
+  "points": 170,
+  "exemptions": 10000,
+  "createdAt": "2026-06-25T21:28:42.384000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1423,
+  "firstName": "Aikerou",
+  "lastName": "Kimawara",
+  "points": 595,
+  "exemptions": 3500,
+  "createdAt": "2026-06-26T00:00:37.677000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1563,
+  "firstName": "Aizen",
+  "lastName": "Kagetsu",
+  "points": 370,
+  "exemptions": 15800,
+  "createdAt": "2026-07-15T17:06:13.372000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1586,
+  "firstName": "Akaime",
+  "lastName": "Hayko",
+  "points": 530,
+  "exemptions": 21300,
+  "createdAt": "2026-07-18T21:45:02.699000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1552,
+  "firstName": "Akan",
+  "lastName": "Namazake",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-14T03:59:58.370000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1515,
+  "firstName": "Aki",
+  "lastName": "Rensai",
+  "points": 2790,
+  "exemptions": 6800,
+  "createdAt": "2026-07-08T19:44:40.791000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1476,
+  "firstName": "Akihiro",
+  "lastName": "Ken",
+  "points": 820,
+  "exemptions": 14900,
+  "createdAt": "2026-07-01T22:36:31.833000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1561,
+  "firstName": "Akira",
+  "lastName": "Arashi",
+  "points": 70,
+  "exemptions": 3300,
+  "createdAt": "2026-07-14T20:24:04.615000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1517,
+  "firstName": "Akira",
+  "lastName": "Matsuoka",
+  "points": 80,
+  "exemptions": 3600,
+  "createdAt": "2026-07-08T20:11:36.509000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1481,
+  "firstName": "Akira",
+  "lastName": "Nori",
+  "points": 260,
+  "exemptions": 10400,
+  "createdAt": "2026-07-03T16:33:41.801000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1465,
+  "firstName": "Akito",
+  "lastName": "Fuyoshima",
+  "points": 665,
+  "exemptions": 32300,
+  "createdAt": "2026-06-30T22:42:01.866000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1244,
+  "firstName": "Akito",
+  "lastName": "Hatsume",
+  "points": 1030,
+  "exemptions": 1200,
+  "createdAt": "2026-06-01T15:43:45.292000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1503,
+  "firstName": "Amamaru",
+  "lastName": "Izumi",
+  "points": 26,
+  "exemptions": 880,
+  "createdAt": "2026-07-07T00:43:16.437000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 844,
+  "firstName": "Amon",
+  "lastName": "Fujiwara",
+  "points": 2250,
+  "exemptions": 10000,
+  "createdAt": "2026-05-29T16:49:11.836000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1479,
+  "firstName": "Aoki",
+  "lastName": "Hoki",
+  "points": 1500,
+  "exemptions": 40000,
+  "createdAt": "2026-07-02T18:47:44.361000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 996,
+  "firstName": "Aoshi",
+  "lastName": "Seito",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.597000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 964,
+  "firstName": "Araki",
+  "lastName": "Hoki",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.042000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1584,
+  "firstName": "Arekitsu",
+  "lastName": "Yami",
+  "points": 264,
+  "exemptions": 10820,
+  "createdAt": "2026-07-18T21:42:40.603000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1449,
+  "firstName": "Aremi",
+  "lastName": "Roran",
+  "points": 110,
+  "exemptions": 8000,
+  "createdAt": "2026-06-28T17:07:45.442000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 830,
+  "firstName": "Areto",
+  "lastName": "Roran",
+  "points": 2152,
+  "exemptions": 21210,
+  "createdAt": "2026-05-29T16:49:11.694000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 829,
+  "firstName": "Arima",
+  "lastName": "Rokuden",
+  "points": 1300,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.684000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1003,
+  "firstName": "Aro",
+  "lastName": "Karakao",
+  "points": 1552,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.864000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 874,
+  "firstName": "Artel",
+  "lastName": "Gaia",
+  "points": 2171,
+  "exemptions": 21400,
+  "createdAt": "2026-05-29T16:49:12.170000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1453,
+  "firstName": "Aruna",
+  "lastName": "Sabaku",
+  "points": 1695,
+  "exemptions": 6800,
+  "createdAt": "2026-06-29T12:28:00.822000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1543,
+  "firstName": "Ashito",
+  "lastName": "Sano",
+  "points": 30,
+  "exemptions": 1300,
+  "createdAt": "2026-07-13T20:08:48.714000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1647,
+  "firstName": "Atsuki",
+  "lastName": "Hoki",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-29T20:21:26.987000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 822,
+  "firstName": "Atsuo",
+  "lastName": "Araz",
+  "points": 11454,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.617000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1296,
+  "firstName": "Ayuna",
+  "lastName": "Kuroki",
+  "points": 1070,
+  "exemptions": 2800,
+  "createdAt": "2026-06-08T12:44:02.731000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1560,
+  "firstName": "Azami",
+  "lastName": "Katashiwa",
+  "points": 40,
+  "exemptions": 2000,
+  "createdAt": "2026-07-14T20:16:30.990000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 927,
+  "firstName": "Azuma",
+  "lastName": "Kasei",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:13.648000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1234,
+  "firstName": "Azuna",
+  "lastName": "Sabaku",
+  "points": 3370,
+  "exemptions": 22800,
+  "createdAt": "2026-05-31T20:52:22.782000",
+  "taxSummary": {
+   "paid": 9,
+   "advance": 3,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1460,
+  "firstName": "Aïto",
+  "lastName": "Michi",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-06-29T22:23:58.628000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1532,
+  "firstName": "Bachô",
+  "lastName": "Saketsu",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-11T00:03:29.866000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 973,
+  "firstName": "Belu",
+  "lastName": "Aka",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.201000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1599,
+  "firstName": "Bon",
+  "lastName": "Bai",
+  "points": 225,
+  "exemptions": 5800,
+  "createdAt": "2026-07-22T21:30:52.992000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1148,
+  "firstName": "Bou",
+  "lastName": "Kii",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:21.358000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1568,
+  "firstName": "Brise",
+  "lastName": "Aride",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-16T00:56:12.742000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1607,
+  "firstName": "Brise",
+  "lastName": "Dansante",
+  "points": 45,
+  "exemptions": 4400,
+  "createdAt": "2026-07-22T23:19:25.672000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1567,
+  "firstName": "Brise",
+  "lastName": "Parfumée",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-16T00:56:00.853000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1626,
+  "firstName": "Brise",
+  "lastName": "Tremblante",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-26T19:07:22.750000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1545,
+  "firstName": "Bushi",
+  "lastName": "Kishigami",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-14T03:55:44.908000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1071,
+  "firstName": "Byakuyo",
+  "lastName": "Kosajin Sobaru",
+  "points": 2470,
+  "exemptions": 21900,
+  "createdAt": "2026-05-29T16:49:20.016000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1583,
+  "firstName": "Chiro",
+  "lastName": "Akazuna",
+  "points": 960,
+  "exemptions": 3400,
+  "createdAt": "2026-07-18T21:40:46.334000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1378,
+  "firstName": "Choso",
+  "lastName": "Kurogami",
+  "points": 2500,
+  "exemptions": 45000,
+  "createdAt": "2026-06-21T18:47:53.568000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1650,
+  "firstName": "Choso",
+  "lastName": "seigan",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-29T20:41:07.928000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1222,
+  "firstName": "Daichi",
+  "lastName": "Miwaka",
+  "points": 844,
+  "exemptions": 8520,
+  "createdAt": "2026-05-31T20:42:29.619000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1389,
+  "firstName": "Daichi",
+  "lastName": "Shibata",
+  "points": 17350,
+  "exemptions": 19800,
+  "createdAt": "2026-06-22T19:05:30.861000",
+  "taxSummary": {
+   "paid": 36,
+   "advance": 30,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1382,
+  "firstName": "Daiki",
+  "lastName": "Kubo",
+  "points": 570,
+  "exemptions": 23500,
+  "createdAt": "2026-06-21T19:22:07.937000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1256,
+  "firstName": "Daiki",
+  "lastName": "Tsuchida",
+  "points": 1031,
+  "exemptions": 19200,
+  "createdAt": "2026-06-03T01:17:42.759000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 811,
+  "firstName": "Daikiro",
+  "lastName": "Okuwa",
+  "points": 2165,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.491000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1621,
+  "firstName": "Daisuke",
+  "lastName": "Kazai",
+  "points": 275,
+  "exemptions": 10000,
+  "createdAt": "2026-07-26T17:45:56.315000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1645,
+  "firstName": "Dokai",
+  "lastName": "Sori",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-29T19:44:52.019000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1443,
+  "firstName": "Doma",
+  "lastName": "Nua",
+  "points": 2740,
+  "exemptions": 15150,
+  "createdAt": "2026-06-27T21:02:38.154000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1432,
+  "firstName": "Dondo",
+  "lastName": "Toko",
+  "points": 895,
+  "exemptions": 12000,
+  "createdAt": "2026-06-26T21:25:57.445000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1269,
+  "firstName": "Eiji",
+  "lastName": "Hime",
+  "points": 1085,
+  "exemptions": 23400,
+  "createdAt": "2026-06-04T22:15:58.378000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1410,
+  "firstName": "Eiko",
+  "lastName": "Raiji",
+  "points": 195,
+  "exemptions": 10200,
+  "createdAt": "2026-06-25T18:42:02.782000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 6
+  }
+ },
+ {
+  "id": 1350,
+  "firstName": "Eko",
+  "lastName": "Zudan",
+  "points": 3975,
+  "exemptions": 16750,
+  "createdAt": "2026-06-17T23:17:55.573000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1627,
+  "firstName": "Emi",
+  "lastName": "ito",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-26T19:15:15.823000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1478,
+  "firstName": "Enko",
+  "lastName": "Zaray",
+  "points": 1570,
+  "exemptions": 21700,
+  "createdAt": "2026-07-02T18:13:00.464000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1426,
+  "firstName": "Enkyo",
+  "lastName": "Shirogane",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-06-26T18:33:07.779000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1506,
+  "firstName": "Enryo",
+  "lastName": "Inui",
+  "points": 2730,
+  "exemptions": 9600,
+  "createdAt": "2026-07-07T17:42:51.953000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1387,
+  "firstName": "Fugo",
+  "lastName": "Daizawat",
+  "points": 160,
+  "exemptions": 10300,
+  "createdAt": "2026-06-22T16:05:22.940000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1070,
+  "firstName": "Fumetsu",
+  "lastName": "Chikawa",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:19.902000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1422,
+  "firstName": "Gaiji",
+  "lastName": "Kinshiro",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-06-25T23:00:18.155000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1634,
+  "firstName": "Ganko",
+  "lastName": "Ishida",
+  "points": 50,
+  "exemptions": 4600,
+  "createdAt": "2026-07-27T23:18:51.781000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 893,
+  "firstName": "Gao",
+  "lastName": "",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:12.373000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1582,
+  "firstName": "Gojin",
+  "lastName": "Kuro",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-18T18:18:56.355000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1619,
+  "firstName": "Hachi",
+  "lastName": "Tanemura",
+  "points": 45,
+  "exemptions": 5500,
+  "createdAt": "2026-07-25T22:11:38.810000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1009,
+  "firstName": "Haru",
+  "lastName": "Senkyo",
+  "points": 250,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:17.164000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1638,
+  "firstName": "Haru",
+  "lastName": "sazan",
+  "points": 10,
+  "exemptions": 400,
+  "createdAt": "2026-07-28T17:00:15.860000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 827,
+  "firstName": "Haruki",
+  "lastName": "Sogen",
+  "points": 3000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.665000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 6
+  }
+ },
+ {
+  "id": 1581,
+  "firstName": "Haruna",
+  "lastName": "agaku",
+  "points": 1140,
+  "exemptions": 8100,
+  "createdAt": "2026-07-18T17:32:37.021000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1170,
+  "firstName": "Haruto",
+  "lastName": "Tanaka",
+  "points": 1744,
+  "exemptions": 4800,
+  "createdAt": "2026-05-29T16:49:22.465000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1326,
+  "firstName": "Hen",
+  "lastName": "Kurogane",
+  "points": 1400,
+  "exemptions": 40800,
+  "createdAt": "2026-06-12T21:59:44.317000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1492,
+  "firstName": "Hen",
+  "lastName": "seijuuro",
+  "points": 285,
+  "exemptions": 12000,
+  "createdAt": "2026-07-05T22:34:00.835000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1468,
+  "firstName": "Hikio",
+  "lastName": "Mizao",
+  "points": 3275,
+  "exemptions": 21000,
+  "createdAt": "2026-07-01T00:49:19.871000",
+  "taxSummary": {
+   "paid": 8,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1525,
+  "firstName": "Hiko",
+  "lastName": "Hikamatsu",
+  "points": 1050,
+  "exemptions": 4700,
+  "createdAt": "2026-07-09T01:05:27.347000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1331,
+  "firstName": "Hiro",
+  "lastName": "Kenseki",
+  "points": 1000,
+  "exemptions": 11600,
+  "createdAt": "2026-06-14T22:38:11.595000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1353,
+  "firstName": "Hito",
+  "lastName": "Kibo",
+  "points": 1268,
+  "exemptions": 13500,
+  "createdAt": "2026-06-18T15:55:49.678000",
+  "taxSummary": {
+   "paid": 8,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1454,
+  "firstName": "Hizuna",
+  "lastName": "Sabaku",
+  "points": 1400,
+  "exemptions": 17000,
+  "createdAt": "2026-06-29T12:28:05.609000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1029,
+  "firstName": "Ilya",
+  "lastName": "Hanazora",
+  "points": 1011,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:18.196000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1400,
+  "firstName": "Inao",
+  "lastName": "Hoki",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-06-23T17:23:08.104000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1317,
+  "firstName": "Isako",
+  "lastName": "shikuro",
+  "points": 685,
+  "exemptions": 7200,
+  "createdAt": "2026-06-11T19:48:24.050000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1592,
+  "firstName": "Isao",
+  "lastName": "Kesuke",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-21T18:13:19.906000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1371,
+  "firstName": "Ishina",
+  "lastName": "Hanazora",
+  "points": 1520,
+  "exemptions": 13600,
+  "createdAt": "2026-06-20T22:50:38.091000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1571,
+  "firstName": "Ishinn",
+  "lastName": "Sajin",
+  "points": 600,
+  "exemptions": 0,
+  "createdAt": "2026-07-17T18:24:23.341000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1277,
+  "firstName": "Itoshi",
+  "lastName": "Kushiki",
+  "points": 1111,
+  "exemptions": 20600,
+  "createdAt": "2026-06-05T22:59:15.392000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1446,
+  "firstName": "Itsubo",
+  "lastName": "Kakeho",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-06-28T00:06:39.520000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1441,
+  "firstName": "Itsuki",
+  "lastName": "Amano",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-06-27T20:46:03.415000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1530,
+  "firstName": "Izan",
+  "lastName": "Kenseki",
+  "points": 620,
+  "exemptions": 7400,
+  "createdAt": "2026-07-10T16:53:54.010000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1401,
+  "firstName": "Izen",
+  "lastName": "Hoki",
+  "points": 1290,
+  "exemptions": 2700,
+  "createdAt": "2026-06-23T17:32:11.715000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1182,
+  "firstName": "Izuma",
+  "lastName": "Shindra",
+  "points": 1160,
+  "exemptions": 8000,
+  "createdAt": "2026-05-29T16:49:22.988000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1625,
+  "firstName": "Izumei",
+  "lastName": "Chiiketsu",
+  "points": 15,
+  "exemptions": 1300,
+  "createdAt": "2026-07-26T19:07:14.195000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1487,
+  "firstName": "Izumi",
+  "lastName": "Okuwa",
+  "points": 500,
+  "exemptions": 25000,
+  "createdAt": "2026-07-05T01:26:12.682000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1624,
+  "firstName": "Jin",
+  "lastName": "Kido",
+  "points": 160,
+  "exemptions": 13800,
+  "createdAt": "2026-07-26T18:35:02.225000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 820,
+  "firstName": "Jin",
+  "lastName": "Kuzushi",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.599000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 864,
+  "firstName": "Jin",
+  "lastName": "Ringo",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:12.037000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1289,
+  "firstName": "Jin",
+  "lastName": "Takero",
+  "points": 565,
+  "exemptions": 0,
+  "createdAt": "2026-06-07T21:23:28.948000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1413,
+  "firstName": "Jinshi",
+  "lastName": "Ryuta",
+  "points": 1600,
+  "exemptions": 15000,
+  "createdAt": "2026-06-25T20:57:26.499000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1058,
+  "firstName": "Jitetsi",
+  "lastName": "Akashi",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:19.470000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 869,
+  "firstName": "Jitetsu",
+  "lastName": "Akashi",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:12.095000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1591,
+  "firstName": "Judar",
+  "lastName": "Akuro",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-20T20:31:45.163000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1600,
+  "firstName": "Jude",
+  "lastName": "Akimura",
+  "points": 20,
+  "exemptions": 1000,
+  "createdAt": "2026-07-22T21:31:31.055000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1381,
+  "firstName": "Junko",
+  "lastName": "Saki",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-06-21T19:13:53.883000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1477,
+  "firstName": "Juzo",
+  "lastName": "Azuno",
+  "points": 1050,
+  "exemptions": 2000,
+  "createdAt": "2026-07-01T23:38:06.891000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1588,
+  "firstName": "Kachiyo",
+  "lastName": "Kitsonu",
+  "points": 520,
+  "exemptions": 800,
+  "createdAt": "2026-07-19T23:22:26.776000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1151,
+  "firstName": "Kaede",
+  "lastName": "Hayato",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:21.422000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1325,
+  "firstName": "Kael",
+  "lastName": "Ren",
+  "points": 2005,
+  "exemptions": 7500,
+  "createdAt": "2026-06-12T21:52:07.515000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1323,
+  "firstName": "Kafu",
+  "lastName": "Yomo",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-06-12T20:19:52.748000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1544,
+  "firstName": "Kagami",
+  "lastName": "Hoki",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-14T01:15:23.922000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 966,
+  "firstName": "Kagemoto",
+  "lastName": "Shuni",
+  "points": 34025,
+  "exemptions": 766500,
+  "createdAt": "2026-05-29T16:49:16.081000",
+  "taxSummary": {
+   "paid": 30,
+   "advance": 22,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 854,
+  "firstName": "Kagetora",
+  "lastName": "Shijubu",
+  "points": 1010,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.937000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1467,
+  "firstName": "Kai",
+  "lastName": "Hanazora",
+  "points": 1095,
+  "exemptions": 4400,
+  "createdAt": "2026-06-30T23:45:45.165000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1590,
+  "firstName": "Kai",
+  "lastName": "Ryuzaki",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-20T19:12:38.544000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1610,
+  "firstName": "Kaien",
+  "lastName": "Kurotsuchi",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-23T21:59:18.515000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1564,
+  "firstName": "Kaien",
+  "lastName": "Shikachi",
+  "points": 275,
+  "exemptions": 11800,
+  "createdAt": "2026-07-15T17:08:25.023000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 976,
+  "firstName": "Kairo",
+  "lastName": "Sajin",
+  "points": 1040,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.247000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1042,
+  "firstName": "Kaito",
+  "lastName": "Chiiketsu",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:18.868000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1391,
+  "firstName": "Kaito",
+  "lastName": "Kazan",
+  "points": 640,
+  "exemptions": 100,
+  "createdAt": "2026-06-22T20:26:40.969000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1604,
+  "firstName": "Kanki",
+  "lastName": "Topo",
+  "points": 155,
+  "exemptions": 10500,
+  "createdAt": "2026-07-22T23:05:01.449000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 908,
+  "firstName": "Kay",
+  "lastName": "hoshi take",
+  "points": 2604,
+  "exemptions": 13600,
+  "createdAt": "2026-05-29T16:49:12.913000",
+  "taxSummary": {
+   "paid": 8,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1300,
+  "firstName": "Kazama",
+  "lastName": "Tsubo",
+  "points": 1290,
+  "exemptions": 0,
+  "createdAt": "2026-06-08T17:30:46.543000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1576,
+  "firstName": "Kazama",
+  "lastName": "Urozumi",
+  "points": 1000,
+  "exemptions": 10000,
+  "createdAt": "2026-07-17T19:35:14.561000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1457,
+  "firstName": "Kazemi",
+  "lastName": "Roran",
+  "points": 935,
+  "exemptions": 8500,
+  "createdAt": "2026-06-29T16:21:20.812000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1000,
+  "firstName": "Kazemi",
+  "lastName": "Sunahara",
+  "points": 1029,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.723000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1509,
+  "firstName": "Kazeo",
+  "lastName": "Shiro",
+  "points": 250,
+  "exemptions": 10000,
+  "createdAt": "2026-07-08T17:38:43.702000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1364,
+  "firstName": "Kazetsu",
+  "lastName": "Roran",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-06-19T07:31:31.695000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1528,
+  "firstName": "Kazuki",
+  "lastName": "Mitsuzen",
+  "points": 350,
+  "exemptions": 4000,
+  "createdAt": "2026-07-09T23:56:45.600000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1566,
+  "firstName": "Kazuko",
+  "lastName": "Karu",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-16T00:39:57.310000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 951,
+  "firstName": "Keito",
+  "lastName": "Reyzan",
+  "points": 2235,
+  "exemptions": 5000,
+  "createdAt": "2026-05-29T16:49:15.395000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1154,
+  "firstName": "Kenji",
+  "lastName": "Makuno",
+  "points": 1670,
+  "exemptions": 15000,
+  "createdAt": "2026-05-29T16:49:21.453000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1283,
+  "firstName": "Kenji",
+  "lastName": "Shiori",
+  "points": 1114,
+  "exemptions": 13520,
+  "createdAt": "2026-06-06T19:59:25.206000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 899,
+  "firstName": "Kenma",
+  "lastName": "Hakumei",
+  "points": 4250,
+  "exemptions": 235000,
+  "createdAt": "2026-05-29T16:49:12.434000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 861,
+  "firstName": "Kentaro",
+  "lastName": "Nishi",
+  "points": 3000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:12.001000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1417,
+  "firstName": "Kento",
+  "lastName": "Hakumei",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-06-25T21:32:30.290000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1335,
+  "firstName": "Kento",
+  "lastName": "Jeruke",
+  "points": 560,
+  "exemptions": 4200,
+  "createdAt": "2026-06-14T22:39:44.050000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1285,
+  "firstName": "Ketsu",
+  "lastName": "Kokuyami",
+  "points": 580,
+  "exemptions": 0,
+  "createdAt": "2026-06-06T23:42:43.834000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 6
+  }
+ },
+ {
+  "id": 1636,
+  "firstName": "Khayro",
+  "lastName": "Rhaykuchi",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-28T16:39:25.956000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1546,
+  "firstName": "Kinji",
+  "lastName": "Kurogane",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-14T03:56:13.792000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1290,
+  "firstName": "Kintoki",
+  "lastName": "Kushiki",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-06-07T21:24:57.214000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1332,
+  "firstName": "Kitsuki",
+  "lastName": "Kagomo",
+  "points": 1050,
+  "exemptions": 29400,
+  "createdAt": "2026-06-14T22:38:33.883000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1348,
+  "firstName": "Kiyotaka",
+  "lastName": "Kurosawa",
+  "points": 575,
+  "exemptions": 21200,
+  "createdAt": "2026-06-16T22:52:50.787000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1623,
+  "firstName": "Kizu",
+  "lastName": "Tenshi",
+  "points": 195,
+  "exemptions": 16100,
+  "createdAt": "2026-07-26T18:33:49.051000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1609,
+  "firstName": "Kobayashi",
+  "lastName": "Sora",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-23T00:49:56.017000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1221,
+  "firstName": "Kojin",
+  "lastName": "Rizaki",
+  "points": 1070,
+  "exemptions": 10000,
+  "createdAt": "2026-05-31T20:42:27.811000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1643,
+  "firstName": "Kokurai",
+  "lastName": "",
+  "points": 330,
+  "exemptions": 500,
+  "createdAt": "2026-07-29T18:11:14.324000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 997,
+  "firstName": "Koma",
+  "lastName": "Yashiro",
+  "points": 7130,
+  "exemptions": 12200,
+  "createdAt": "2026-05-29T16:49:16.607000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1249,
+  "firstName": "Koruko",
+  "lastName": "Mitetsu",
+  "points": 1045,
+  "exemptions": 1000,
+  "createdAt": "2026-06-02T17:26:24.521000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1455,
+  "firstName": "Kosa",
+  "lastName": "Sabaku",
+  "points": 2310,
+  "exemptions": 27800,
+  "createdAt": "2026-06-29T12:29:15.282000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1395,
+  "firstName": "Kowé",
+  "lastName": "Heiki",
+  "points": 727,
+  "exemptions": 4710,
+  "createdAt": "2026-06-22T22:38:52.420000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1280,
+  "firstName": "Kuro",
+  "lastName": "Seiran",
+  "points": 1000,
+  "exemptions": 400,
+  "createdAt": "2026-06-05T23:02:25.507000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1508,
+  "firstName": "Kuroi",
+  "lastName": "Kenseki",
+  "points": 60,
+  "exemptions": 3000,
+  "createdAt": "2026-07-08T17:01:02.048000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1442,
+  "firstName": "Kurotsuki",
+  "lastName": "Tsubagumo",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-06-27T20:50:15.467000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 894,
+  "firstName": "Kuta",
+  "lastName": "Eikichi",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:12.385000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1589,
+  "firstName": "Kuzan",
+  "lastName": "Kazenari",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-20T18:14:10.841000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1579,
+  "firstName": "Kyu",
+  "lastName": "Kitsonu",
+  "points": 50,
+  "exemptions": 2400,
+  "createdAt": "2026-07-17T21:41:36.624000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 957,
+  "firstName": "Lior",
+  "lastName": "Hanazora",
+  "points": 1361,
+  "exemptions": 15000,
+  "createdAt": "2026-05-29T16:49:15.775000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1372,
+  "firstName": "Mae",
+  "lastName": "Ushiro",
+  "points": 72,
+  "exemptions": 2510,
+  "createdAt": "2026-06-20T23:21:30.467000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1270,
+  "firstName": "Mao",
+  "lastName": "Sato",
+  "points": 3220,
+  "exemptions": 85200,
+  "createdAt": "2026-06-05T18:19:09.674000",
+  "taxSummary": {
+   "paid": 12,
+   "advance": 6,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1268,
+  "firstName": "Medo",
+  "lastName": "Nimto",
+  "points": 7754,
+  "exemptions": 30370,
+  "createdAt": "2026-06-04T22:15:16.363000",
+  "taxSummary": {
+   "paid": 17,
+   "advance": 11,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1470,
+  "firstName": "Meguna",
+  "lastName": "Ichida",
+  "points": 1245,
+  "exemptions": 8200,
+  "createdAt": "2026-07-01T18:12:30.874000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 824,
+  "firstName": "Meizen",
+  "lastName": "Chiiketsu",
+  "points": 1340,
+  "exemptions": 3100,
+  "createdAt": "2026-05-29T16:49:11.634000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1652,
+  "firstName": "Mitsu",
+  "lastName": "Kazai",
+  "points": 10,
+  "exemptions": 1000,
+  "createdAt": "2026-07-29T22:05:06.012000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1537,
+  "firstName": "Miwa",
+  "lastName": "Sajin",
+  "points": 870,
+  "exemptions": 12400,
+  "createdAt": "2026-07-12T19:25:57.009000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1527,
+  "firstName": "Mizuki",
+  "lastName": "Shizuhara",
+  "points": 17,
+  "exemptions": 610,
+  "createdAt": "2026-07-09T22:46:03.623000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1596,
+  "firstName": "Mizuki",
+  "lastName": "Tada",
+  "points": 2765,
+  "exemptions": 12400,
+  "createdAt": "2026-07-22T17:42:00.147000",
+  "taxSummary": {
+   "paid": 10,
+   "advance": 8,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1254,
+  "firstName": "Mizura",
+  "lastName": "Rengo",
+  "points": 685,
+  "exemptions": 300,
+  "createdAt": "2026-06-02T22:47:12.912000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1418,
+  "firstName": "Mouten",
+  "lastName": "Kuzushi",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-06-25T21:46:34.333000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 880,
+  "firstName": "Musashi",
+  "lastName": "Ringo",
+  "points": 2357,
+  "exemptions": 12900,
+  "createdAt": "2026-05-29T16:49:12.229000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1480,
+  "firstName": "Nairo",
+  "lastName": "Hideoshi",
+  "points": 1950,
+  "exemptions": 16350,
+  "createdAt": "2026-07-03T00:10:20.851000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1375,
+  "firstName": "Naito",
+  "lastName": "Rensai",
+  "points": 1060,
+  "exemptions": 5200,
+  "createdAt": "2026-06-20T23:48:22.524000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1374,
+  "firstName": "Naito",
+  "lastName": "Yamai",
+  "points": 1000,
+  "exemptions": 20600,
+  "createdAt": "2026-06-20T23:47:53.204000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 823,
+  "firstName": "Naojin",
+  "lastName": "Minami",
+  "points": 3000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.626000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1098,
+  "firstName": "Naoki",
+  "lastName": "Chiiketsu",
+  "points": 2560,
+  "exemptions": 29800,
+  "createdAt": "2026-05-29T16:49:20.649000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1242,
+  "firstName": "Naoki",
+  "lastName": "Yamazaki",
+  "points": 4445,
+  "exemptions": 8200,
+  "createdAt": "2026-06-01T01:12:38.530000",
+  "taxSummary": {
+   "paid": 8,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1574,
+  "firstName": "Naoori",
+  "lastName": "Nagamoto",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-07-17T19:12:30.986000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1504,
+  "firstName": "Natsuki",
+  "lastName": "Akari",
+  "points": 2045,
+  "exemptions": 19400,
+  "createdAt": "2026-07-07T00:45:10.118000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1035,
+  "firstName": "Nazuna",
+  "lastName": "Kazama",
+  "points": 1068,
+  "exemptions": 21800,
+  "createdAt": "2026-05-29T16:49:18.529000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1383,
+  "firstName": "Nobu",
+  "lastName": "Kiyoshi",
+  "points": 1315,
+  "exemptions": 11400,
+  "createdAt": "2026-06-21T19:40:40.162000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1555,
+  "firstName": "Nya",
+  "lastName": "Shirogane",
+  "points": 1724,
+  "exemptions": 16020,
+  "createdAt": "2026-07-14T04:11:33.321000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 4,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1174,
+  "firstName": "Ogata",
+  "lastName": "Seijuro",
+  "points": 11600,
+  "exemptions": 75000,
+  "createdAt": "2026-05-29T16:49:22.632000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 922,
+  "firstName": "Okane",
+  "lastName": "Kosajin",
+  "points": 1020,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:13.432000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1642,
+  "firstName": "Okata",
+  "lastName": "Gena",
+  "points": 1020,
+  "exemptions": 113200,
+  "createdAt": "2026-07-29T00:50:37.180000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1575,
+  "firstName": "Oma",
+  "lastName": "Denmon",
+  "points": 1000,
+  "exemptions": 25000,
+  "createdAt": "2026-07-17T19:14:04.544000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1507,
+  "firstName": "Papedy",
+  "lastName": "Renn",
+  "points": 5000,
+  "exemptions": 225000,
+  "createdAt": "2026-07-07T20:00:09.958000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1570,
+  "firstName": "Perota",
+  "lastName": "anayashi",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-17T16:42:33.834000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1447,
+  "firstName": "Pokyu",
+  "lastName": "Hoshino",
+  "points": 2380,
+  "exemptions": 20400,
+  "createdAt": "2026-06-28T00:16:46.163000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1540,
+  "firstName": "Raiden",
+  "lastName": "Yukimura",
+  "points": 440,
+  "exemptions": 8900,
+  "createdAt": "2026-07-13T15:43:00.180000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 959,
+  "firstName": "Raijin",
+  "lastName": "Minami",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:15.968000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1287,
+  "firstName": "Raika",
+  "lastName": "Saketsu",
+  "points": 510,
+  "exemptions": 18900,
+  "createdAt": "2026-06-07T17:49:15.055000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1597,
+  "firstName": "Raiko",
+  "lastName": "Yamada",
+  "points": 10,
+  "exemptions": 1000,
+  "createdAt": "2026-07-22T17:42:41.855000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1250,
+  "firstName": "Raito",
+  "lastName": "Kamizuki",
+  "points": 508,
+  "exemptions": 0,
+  "createdAt": "2026-06-02T17:27:14.817000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 5
+  }
+ },
+ {
+  "id": 919,
+  "firstName": "Raito",
+  "lastName": "Rei",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:13.367000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1639,
+  "firstName": "Rayzo",
+  "lastName": "",
+  "points": 505,
+  "exemptions": 300,
+  "createdAt": "2026-07-28T18:14:41.851000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1502,
+  "firstName": "Razuro",
+  "lastName": "Kamuri",
+  "points": 1407,
+  "exemptions": 9710,
+  "createdAt": "2026-07-06T20:12:55.485000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1227,
+  "firstName": "Reiji",
+  "lastName": "Kaze",
+  "points": 500,
+  "exemptions": 0,
+  "createdAt": "2026-05-31T20:45:55.777000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 5
+  }
+ },
+ {
+  "id": 913,
+  "firstName": "Rekka",
+  "lastName": "Doma",
+  "points": 1884,
+  "exemptions": 17060,
+  "createdAt": "2026-05-29T16:49:13.134000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1392,
+  "firstName": "Ren",
+  "lastName": "Kiyoshi",
+  "points": 1360,
+  "exemptions": 0,
+  "createdAt": "2026-06-22T20:27:48.143000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1598,
+  "firstName": "Ren",
+  "lastName": "Kurogane",
+  "points": 430,
+  "exemptions": 2000,
+  "createdAt": "2026-07-22T21:29:15.621000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1649,
+  "firstName": "Renga",
+  "lastName": "Kuroha",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-29T20:40:22.036000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 805,
+  "firstName": "Renji",
+  "lastName": "Kaseiro",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.426000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1585,
+  "firstName": "Renji",
+  "lastName": "Sairo",
+  "points": 30,
+  "exemptions": 1800,
+  "createdAt": "2026-07-18T21:43:59.587000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1394,
+  "firstName": "Renjiro",
+  "lastName": "Hakumei",
+  "points": 1950,
+  "exemptions": 2000,
+  "createdAt": "2026-06-22T20:48:24.900000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1577,
+  "firstName": "Renma",
+  "lastName": "Kenzaki",
+  "points": 10,
+  "exemptions": 800,
+  "createdAt": "2026-07-17T21:40:30.576000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1248,
+  "firstName": "Riku",
+  "lastName": "Ayanashi",
+  "points": 1265,
+  "exemptions": 10900,
+  "createdAt": "2026-06-02T17:25:43.330000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1501,
+  "firstName": "Riku",
+  "lastName": "Hagane",
+  "points": 2872,
+  "exemptions": 2710,
+  "createdAt": "2026-07-06T20:12:16.607000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1628,
+  "firstName": "Rizoku",
+  "lastName": "Amado",
+  "points": 380,
+  "exemptions": 7500,
+  "createdAt": "2026-07-26T20:01:06.164000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1436,
+  "firstName": "Roa",
+  "lastName": "Shirogane",
+  "points": 1005,
+  "exemptions": 15200,
+  "createdAt": "2026-06-27T17:49:29.584000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 850,
+  "firstName": "Ryo",
+  "lastName": "Arashi",
+  "points": 3000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.896000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1553,
+  "firstName": "Ryoga",
+  "lastName": "Tensho",
+  "points": 944,
+  "exemptions": 18270,
+  "createdAt": "2026-07-14T04:02:10.313000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1542,
+  "firstName": "Ryoma",
+  "lastName": "Kenzaki",
+  "points": 30,
+  "exemptions": 1800,
+  "createdAt": "2026-07-13T20:08:09.910000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1373,
+  "firstName": "Ryoma",
+  "lastName": "Tensho",
+  "points": 11086,
+  "exemptions": 2830,
+  "createdAt": "2026-06-20T23:47:35.693000",
+  "taxSummary": {
+   "paid": 24,
+   "advance": 18,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1384,
+  "firstName": "Ryosa",
+  "lastName": "Sabaku",
+  "points": 2935,
+  "exemptions": 22100,
+  "createdAt": "2026-06-21T23:14:41.776000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1522,
+  "firstName": "Ryu",
+  "lastName": "Hoshi",
+  "points": 40,
+  "exemptions": 2000,
+  "createdAt": "2026-07-09T00:49:04.234000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 984,
+  "firstName": "Ryu",
+  "lastName": "Raiken",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.397000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1565,
+  "firstName": "Ryuga",
+  "lastName": "Kuroki",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-07-15T18:41:11.276000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1434,
+  "firstName": "Ryuji",
+  "lastName": "Omachi",
+  "points": 1320,
+  "exemptions": 6900,
+  "createdAt": "2026-06-27T01:25:49.816000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 836,
+  "firstName": "Ryumei",
+  "lastName": "Chiiketsu",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.755000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1485,
+  "firstName": "Ryuzaki",
+  "lastName": "Inui",
+  "points": 1500,
+  "exemptions": 5000,
+  "createdAt": "2026-07-04T21:56:14.525000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1635,
+  "firstName": "Ryyuko",
+  "lastName": "Kirasame",
+  "points": 5,
+  "exemptions": 800,
+  "createdAt": "2026-07-28T16:38:16.447000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1612,
+  "firstName": "Saemi",
+  "lastName": "Hakumei",
+  "points": 340,
+  "exemptions": 1600,
+  "createdAt": "2026-07-24T17:02:32.693000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1640,
+  "firstName": "Saika",
+  "lastName": "",
+  "points": 315,
+  "exemptions": 1800,
+  "createdAt": "2026-07-28T18:16:10.345000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1355,
+  "firstName": "Saito",
+  "lastName": "Obara",
+  "points": 1215,
+  "exemptions": 10000,
+  "createdAt": "2026-06-18T15:57:03.059000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1616,
+  "firstName": "Saka",
+  "lastName": "Zetsubo",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-24T23:14:03.729000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1602,
+  "firstName": "Saki",
+  "lastName": "Zetsubo",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-22T23:03:34.679000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1603,
+  "firstName": "Saku",
+  "lastName": "Zetsubo",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-22T23:04:16.191000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1345,
+  "firstName": "Sasumaru",
+  "lastName": "Nostrasol",
+  "points": 1270,
+  "exemptions": 12700,
+  "createdAt": "2026-06-15T09:59:08.670000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1572,
+  "firstName": "Saya",
+  "lastName": "Fuyutsuki",
+  "points": 1996,
+  "exemptions": 10280,
+  "createdAt": "2026-07-17T18:35:28.642000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1456,
+  "firstName": "Sayura",
+  "lastName": "Sabaku",
+  "points": 6172,
+  "exemptions": 10660,
+  "createdAt": "2026-06-29T12:29:19.421000",
+  "taxSummary": {
+   "paid": 13,
+   "advance": 7,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1141,
+  "firstName": "Sei",
+  "lastName": "Kosajin",
+  "points": 1250,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:21.229000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1358,
+  "firstName": "Seiran",
+  "lastName": "Tsukoyami",
+  "points": 1325,
+  "exemptions": 4100,
+  "createdAt": "2026-06-18T16:01:13.962000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1329,
+  "firstName": "Seiren",
+  "lastName": "Chikatsume",
+  "points": 1000,
+  "exemptions": 20000,
+  "createdAt": "2026-06-14T22:33:41.319000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1339,
+  "firstName": "Seiren",
+  "lastName": "Saketsu",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-06-14T22:42:14.955000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 867,
+  "firstName": "Seisura",
+  "lastName": "Sabaku",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:12.066000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1622,
+  "firstName": "Senda",
+  "lastName": "Ashashine",
+  "points": 500,
+  "exemptions": 25000,
+  "createdAt": "2026-07-26T17:46:19.629000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1646,
+  "firstName": "Senshiro",
+  "lastName": "Hachiman",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-29T19:46:13.167000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1011,
+  "firstName": "Setsuro",
+  "lastName": "Ocho",
+  "points": 1542,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:17.221000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1475,
+  "firstName": "Shan",
+  "lastName": "kazehara",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-01T20:36:08.479000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1499,
+  "firstName": "Shenbaa",
+  "lastName": "Hakumei",
+  "points": 320,
+  "exemptions": 1000,
+  "createdAt": "2026-07-06T19:57:45.515000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1644,
+  "firstName": "Shin",
+  "lastName": "",
+  "points": 305,
+  "exemptions": 1500,
+  "createdAt": "2026-07-29T18:11:52.246000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1510,
+  "firstName": "Shin",
+  "lastName": "Baram",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-07-08T17:43:50.006000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1497,
+  "firstName": "Shin",
+  "lastName": "Itsuki",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-06T18:29:48.547000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1232,
+  "firstName": "Shin",
+  "lastName": "Kioma",
+  "points": 500,
+  "exemptions": 0,
+  "createdAt": "2026-05-31T20:50:48.350000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1241,
+  "firstName": "Shin",
+  "lastName": "Ryomen",
+  "points": 1014,
+  "exemptions": 810,
+  "createdAt": "2026-05-31T21:14:29.398000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1648,
+  "firstName": "Shin",
+  "lastName": "Sabara",
+  "points": 20,
+  "exemptions": 2000,
+  "createdAt": "2026-07-29T20:22:49.978000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1606,
+  "firstName": "Shin",
+  "lastName": "Shuiku",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-22T23:16:37.988000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1192,
+  "firstName": "Shin",
+  "lastName": "Togarashi",
+  "points": 1037,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T18:34:20.796000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1601,
+  "firstName": "Shin",
+  "lastName": "Topo",
+  "points": 55,
+  "exemptions": 2500,
+  "createdAt": "2026-07-22T23:02:02.032000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1519,
+  "firstName": "Shinda",
+  "lastName": "Ryokai",
+  "points": 30,
+  "exemptions": 1300,
+  "createdAt": "2026-07-08T20:49:15.938000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1632,
+  "firstName": "Shindôra",
+  "lastName": "J Sabaku",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-27T20:53:58.336000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1203,
+  "firstName": "Shinji",
+  "lastName": "Asakura",
+  "points": 1500,
+  "exemptions": 0,
+  "createdAt": "2026-05-31T20:33:20.543000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1366,
+  "firstName": "Shinku",
+  "lastName": "aketsu",
+  "points": 565,
+  "exemptions": 18000,
+  "createdAt": "2026-06-19T18:35:16.504000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1536,
+  "firstName": "Shinra",
+  "lastName": "Sabaku",
+  "points": 1000,
+  "exemptions": 15000,
+  "createdAt": "2026-07-12T19:24:58.687000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 998,
+  "firstName": "Shinraishi",
+  "lastName": "Ara",
+  "points": 2055,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:16.643000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1633,
+  "firstName": "Shinran",
+  "lastName": "Arakaze",
+  "points": 25,
+  "exemptions": 1600,
+  "createdAt": "2026-07-27T23:13:55.717000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1641,
+  "firstName": "Shion",
+  "lastName": "",
+  "points": 545,
+  "exemptions": 4300,
+  "createdAt": "2026-07-28T18:17:00.138000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1261,
+  "firstName": "Shira",
+  "lastName": "Nekoma",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-06-03T16:39:51.942000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 884,
+  "firstName": "Shiro",
+  "lastName": "Arasuna",
+  "points": 1055,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:12.266000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1048,
+  "firstName": "Shiro",
+  "lastName": "Sajin",
+  "points": 2015,
+  "exemptions": 600,
+  "createdAt": "2026-05-29T16:49:19.080000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1334,
+  "firstName": "Shiro",
+  "lastName": "amakusa",
+  "points": 1060,
+  "exemptions": 21600,
+  "createdAt": "2026-06-14T22:39:41.744000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1276,
+  "firstName": "Shiryu",
+  "lastName": "Kowasu",
+  "points": 3030,
+  "exemptions": 11700,
+  "createdAt": "2026-06-05T22:58:29.930000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1110,
+  "firstName": "Shizaki",
+  "lastName": "Katzo",
+  "points": 750,
+  "exemptions": 10000,
+  "createdAt": "2026-05-29T16:49:20.873000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 923,
+  "firstName": "Shizune",
+  "lastName": "Ayami",
+  "points": 1157,
+  "exemptions": 22500,
+  "createdAt": "2026-05-29T16:49:13.472000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1538,
+  "firstName": "Shoppaï",
+  "lastName": "Saketsu",
+  "points": 625,
+  "exemptions": 0,
+  "createdAt": "2026-07-12T21:52:11.079000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 2,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1631,
+  "firstName": "Shôra",
+  "lastName": "Sabaku",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-27T20:53:35.029000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1220,
+  "firstName": "Siruki",
+  "lastName": "Okoa",
+  "points": 3420,
+  "exemptions": -41200,
+  "createdAt": "2026-05-31T20:42:10.448000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1319,
+  "firstName": "Sohei",
+  "lastName": "Makabe",
+  "points": 805,
+  "exemptions": 4800,
+  "createdAt": "2026-06-11T22:27:16.349000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1239,
+  "firstName": "Soma",
+  "lastName": "Karasu",
+  "points": 785,
+  "exemptions": 5000,
+  "createdAt": "2026-05-31T20:53:20.738000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1618,
+  "firstName": "Sonemi",
+  "lastName": "Hakumei",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-25T19:46:49.772000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 939,
+  "firstName": "Sora",
+  "lastName": "Azashin",
+  "points": 1578,
+  "exemptions": 8400,
+  "createdAt": "2026-05-29T16:49:14.353000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1580,
+  "firstName": "Sora",
+  "lastName": "Fuyutsuki",
+  "points": 760,
+  "exemptions": 12500,
+  "createdAt": "2026-07-17T22:13:31.287000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1593,
+  "firstName": "Sora",
+  "lastName": "Kesuke",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-21T18:14:20.823000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1119,
+  "firstName": "Sora",
+  "lastName": "Nishi",
+  "points": 2250,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:21.009000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1419,
+  "firstName": "Sora",
+  "lastName": "Yamai",
+  "points": 600,
+  "exemptions": 18000,
+  "createdAt": "2026-06-25T22:23:34.485000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1466,
+  "firstName": "Soren",
+  "lastName": "Mizuki",
+  "points": 535,
+  "exemptions": 22700,
+  "createdAt": "2026-06-30T22:49:04.629000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1308,
+  "firstName": "Sunao",
+  "lastName": "Shirogane",
+  "points": 2225,
+  "exemptions": 10000,
+  "createdAt": "2026-06-09T20:20:57.898000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 941,
+  "firstName": "Suren",
+  "lastName": "Kagero",
+  "points": 1020,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:14.418000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1630,
+  "firstName": "Sôka",
+  "lastName": "Shirogane",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-27T20:44:32.519000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1067,
+  "firstName": "Sôki",
+  "lastName": "Tsukihana",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:19.768000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1420,
+  "firstName": "Tadeus",
+  "lastName": "Kichika",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-06-25T22:24:36.803000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1637,
+  "firstName": "Taiko",
+  "lastName": "Chikatsume",
+  "points": 1080,
+  "exemptions": 6200,
+  "createdAt": "2026-07-28T16:52:45.993000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 3,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1439,
+  "firstName": "Tak",
+  "lastName": "Kurotetsu",
+  "points": 1250,
+  "exemptions": 35000,
+  "createdAt": "2026-06-27T20:02:52.757000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 917,
+  "firstName": "Takaba",
+  "lastName": "Fumihiko",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:13.292000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1274,
+  "firstName": "Takara",
+  "lastName": "Horu",
+  "points": 1845,
+  "exemptions": 5600,
+  "createdAt": "2026-06-05T21:14:21.127000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1614,
+  "firstName": "Takeshi",
+  "lastName": "Mizuno",
+  "points": 265,
+  "exemptions": 20900,
+  "createdAt": "2026-07-24T21:45:51.008000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1206,
+  "firstName": "Takumi",
+  "lastName": "Kageyama",
+  "points": 1020,
+  "exemptions": 10000,
+  "createdAt": "2026-05-31T20:36:03.679000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1531,
+  "firstName": "Takuro",
+  "lastName": "Saketsu",
+  "points": 40,
+  "exemptions": 1600,
+  "createdAt": "2026-07-11T00:03:02.389000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1150,
+  "firstName": "Tanjiro",
+  "lastName": "Baram",
+  "points": 1650,
+  "exemptions": 1800,
+  "createdAt": "2026-05-29T16:49:21.411000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1547,
+  "firstName": "Taro",
+  "lastName": "Okuwa",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-14T03:58:36.906000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1620,
+  "firstName": "Tasuku",
+  "lastName": "Tsubakino",
+  "points": 55,
+  "exemptions": 4000,
+  "createdAt": "2026-07-25T22:12:28.670000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1153,
+  "firstName": "Tatsuki",
+  "lastName": "Katzo",
+  "points": 1100,
+  "exemptions": 31000,
+  "createdAt": "2026-05-29T16:49:21.443000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1007,
+  "firstName": "Tebayo",
+  "lastName": "Hoshiken",
+  "points": 2641,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:17.035000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1474,
+  "firstName": "Tenma",
+  "lastName": "Takayuki",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-01T20:34:53.429000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1514,
+  "firstName": "Tenro",
+  "lastName": "Hakumei",
+  "points": 500,
+  "exemptions": 20000,
+  "createdAt": "2026-07-08T19:18:10.382000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1359,
+  "firstName": "Tetsu",
+  "lastName": "Arashi",
+  "points": 1286,
+  "exemptions": 11130,
+  "createdAt": "2026-06-18T16:04:15.767000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1236,
+  "firstName": "Tetsu",
+  "lastName": "Rizaki",
+  "points": 1590,
+  "exemptions": 0,
+  "createdAt": "2026-05-31T20:52:55.370000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1448,
+  "firstName": "Tetsuya",
+  "lastName": "Hagane",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-06-28T17:07:19.503000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1629,
+  "firstName": "Tetsuya",
+  "lastName": "Tanaka",
+  "points": 25,
+  "exemptions": 3400,
+  "createdAt": "2026-07-26T20:57:07.971000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1397,
+  "firstName": "Tojin",
+  "lastName": "Ryuta",
+  "points": 1015,
+  "exemptions": 17300,
+  "createdAt": "2026-06-22T22:40:29.090000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1520,
+  "firstName": "Tomo",
+  "lastName": "Kazeru",
+  "points": 1300,
+  "exemptions": 15000,
+  "createdAt": "2026-07-08T23:21:22.195000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1512,
+  "firstName": "Toshiro",
+  "lastName": "Makaze",
+  "points": 594,
+  "exemptions": 22870,
+  "createdAt": "2026-07-08T18:19:54.872000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1361,
+  "firstName": "Tsugu",
+  "lastName": "mori",
+  "points": 1055,
+  "exemptions": 0,
+  "createdAt": "2026-06-18T20:03:24.161000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1043,
+  "firstName": "Tushita",
+  "lastName": "Shabiri",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:18.921000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1405,
+  "firstName": "Tôru",
+  "lastName": "shirogane",
+  "points": 2365,
+  "exemptions": 18100,
+  "createdAt": "2026-06-24T18:56:59.510000",
+  "taxSummary": {
+   "paid": 7,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1605,
+  "firstName": "Ubaki",
+  "lastName": "Sora",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-22T23:06:00.732000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1578,
+  "firstName": "Yagara",
+  "lastName": "Karotogami",
+  "points": 5,
+  "exemptions": 200,
+  "createdAt": "2026-07-17T21:41:15.012000",
+  "taxSummary": {
+   "paid": 0,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1559,
+  "firstName": "Yakira",
+  "lastName": "Katashiwa",
+  "points": 20,
+  "exemptions": 1000,
+  "createdAt": "2026-07-14T20:16:08.756000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1379,
+  "firstName": "Yamada",
+  "lastName": "Shinjo",
+  "points": 150,
+  "exemptions": 0,
+  "createdAt": "2026-06-21T19:04:49.635000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 834,
+  "firstName": "Yami",
+  "lastName": "Kosajin",
+  "points": 7180,
+  "exemptions": 84300,
+  "createdAt": "2026-05-29T16:49:11.734000",
+  "taxSummary": {
+   "paid": 10,
+   "advance": 4,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1168,
+  "firstName": "Yanira",
+  "lastName": "Katashiwa",
+  "points": 1113,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:22.328000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1500,
+  "firstName": "Yato",
+  "lastName": "Kenseki",
+  "points": 1015,
+  "exemptions": 25600,
+  "createdAt": "2026-07-06T20:11:36.347000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1284,
+  "firstName": "Yato",
+  "lastName": "Kuroi",
+  "points": 3240,
+  "exemptions": 9000,
+  "createdAt": "2026-06-06T23:39:52.068000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1013,
+  "firstName": "Yoru",
+  "lastName": "Akuma",
+  "points": 1220,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:17.334000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1421,
+  "firstName": "Yoru",
+  "lastName": "Amakari",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-06-25T22:25:13.719000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1402,
+  "firstName": "Yugi",
+  "lastName": "Kushiki",
+  "points": 520,
+  "exemptions": 21000,
+  "createdAt": "2026-06-23T17:44:00.733000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1193,
+  "firstName": "Yugo",
+  "lastName": "Tenshi",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T19:23:15.318000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1111,
+  "firstName": "Yuki",
+  "lastName": "Mizushima",
+  "points": 1091,
+  "exemptions": 2700,
+  "createdAt": "2026-05-29T16:49:20.882000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1231,
+  "firstName": "Yuki",
+  "lastName": "Tatsu no Hebi",
+  "points": 1050,
+  "exemptions": 0,
+  "createdAt": "2026-05-31T20:48:51.551000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 808,
+  "firstName": "Yukio",
+  "lastName": "Sakimodo",
+  "points": 2000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.456000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1569,
+  "firstName": "Yukiro",
+  "lastName": "Hoki",
+  "points": 2440,
+  "exemptions": 0,
+  "createdAt": "2026-07-16T20:05:19.622000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 3,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 807,
+  "firstName": "Yusu",
+  "lastName": "Fuu",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:11.447000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1587,
+  "firstName": "Yuto",
+  "lastName": "Hoshigato",
+  "points": 2000,
+  "exemptions": 75000,
+  "createdAt": "2026-07-19T22:14:49.634000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1328,
+  "firstName": "Yuto",
+  "lastName": "Kakei",
+  "points": 510,
+  "exemptions": 300,
+  "createdAt": "2026-06-14T18:19:44.174000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 4
+  }
+ },
+ {
+  "id": 1260,
+  "firstName": "Yuto",
+  "lastName": "Kurosaki",
+  "points": 530,
+  "exemptions": 20000,
+  "createdAt": "2026-06-03T01:21:15.865000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 928,
+  "firstName": "Yuzo",
+  "lastName": "Aka",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:13.682000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1617,
+  "firstName": "Yûso",
+  "lastName": "Shirogane",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-25T17:51:31.321000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1535,
+  "firstName": "Zakida",
+  "lastName": "Yacoon",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-11T18:44:08.681000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1033,
+  "firstName": "Zaryu",
+  "lastName": "Rizaki",
+  "points": 1270,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:18.446000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1108,
+  "firstName": "Zeken",
+  "lastName": "Akuma",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:20.830000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1608,
+  "firstName": "Zenkiro",
+  "lastName": "Mushin",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-23T00:06:30.791000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1344,
+  "firstName": "Zipo",
+  "lastName": "Asakura",
+  "points": 2675,
+  "exemptions": 99600,
+  "createdAt": "2026-06-14T22:50:59.861000",
+  "taxSummary": {
+   "paid": 13,
+   "advance": 7,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1549,
+  "firstName": "Zourai",
+  "lastName": "Sakai",
+  "points": 700,
+  "exemptions": 21600,
+  "createdAt": "2026-07-14T03:59:33.452000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 1,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1533,
+  "firstName": "Zui",
+  "lastName": "Kyu",
+  "points": 135,
+  "exemptions": 6700,
+  "createdAt": "2026-07-11T00:06:05.290000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1132,
+  "firstName": "gribyu",
+  "lastName": "mouchi",
+  "points": 2500,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:21.145000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1136,
+  "firstName": "harû",
+  "lastName": "omûra",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:21.186000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1595,
+  "firstName": "kaien",
+  "lastName": "saketsu",
+  "points": 25,
+  "exemptions": 2800,
+  "createdAt": "2026-07-22T17:15:42.146000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1306,
+  "firstName": "kaito",
+  "lastName": "kaba",
+  "points": 110,
+  "exemptions": 4300,
+  "createdAt": "2026-06-09T18:15:58.272000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1190,
+  "firstName": "keisuke",
+  "lastName": "sano",
+  "points": 1000,
+  "exemptions": 0,
+  "createdAt": "2026-05-29T16:49:23.226000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1188,
+  "firstName": "koan",
+  "lastName": "Arukane",
+  "points": 1350,
+  "exemptions": 5100,
+  "createdAt": "2026-05-29T16:49:23.160000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1615,
+  "firstName": "meiro",
+  "lastName": "chiiketsu",
+  "points": 385,
+  "exemptions": 5900,
+  "createdAt": "2026-07-24T22:07:59.585000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1573,
+  "firstName": "myako",
+  "lastName": "kudo",
+  "points": 1025,
+  "exemptions": 1000,
+  "createdAt": "2026-07-17T19:09:01.765000",
+  "taxSummary": {
+   "paid": 3,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1594,
+  "firstName": "punpun",
+  "lastName": "Moki",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-22T17:14:46.005000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1340,
+  "firstName": "sakizu",
+  "lastName": "yamato",
+  "points": 965,
+  "exemptions": 22200,
+  "createdAt": "2026-06-14T22:42:49.692000",
+  "taxSummary": {
+   "paid": 4,
+   "advance": 0,
+   "unpaid": 2
+  }
+ },
+ {
+  "id": 1486,
+  "firstName": "shin",
+  "lastName": "takeda",
+  "points": 530,
+  "exemptions": 18300,
+  "createdAt": "2026-07-04T23:43:44.756000",
+  "taxSummary": {
+   "paid": 2,
+   "advance": 0,
+   "unpaid": 3
+  }
+ },
+ {
+  "id": 1651,
+  "firstName": "shuji",
+  "lastName": "kosajin",
+  "points": 0,
+  "exemptions": 0,
+  "createdAt": "2026-07-29T20:44:22.576000",
+  "taxSummary": {
+   "paid": 1,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1294,
+  "firstName": "sora",
+  "lastName": "aku",
+  "points": 1085,
+  "exemptions": 19000,
+  "createdAt": "2026-06-07T21:31:35.164000",
+  "taxSummary": {
+   "paid": 6,
+   "advance": 0,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1337,
+  "firstName": "toya",
+  "lastName": "fuyukoshi",
+  "points": 1020,
+  "exemptions": 9000,
+  "createdAt": "2026-06-14T22:41:25.990000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ },
+ {
+  "id": 1292,
+  "firstName": "yuka",
+  "lastName": "Denmon",
+  "points": 24310,
+  "exemptions": 105800,
+  "createdAt": "2026-06-07T21:26:18.049000",
+  "taxSummary": {
+   "paid": 58,
+   "advance": 52,
+   "unpaid": 0
+  }
+ },
+ {
+  "id": 1186,
+  "firstName": "zagariyo",
+  "lastName": "kitsonu",
+  "points": 1040,
+  "exemptions": 2100,
+  "createdAt": "2026-05-29T16:49:23.099000",
+  "taxSummary": {
+   "paid": 5,
+   "advance": 0,
+   "unpaid": 1
+  }
+ }
+]
