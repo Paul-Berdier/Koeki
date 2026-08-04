@@ -1,18 +1,21 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArchiveRestore, ArrowLeft, Save, Trash2 } from "lucide-react";
 import { PageHeader, SectionHeader } from "@koeki/ui";
-import { demoMode, requirePermission } from "@/lib/session";
+import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { deleteNinja, restoreNinja, updateNinja } from "../../actions";
 import { prisma } from "@koeki/database";
 
 export default async function EditNinjaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  await requirePermission("ninjas:write");
+  const session = await requireSession();
   const { id } = await params;
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const ninja = demoMode ? null : await prisma.ninjaProfile.findUnique({ where: { id } });
   if (!demoMode && !ninja) notFound();
+  const canWrite = hasPermission(session, "ninjas:write");
+  const isOwner = !demoMode && ninja?.userId === session.userId;
+  if (!demoMode && !canWrite && !isOwner) redirect("/access-denied");
   return <div className="page-wrap">
     <PageHeader eyebrow={ninja ? `Dossier ${ninja.code}` : "Mode démonstration"} title="Modifier le dossier" description="Chaque modification est auditée. Le changement de grade se fait depuis la fiche (motif obligatoire)."
       actions={<Link className="button button-ghost" href={`/ninjas/${id}`}><ArrowLeft size={17} /> Retour à la fiche</Link>} />
@@ -25,30 +28,30 @@ export default async function EditNinjaPage({ params, searchParams }: { params: 
       </form>
     </section> : <>
     <section className="panel" style={{ maxWidth: 640 }}>
-      <SectionHeader title="Identité" description="Prénom et nom restent obligatoires" />
+      <SectionHeader title="Identité" description={canWrite ? "Prénom et nom restent obligatoires" : "Vous pouvez ajuster votre pseudonyme et votre clan — l’identité et le grade restent gérés par le service"} />
       <form action={updateNinja} className="form-grid">
         <input type="hidden" name="ninjaId" value={ninja.id} />
-        <div className="form-row">
+        {canWrite ? <div className="form-row">
           <label>Prénom *<input type="text" name="firstName" required maxLength={80} defaultValue={ninja.firstName} /></label>
           <label>Nom *<input type="text" name="lastName" required maxLength={80} defaultValue={ninja.lastName} /></label>
-        </div>
+        </div> : <><input type="hidden" name="firstName" value={ninja.firstName} /><input type="hidden" name="lastName" value={ninja.lastName} /></>}
         <div className="form-row">
           <label>Pseudonyme<input type="text" name="alias" maxLength={80} defaultValue={ninja.alias ?? ""} /></label>
           <label>Clan ou famille<input type="text" name="clan" maxLength={80} defaultValue={ninja.clan ?? ""} /></label>
         </div>
-        <label>État administratif<select name="status" defaultValue={ninja.status === "INACTIVE" ? "INACTIVE" : "ACTIVE"}><option value="ACTIVE">Actif</option><option value="INACTIVE">Inactif</option></select></label>
-        <label>Notes internes<textarea name="notes" maxLength={2000} defaultValue={ninja.notes ?? ""} /></label>
+        {canWrite && <label>État administratif<select name="status" defaultValue={ninja.status === "INACTIVE" ? "INACTIVE" : "ACTIVE"}><option value="ACTIVE">Actif</option><option value="INACTIVE">Inactif</option></select></label>}
+        {canWrite && <label>Notes internes<textarea name="notes" maxLength={2000} defaultValue={ninja.notes ?? ""} /></label>}
         <div className="form-actions"><button className="button button-primary" type="submit"><Save size={16} /> Enregistrer</button></div>
       </form>
     </section>
-    <section className="panel" style={{ maxWidth: 640, marginTop: 12, borderColor: "rgba(169,79,63,.48)" }}>
+    {canWrite && <section className="panel" style={{ maxWidth: 640, marginTop: 12, borderColor: "rgba(169,79,63,.48)" }}>
       <SectionHeader title="Supprimer le dossier" description="Sans historique financier : suppression définitive. Avec historique : archivage (le registre comptable reste intact)." />
       <form action={deleteNinja} className="form-grid">
         <input type="hidden" name="ninjaId" value={ninja.id} />
         <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" name="confirm" required style={{ minHeight: 0, width: 16, height: 16 }} /> Je confirme la suppression ou l’archivage de {ninja.firstName} {ninja.lastName} ({ninja.code})</label>
         <div className="form-actions"><button className="button button-ghost" type="submit" style={{ color: "var(--terracotta-300)", borderColor: "rgba(169,79,63,.48)" }}><Trash2 size={16} /> Supprimer / archiver</button></div>
       </form>
-    </section>
+    </section>}
     </>}
   </div>;
 }

@@ -22,9 +22,10 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
     {error && <p className="notice error" role="alert">{error}</p>}
     {demoMode ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : <div className="detail-grid" style={{ alignItems: "start" }}>
       {unclaimed.length > 0 && <section className="panel">
-        <SectionHeader title="Réclamer ma fiche existante" description="Votre personnage figure déjà dans le registre importé ? Liez sa fiche à votre compte." />
+        <SectionHeader title="Réclamer ma fiche existante" description="Votre personnage figure déjà dans le registre importé ? Tapez son nom et liez sa fiche à votre compte." />
         <form action={claimOwnProfile} className="form-grid">
-          <label>Fiche du registre<select name="ninjaId" required><option value="">Rechercher votre nom…</option>{unclaimed.map((ninja) => <option key={ninja.id} value={ninja.id}>{ninja.firstName} {ninja.lastName} · {ninja.code}</option>)}</select></label>
+          <label>Fiche du registre<input name="ninjaRef" list="fiches-registre" required placeholder="Tapez votre prénom pour chercher…" autoComplete="off" /></label>
+          <datalist id="fiches-registre">{unclaimed.map((ninja) => <option key={ninja.id} value={`${ninja.firstName} ${ninja.lastName} · ${ninja.code}`.replace(/\s+/g, " ")} />)}</datalist>
           <div className="form-actions"><button className="button button-primary" type="submit"><Link2 size={16} /> Lier cette fiche à mon compte</button></div>
         </form>
       </section>}

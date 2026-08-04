@@ -6,7 +6,7 @@ import { Prisma, prisma } from "@koeki/database";
 import { allocatePayment, ryo } from "@koeki/domain";
 import { buildDebtLines, getRpService, loadNinjaFiscal } from "@/lib/data";
 import { awardPoints, exemptionBalance, grantExemption, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
-import { demoMode, getSession, requireWriteAccess } from "@/lib/session";
+import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
   firstName: z.string().trim().min(1, "Le prénom est obligatoire").max(80),
@@ -79,15 +79,21 @@ export async function claimOwnProfile(formData: FormData) {
   if (!session) throw new Error("UNAUTHENTICATED");
   const existing = await prisma.ninjaProfile.findUnique({ where: { userId: session.userId } });
   if (existing) redirect(`/ninjas/${existing.id}`);
-  const ninjaId = formData.get("ninjaId");
-  if (typeof ninjaId !== "string" || !ninjaId) redirect("/profil?erreur=S%C3%A9lectionnez%20une%20fiche");
+  const reference = formData.get("ninjaRef");
+  if (typeof reference !== "string" || !reference.trim()) redirect("/profil?erreur=Tapez%20le%20nom%20de%20votre%20fiche");
+  const code = /NIN-\d{6}/.exec(reference)?.[0];
+  const name = reference.split("·")[0]?.trim() ?? reference.trim();
+  const target = code
+    ? await prisma.ninjaProfile.findUnique({ where: { code } })
+    : await prisma.ninjaProfile.findFirst({ where: { status: "ACTIVE", userId: null, AND: name.split(/\s+/).map((part) => ({ OR: [{ firstName: { equals: part, mode: "insensitive" } }, { lastName: { contains: part, mode: "insensitive" } }] })) } });
+  if (!target) redirect(`/profil?erreur=${encodeURIComponent("Fiche introuvable — choisissez une proposition de la liste")}`);
   const claimed = await prisma.$transaction(async (tx) => {
-    const updated = await tx.ninjaProfile.updateMany({ where: { id: ninjaId as string, userId: null, status: "ACTIVE" }, data: { userId: session.userId, version: { increment: 1 } } });
-    if (updated.count === 1) await writeAudit(tx, { actorId: session.userId, action: "NINJA_CLAIMED", entityType: "NinjaProfile", entityId: ninjaId as string, reason: "Fiche existante liée au compte lors de l’arrivée" });
+    const updated = await tx.ninjaProfile.updateMany({ where: { id: target!.id, userId: null, status: "ACTIVE" }, data: { userId: session.userId, version: { increment: 1 } } });
+    if (updated.count === 1) await writeAudit(tx, { actorId: session.userId, action: "NINJA_CLAIMED", entityType: "NinjaProfile", entityId: target!.id, reason: "Fiche existante liée au compte lors de l’arrivée" });
     return updated.count === 1;
   });
   if (!claimed) redirect("/profil?erreur=Cette%20fiche%20est%20d%C3%A9j%C3%A0%20li%C3%A9e%20%C3%A0%20un%20autre%20compte");
-  redirect(`/ninjas/${ninjaId}`);
+  redirect(`/ninjas/${target!.id}`);
 }
 
 const updateNinjaSchema = createNinjaSchema.extend({
@@ -96,18 +102,30 @@ const updateNinjaSchema = createNinjaSchema.extend({
 }).omit({ gradeId: true });
 
 export async function updateNinja(formData: FormData) {
-  const session = await requireWriteAccess("ninjas:write");
+  if (demoMode) throw new Error("Mode démonstration : les écritures sont désactivées");
+  const session = await getSession();
+  if (!session) throw new Error("UNAUTHENTICATED");
   const parsed = updateNinjaSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
   const { ninjaId, ...data } = parsed.data!;
   const previous = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId } });
   if (!previous) redirect("/ninjas?erreur=Dossier%20introuvable");
   if (previous!.status === "ARCHIVED") redirect(`/ninjas?erreur=${encodeURIComponent("Ce dossier est archivé — restaurez-le explicitement avant de le modifier")}`);
+  const canWrite = hasPermission(session, "ninjas:write");
+  const isOwner = previous!.userId === session.userId;
+  if (!canWrite && !isOwner) throw new Error("FORBIDDEN");
   await prisma.$transaction(async (tx) => {
-    await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { ...data, version: { increment: 1 } } });
-    await writeAudit(tx, { actorId: session.userId, action: "NINJA_UPDATED", entityType: "NinjaProfile", entityId: ninjaId,
-      previousValues: { firstName: previous!.firstName, lastName: previous!.lastName, alias: previous!.alias, clan: previous!.clan, status: previous!.status },
-      newValues: { firstName: data.firstName, lastName: data.lastName, alias: data.alias, clan: data.clan, status: data.status } });
+    if (canWrite) {
+      await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { ...data, version: { increment: 1 } } });
+      await writeAudit(tx, { actorId: session.userId, action: "NINJA_UPDATED", entityType: "NinjaProfile", entityId: ninjaId,
+        previousValues: { firstName: previous!.firstName, lastName: previous!.lastName, alias: previous!.alias, clan: previous!.clan, status: previous!.status },
+        newValues: { firstName: data.firstName, lastName: data.lastName, alias: data.alias, clan: data.clan, status: data.status } });
+    } else {
+      // Owners may only adjust their pseudonym and clan — identity and status stay manager-controlled.
+      await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { alias: data.alias, clan: data.clan, version: { increment: 1 } } });
+      await writeAudit(tx, { actorId: session.userId, action: "NINJA_SELF_UPDATED", entityType: "NinjaProfile", entityId: ninjaId,
+        previousValues: { alias: previous!.alias, clan: previous!.clan }, newValues: { alias: data.alias, clan: data.clan } });
+    }
   });
   redirect(`/ninjas/${ninjaId}`);
 }

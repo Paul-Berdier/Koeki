@@ -166,6 +166,9 @@ td strong { color: var(--paper-100); }.positive { color: var(--olive-300); }.neg
 .detail-grid > div { display: grid; gap: 12px; }
 .identity-list { padding: 16px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; font-size: 12px; }
 .identity-list span { color: var(--sand-500); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; display: block; margin-bottom: 3px; }
+.identity-list .grade-badge { width: max-content; }
+.identity-list .person-cell span, .identity-list .person-cell small, .identity-list .person-cell strong { text-transform: none; letter-spacing: normal; font-size: inherit; color: inherit; margin: 0; }
+.notes-block { white-space: pre-line; line-height: 1.5; }
 .allocation-preview { margin: 0 20px 16px; padding: 12px 14px; border: 1px solid var(--border-strong); background: rgba(196,148,62,.06); border-radius: var(--radius-sm); font-size: 12px; }
 .allocation-preview ul { margin: 8px 0; padding: 0; list-style: none; display: grid; gap: 5px; }
 .allocation-preview li { display: flex; justify-content: space-between; gap: 12px; }

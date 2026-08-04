@@ -19,6 +19,8 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   }
   const canPay = hasPermission(session, "payments:write");
   const canWrite = hasPermission(session, "ninjas:write");
+  const ownProfile = demoMode ? null : await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
+  const isOwner = ownProfile?.id === id;
   const previewAmount = typeof query.montant === "string" && /^\d+$/.test(query.montant) ? BigInt(query.montant) : undefined;
   const data = await getNinjaDetail(id, { previewAmount, canSeeNotes: canWrite || hasPermission(session, "audit:read") });
   if (!data) notFound();
@@ -26,7 +28,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const error = typeof query.erreur === "string" ? query.erreur : null;
   return <div className="page-wrap">
     <PageHeader eyebrow={`Dossier ${data.code}`} title={data.name} description={`${data.grade.label}${data.alias ? ` · « ${data.alias} »` : ""} · ${data.statusLabel}`}
-      actions={<>{canWrite && <Link className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</Link>}<Link className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
+      actions={<>{(canWrite || isOwner) && <Link className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</Link>}<Link className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
     {receipt && <p className="notice" role="status">Paiement validé — reçu <code>{receipt}</code> enregistré et audité.</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
 
@@ -41,7 +43,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
       <div>
         <section className="panel">
           <SectionHeader title="Historique fiscal" description="Une ligne par année RP, instantanés immuables" />
-          {data.assessments.length ? <div className="table-scroll"><table><thead><tr><th>Année</th><th>Grade</th><th>Montant</th><th>Majorations</th><th>Corrections</th><th>Payé</th><th>Reste</th><th>Statut</th></tr></thead><tbody>{data.assessments.map((row) => <tr key={row.id}><td><strong>RP {row.rpYear}</strong></td><td>{row.gradeLabel}</td><td><MoneyDisplay amount={row.original} /></td><td className={row.penalties > 0n ? "negative" : "muted"}>{row.penalties > 0n ? <MoneyDisplay amount={row.penalties} /> : "—"}</td><td className="muted">{row.adjustments !== 0n || row.exemptions !== 0n ? <MoneyDisplay amount={row.adjustments - row.exemptions} /> : "—"}</td><td className="positive"><MoneyDisplay amount={row.paid} /></td><td className={row.remaining > 0n ? "negative" : "muted"}>{row.remaining > 0n ? <MoneyDisplay amount={row.remaining} /> : "Soldé"}</td><td><StatusBadge status={row.badge}>{row.statusLabel}</StatusBadge></td></tr>)}</tbody></table></div>
+          {data.assessments.length ? <div className="table-scroll"><table><thead><tr><th>Année</th><th>Grade</th><th>Montant</th><th>Majorations</th><th>Corrections</th><th>Payé</th><th>Reste</th><th>Statut</th></tr></thead><tbody>{data.assessments.map((row) => <tr key={row.id}><td><strong>RP {row.rpYear}</strong></td><td>{row.gradeLabel}</td><td><MoneyDisplay amount={row.original} /></td><td className={row.penalties > 0n ? "negative" : "muted"}>{row.penalties > 0n ? <MoneyDisplay amount={row.penalties} /> : "—"}</td><td className="muted">{row.adjustments !== 0n || row.exemptions !== 0n ? <MoneyDisplay amount={row.adjustments - row.exemptions} /> : "—"}</td><td className="positive"><MoneyDisplay amount={row.paid} /></td><td className={row.remaining > 0n || row.badge === "overdue" ? "negative" : "muted"}>{row.remaining > 0n ? <MoneyDisplay amount={row.remaining} /> : row.badge === "overdue" ? "Impayée (ancien registre)" : "Soldé"}</td><td><StatusBadge status={row.badge}>{row.statusLabel}</StatusBadge></td></tr>)}</tbody></table></div>
             : <EmptyState title="Aucune taxe" description="Aucune année fiscale n’a encore été générée pour ce dossier." />}
         </section>
         <section className="panel">
@@ -60,7 +62,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
             <div><span>Clan</span>{data.clan ?? "—"}</div>
             <div><span>Pseudonyme</span>{data.alias ?? "—"}</div>
             <div style={{ gridColumn: "1/-1" }}><span>Compte lié</span>{data.linkedUserName ?? "Aucun compte Discord associé"}</div>
-            {data.notes && <div style={{ gridColumn: "1/-1" }}><span>Notes internes</span>{data.notes}</div>}
+            {data.notes && <div style={{ gridColumn: "1/-1" }}><span>Notes internes</span><div className="notes-block">{data.notes}</div></div>}
           </div>
         </section>
         {canPay && data.totalDebt === 0n && <section className="panel">

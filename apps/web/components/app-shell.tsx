@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3, BookOpenText, Boxes, FileText, HandCoins,
-  LayoutDashboard, LogOut, Menu, PackageSearch, ScrollText, Settings, ShieldCheck, Trophy, Users, X
+  LayoutDashboard, LogOut, Menu, PackageSearch, ScrollText, Settings, ShieldCheck, Trophy, UserCircle2, Users, X
 } from "lucide-react";
 import type { ShellInfo } from "@/lib/types";
 
 const navigation = [
   { href: "/", label: "Vue d’ensemble", icon: LayoutDashboard },
+  { href: "/profil", label: "Ma fiche", icon: UserCircle2 },
   { href: "/ninjas", label: "Ninjas", icon: Users },
   { href: "/recouvrement", label: "Recouvrement", icon: HandCoins },
   { href: "/resources", label: "Ressources", icon: PackageSearch },
