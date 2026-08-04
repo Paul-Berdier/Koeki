@@ -20,10 +20,14 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
   const page = typeof params.page === "string" ? Number(params.page) || 1 : 1;
   const data = await getNinjas({ q, grade, statut, page });
   const canWrite = hasPermission(session, "ninjas:write");
+  const info = typeof params.info === "string" ? params.info : null;
+  const error = typeof params.erreur === "string" ? params.erreur : null;
   const pageQuery = (target: number) => `?${new URLSearchParams({ ...(q ? { q } : {}), ...(grade ? { grade } : {}), ...(statut ? { statut } : {}), page: String(target) })}`;
   return <div className="page-wrap">
     <PageHeader eyebrow="Registre administratif" title="Ninjas" description={data.summaryLine}
       actions={canWrite ? <Link className="button button-primary" href="/ninjas/new"><Plus size={17} /> Nouveau ninja</Link> : undefined} />
+    {info && <p className="notice" role="status">{info}</p>}
+    {error && <p className="notice error" role="alert">{error}</p>}
     <NinjaFilters grades={data.grades} />
 
     <section className="panel ninja-table-panel">

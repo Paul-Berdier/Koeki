@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Save, Trash2 } from "lucide-react";
+import { ArchiveRestore, ArrowLeft, Save, Trash2 } from "lucide-react";
 import { PageHeader, SectionHeader } from "@koeki/ui";
 import { demoMode, requirePermission } from "@/lib/session";
-import { deleteNinja, updateNinja } from "../../actions";
+import { deleteNinja, restoreNinja, updateNinja } from "../../actions";
 import { prisma } from "@koeki/database";
 
 export default async function EditNinjaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -17,7 +17,13 @@ export default async function EditNinjaPage({ params, searchParams }: { params: 
     <PageHeader eyebrow={ninja ? `Dossier ${ninja.code}` : "Mode démonstration"} title="Modifier le dossier" description="Chaque modification est auditée. Le changement de grade se fait depuis la fiche (motif obligatoire)."
       actions={<Link className="button button-ghost" href={`/ninjas/${id}`}><ArrowLeft size={17} /> Retour à la fiche</Link>} />
     {error && <p className="notice error" role="alert">{error}</p>}
-    {demoMode || !ninja ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : <>
+    {demoMode || !ninja ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : ninja.status === "ARCHIVED" ? <section className="panel" style={{ maxWidth: 640 }}>
+      <SectionHeader title="Dossier archivé" description="Son historique financier est conservé mais il n’apparaît plus dans les registres" />
+      <form action={restoreNinja} className="form-grid">
+        <input type="hidden" name="ninjaId" value={ninja.id} />
+        <div className="form-actions"><button className="button button-primary" type="submit"><ArchiveRestore size={16} /> Restaurer le dossier</button></div>
+      </form>
+    </section> : <>
     <section className="panel" style={{ maxWidth: 640 }}>
       <SectionHeader title="Identité" description="Prénom et nom restent obligatoires" />
       <form action={updateNinja} className="form-grid">

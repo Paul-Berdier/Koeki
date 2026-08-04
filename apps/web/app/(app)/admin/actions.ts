@@ -26,10 +26,10 @@ export async function createInvitation(formData: FormData) {
   if (!role) back("Rôle inconnu");
   if (role!.code === "SUPER_ADMIN" && !hasPermission(session, "users:manage")) back("Seul un super-administrateur peut inviter un super-administrateur");
   if (ninjaProfileId) {
-    const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaProfileId }, include: { invitations: { where: { status: "PENDING" } } } });
+    const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaProfileId }, include: { invitations: { where: { status: "PENDING", revokedAt: null, expiresAt: { gt: new Date() } } } } });
     if (!ninja) back("Ninja introuvable");
     if (ninja!.userId) back("Ce ninja est déjà associé à un compte");
-    if (ninja!.invitations.length) back("Une invitation en attente existe déjà pour ce ninja");
+    if (ninja!.invitations.length) back("Une invitation encore valable existe déjà pour ce ninja — révoquez-la d’abord");
   }
   const { token, tokenHash } = createInvitationToken(pepper!);
   const expiresAt = new Date(Date.now() + expiresDays * 86_400_000);

@@ -22,16 +22,17 @@ export async function executeCraft(formData: FormData) {
       if (!recipe.ingredients.length) throw new Error("VALIDATION:Cette recette n’a aucun ingrédient défini");
       for (const ingredient of recipe.ingredients) {
         const aggregate = await tx.inventoryMovement.aggregate({ where: { resourceId: ingredient.resourceId }, _sum: { quantity: true } });
-        const needed = Number(ingredient.quantity) * quantity;
-        if (Number(aggregate._sum.quantity ?? 0) < needed) throw new Error(`VALIDATION:Stock insuffisant de ${ingredient.resource.name} (${needed.toLocaleString("fr-FR")} requis)`);
+        const needed = ingredient.quantity.mul(quantity);
+        const stock = new Prisma.Decimal(aggregate._sum.quantity ?? 0);
+        if (stock.lessThan(needed)) throw new Error(`VALIDATION:Stock insuffisant de ${ingredient.resource.name} (${needed.toString()} requis, ${stock.toString()} disponible)`);
       }
       const execution = await tx.craftExecution.create({ data: { recipeId, quantity, status: "CONFIRMED", confirmedById: session.userId, idempotencyKey } });
       for (const ingredient of recipe.ingredients) await tx.inventoryMovement.create({ data: {
-        resourceId: ingredient.resourceId, type: "CRAFT_CONSUMPTION", quantity: new Prisma.Decimal(-Number(ingredient.quantity) * quantity),
+        resourceId: ingredient.resourceId, type: "CRAFT_CONSUMPTION", quantity: ingredient.quantity.mul(quantity).negated(),
         craftExecutionId: execution.id, agentId: session.userId, justification: `Fabrication ${recipe.code} ×${quantity}`, idempotencyKey: `${idempotencyKey}:in:${ingredient.resourceId}`
       } });
       for (const output of recipe.outputs) await tx.inventoryMovement.create({ data: {
-        resourceId: output.resourceId, type: "CRAFT_OUTPUT", quantity: new Prisma.Decimal(Number(output.quantity) * quantity),
+        resourceId: output.resourceId, type: "CRAFT_OUTPUT", quantity: output.quantity.mul(quantity),
         craftExecutionId: execution.id, agentId: session.userId, justification: `Fabrication ${recipe.code} ×${quantity}`, idempotencyKey: `${idempotencyKey}:out:${output.resourceId}`
       } });
       await writeAudit(tx, { actorId: session.userId, action: "CRAFT_EXECUTED", entityType: "CraftExecution", entityId: execution.id, reason: `${recipe.name} ×${quantity}`, newValues: { recipeCode: recipe.code, quantity } });
@@ -67,7 +68,7 @@ export async function createRecipe(formData: FormData) {
     const quantityRaw = formData.get(`ingredientQty_${index}`);
     if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
       const quantity = Number(quantityRaw.replace(",", "."));
-      if (!Number.isFinite(quantity) || quantity <= 0) back(`Quantité d’ingrédient invalide (ligne ${index})`);
+      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité d’ingrédient invalide (ligne ${index})`);
       if (ingredients.some((ingredient) => ingredient.resourceId === resourceId)) back("Un ingrédient apparaît deux fois");
       ingredients.push({ resourceId, quantity });
     }
@@ -75,7 +76,7 @@ export async function createRecipe(formData: FormData) {
   if (!ingredients.length) back("Ajoutez au moins un ingrédient");
   const outputId = formData.get("outputId");
   const outputQtyRaw = formData.get("outputQty");
-  const output = typeof outputId === "string" && outputId && typeof outputQtyRaw === "string" && Number(outputQtyRaw) > 0 ? { resourceId: outputId, quantity: Number(outputQtyRaw) } : null;
+  const output = typeof outputId === "string" && outputId && typeof outputQtyRaw === "string" && Number(outputQtyRaw) > 0 && Number(outputQtyRaw) <= 1_000_000 ? { resourceId: outputId, quantity: Number(outputQtyRaw) } : null;
   const data = parsed.data!;
   const previous = await prisma.craftRecipe.findFirst({ where: { code: data.code }, orderBy: { version: "desc" } });
   let recipeId = "";

@@ -11,11 +11,20 @@ async function generateTaxes() {
   const service = await rpService(), rpYear = service.currentRpYear();
   const policy = await prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: { include: { grade: true } } } });
   if (!policy) throw new Error("No active tax policy");
-  const taxYear = await prisma.taxYear.upsert({ where: { rpYear }, create: { rpYear, taxPolicyId: policy.id, startsAt: service.startOfRpYear(rpYear), endsAt: service.endOfRpYear(rpYear), dueAt: service.dueAt(rpYear), generatedAt: new Date() }, update: {} });
   const ninjas = await prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
   const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
-  const result = await prisma.taxAssessment.createMany({ data: ninjas.map((ninja) => ({ ninjaId: ninja.id, taxYearId: taxYear.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label, originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: taxYear.dueAt, status: taxYear.dueAt > new Date() ? "UPCOMING" : "DUE" })), skipDuplicates: true });
-  return { command: "taxes:generate", rpYear, created: result.count };
+  // Catch-up: if a weekly run was missed, backfill every year since the first one ever generated.
+  const earliest = await prisma.taxYear.findFirst({ orderBy: { rpYear: "asc" }, select: { rpYear: true } });
+  const firstYear = Math.max(earliest?.rpYear ?? rpYear, rpYear - 12);
+  let created = 0;
+  const years: number[] = [];
+  for (let year = firstYear; year <= rpYear; year++) {
+    const taxYear = await prisma.taxYear.upsert({ where: { rpYear: year }, create: { rpYear: year, taxPolicyId: policy.id, startsAt: service.startOfRpYear(year), endsAt: service.endOfRpYear(year), dueAt: service.dueAt(year), generatedAt: new Date() }, update: {} });
+    const result = await prisma.taxAssessment.createMany({ data: ninjas.map((ninja) => ({ ninjaId: ninja.id, taxYearId: taxYear.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label, originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: taxYear.dueAt, status: taxYear.dueAt > new Date() ? "UPCOMING" : "DUE" })), skipDuplicates: true });
+    created += result.count;
+    if (result.count > 0) years.push(year);
+  }
+  return { command: "taxes:generate", rpYear, created, years };
 }
 
 async function applyPenalties() {
@@ -94,5 +103,14 @@ async function refreshStats() {
 }
 
 const commands: Record<string, () => Promise<unknown>> = { "taxes:generate": generateTaxes, "penalties:apply": applyPenalties, "reminders:send": sendReminders, "inventory:check": checkInventory, "stats:refresh": refreshStats };
-async function main() { const command = process.argv[2] ?? "all"; const selected = command === "all" ? Object.values(commands) : [commands[command]]; if (selected.some((item) => !item)) throw new Error(`Unknown worker command: ${command}`); for (const run of selected) console.log(JSON.stringify(await run!())); }
+async function main() {
+  const command = process.argv[2] ?? "all";
+  const selected = command === "all" ? Object.values(commands) : [commands[command]];
+  if (selected.some((item) => !item)) throw new Error(`Unknown worker command: ${command}`);
+  // Each job runs independently so one failure never cancels the rest of the weekly batch.
+  for (const run of selected) {
+    try { console.log(JSON.stringify(await run!())); }
+    catch (error) { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; }
+  }
+}
 main().catch((error) => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

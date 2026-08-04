@@ -8,7 +8,7 @@ import { hasPermission, requireWriteAccess } from "@/lib/session";
 
 const adjustmentSchema = z.object({
   resourceId: z.string().min(1, "Sélectionnez une ressource"),
-  quantity: z.coerce.number().refine((value) => Number.isFinite(value) && value !== 0, "La quantité doit être non nulle"),
+  quantity: z.coerce.number().refine((value) => Number.isFinite(value) && value !== 0 && Math.abs(value) <= 1_000_000, "La quantité doit être non nulle (± 1 000 000 max)"),
   justification: z.string().trim().min(3, "Une justification est obligatoire").max(300),
   allowNegative: z.literal("on").optional(),
   idempotencyKey: z.string().uuid()
@@ -26,10 +26,10 @@ export async function recordAdjustment(formData: FormData) {
       const resource = await tx.resource.findUnique({ where: { id: resourceId } });
       if (!resource) throw new Error("VALIDATION:Ressource introuvable");
       const aggregate = await tx.inventoryMovement.aggregate({ where: { resourceId }, _sum: { quantity: true } });
-      const nextStock = Number(aggregate._sum.quantity ?? 0) + quantity;
-      if (nextStock < 0 && !overrideAllowed) throw new Error("VALIDATION:Le stock deviendrait négatif — autorisation managériale explicite requise");
+      const nextStock = new Prisma.Decimal(aggregate._sum.quantity ?? 0).add(new Prisma.Decimal(quantity));
+      if (nextStock.isNegative() && !overrideAllowed) throw new Error("VALIDATION:Le stock deviendrait négatif — autorisation managériale explicite requise");
       await tx.inventoryMovement.create({ data: { resourceId, type: "MANUAL_ADJUSTMENT", quantity: new Prisma.Decimal(quantity), agentId: session.userId, justification, idempotencyKey } });
-      await writeAudit(tx, { actorId: session.userId, action: nextStock < 0 ? "INVENTORY_ADJUSTED_NEGATIVE" : "INVENTORY_ADJUSTED", entityType: "Resource", entityId: resourceId, reason: justification, newValues: { quantity, nextStock } });
+      await writeAudit(tx, { actorId: session.userId, action: nextStock.isNegative() ? "INVENTORY_ADJUSTED_NEGATIVE" : "INVENTORY_ADJUSTED", entityType: "Resource", entityId: resourceId, reason: justification, newValues: { quantity, nextStock: nextStock.toNumber() } });
     });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));

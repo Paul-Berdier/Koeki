@@ -62,3 +62,20 @@ export async function refreshAssessmentStatus(tx: Tx, assessmentId: string, curr
 }
 
 export function isUniqueViolation(error: unknown) { return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"; }
+
+/** Names of the columns that violated a unique constraint — distinguishes a receipt-number collision (retryable) from an idempotency replay (duplicate). */
+export function uniqueViolationTarget(error: unknown): string {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") return "";
+  const target = (error.meta as { target?: string[] | string } | undefined)?.target;
+  return Array.isArray(target) ? target.join(",") : String(target ?? "");
+}
+
+/** Retries a transaction when two concurrent writes computed the same receipt number. */
+export async function withReceiptRetry<T>(run: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await run(); }
+    catch (error) { if (uniqueViolationTarget(error).includes("receiptNumber")) { lastError = error; continue; } throw error; }
+  }
+  throw lastError;
+}

@@ -2,10 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { prisma } from "@koeki/database";
+import { Prisma, prisma } from "@koeki/database";
 import { allocatePayment, ryo } from "@koeki/domain";
 import { buildDebtLines, getRpService, loadNinjaFiscal } from "@/lib/data";
-import { awardPoints, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, writeAudit } from "@/lib/finance";
+import { awardPoints, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { demoMode, getSession, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
@@ -84,11 +84,23 @@ export async function updateNinja(formData: FormData) {
   const { ninjaId, ...data } = parsed.data!;
   const previous = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId } });
   if (!previous) redirect("/ninjas?erreur=Dossier%20introuvable");
+  if (previous!.status === "ARCHIVED") redirect(`/ninjas?erreur=${encodeURIComponent("Ce dossier est archivé — restaurez-le explicitement avant de le modifier")}`);
   await prisma.$transaction(async (tx) => {
     await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { ...data, version: { increment: 1 } } });
     await writeAudit(tx, { actorId: session.userId, action: "NINJA_UPDATED", entityType: "NinjaProfile", entityId: ninjaId,
       previousValues: { firstName: previous!.firstName, lastName: previous!.lastName, alias: previous!.alias, clan: previous!.clan, status: previous!.status },
       newValues: { firstName: data.firstName, lastName: data.lastName, alias: data.alias, clan: data.clan, status: data.status } });
+  });
+  redirect(`/ninjas/${ninjaId}`);
+}
+
+export async function restoreNinja(formData: FormData) {
+  const session = await requireWriteAccess("ninjas:write");
+  const ninjaId = formData.get("ninjaId");
+  if (typeof ninjaId !== "string" || !ninjaId) redirect("/ninjas");
+  await prisma.$transaction(async (tx) => {
+    const restored = await tx.ninjaProfile.updateMany({ where: { id: ninjaId as string, status: "ARCHIVED" }, data: { status: "ACTIVE", version: { increment: 1 } } });
+    if (restored.count === 1) await writeAudit(tx, { actorId: session.userId, action: "NINJA_RESTORED", entityType: "NinjaProfile", entityId: ninjaId as string });
   });
   redirect(`/ninjas/${ninjaId}`);
 }
@@ -102,17 +114,26 @@ export async function deleteNinja(formData: FormData) {
   if (!ninja) redirect("/ninjas?erreur=Dossier%20introuvable");
   const counts = ninja!._count;
   const hasHistory = counts.assessments + counts.payments + counts.pointEntries + counts.resourceTransactions + counts.invitations > 0;
-  await prisma.$transaction(async (tx) => {
-    if (hasHistory) {
-      await tx.ninjaProfile.update({ where: { id: ninjaId as string }, data: { status: "ARCHIVED", userId: null, version: { increment: 1 } } });
-      await writeAudit(tx, { actorId: session.userId, action: "NINJA_ARCHIVED", entityType: "NinjaProfile", entityId: ninjaId as string, reason: "Historique financier présent : archivage au lieu d’une suppression" });
-    } else {
-      await tx.ninjaGradeHistory.deleteMany({ where: { ninjaId: ninjaId as string } });
-      await tx.ninjaProfile.delete({ where: { id: ninjaId as string } });
-      await writeAudit(tx, { actorId: session.userId, action: "NINJA_DELETED", entityType: "NinjaProfile", entityId: ninjaId as string, newValues: { code: ninja!.code } });
-    }
+  const archive = () => prisma.$transaction(async (tx) => {
+    await tx.ninjaProfile.update({ where: { id: ninjaId as string }, data: { status: "ARCHIVED", userId: null, version: { increment: 1 } } });
+    await writeAudit(tx, { actorId: session.userId, action: "NINJA_ARCHIVED", entityType: "NinjaProfile", entityId: ninjaId as string, reason: "Historique financier présent : archivage au lieu d’une suppression" });
   });
-  redirect("/ninjas");
+  let outcome: "supprime" | "archive" = "supprime";
+  if (hasHistory) { await archive(); outcome = "archive"; }
+  else {
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.ninjaGradeHistory.deleteMany({ where: { ninjaId: ninjaId as string } });
+        await tx.ninjaProfile.delete({ where: { id: ninjaId as string } });
+        await writeAudit(tx, { actorId: session.userId, action: "NINJA_DELETED", entityType: "NinjaProfile", entityId: ninjaId as string, newValues: { code: ninja!.code } });
+      });
+    } catch (error) {
+      // Any surviving reference (written between the check and the delete) falls back to archiving.
+      if (error instanceof Prisma.PrismaClientKnownRequestError) { await archive(); outcome = "archive"; }
+      else throw error;
+    }
+  }
+  redirect(`/ninjas?info=${encodeURIComponent(`Dossier ${ninja!.code} ${outcome === "supprime" ? "supprimé définitivement" : "archivé (historique financier conservé)"}`)}`);
 }
 
 const paymentSchema = z.object({
@@ -129,17 +150,21 @@ export async function recordPayment(formData: FormData) {
   if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
   const { ninjaId, amount, method, reference, idempotencyKey } = parsed.data;
   const back = (message: string) => redirect(`/ninjas/${ninjaId}?erreur=${encodeURIComponent(message)}`);
-  const assessments = await loadNinjaFiscal(ninjaId);
-  if (!assessments) back("Ninja introuvable");
-  const debtLines = buildDebtLines(assessments!);
-  if (!debtLines.length) back("Aucune dette ouverte pour ce ninja");
-  const allocation = allocatePayment(ryo(amount), debtLines);
-  if (allocation.unallocated > 0n) back("Le montant dépasse la dette ouverte — réduisez le paiement");
+  const preview = await loadNinjaFiscal(ninjaId);
+  if (!preview) back("Ninja introuvable");
+  if (!buildDebtLines(preview!).length) back("Aucune dette ouverte pour ce ninja");
   const service = await getRpService();
-  const balanceBefore = debtLines.reduce((total, line) => total + line.remaining, 0n);
   let receipt = "";
   try {
-    receipt = await prisma.$transaction(async (tx) => {
+    receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
+      // Serialize concurrent payments on the same record, then recompute the allocation on locked state.
+      await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaId} FOR UPDATE`;
+      const assessments = await loadNinjaFiscal(ninjaId, tx);
+      const debtLines = buildDebtLines(assessments ?? []);
+      if (!debtLines.length) throw new Error("VALIDATION:Aucune dette ouverte pour ce ninja");
+      const allocation = allocatePayment(ryo(amount), debtLines);
+      if (allocation.unallocated > 0n) throw new Error("VALIDATION:Le montant dépasse la dette ouverte — réduisez le paiement");
+      const balanceBefore = debtLines.reduce((total, line) => total + line.remaining, 0n);
       const receiptNumber = await nextPaymentReceipt(tx);
       const payment = await tx.taxPayment.create({ data: {
         receiptNumber, ninjaId, recordedById: session.userId, amount: BigInt(amount), method, reference, status: "VALIDATED",
@@ -153,8 +178,9 @@ export async function recordPayment(formData: FormData) {
       if (!overdueTouched) await awardPoints(tx, { ninjaId, eventType: "ON_TIME_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
       await writeAudit(tx, { actorId: session.userId, action: "PAYMENT_RECORDED", entityType: "TaxPayment", entityId: payment.id, reason: `Paiement de ${amount} Ryō (${receiptNumber})`, newValues: { amount, method, allocations: allocation.allocations.map((entry) => ({ assessmentId: entry.assessmentId, amount: Number(entry.amount) })) } });
       return receiptNumber;
-    });
+    }));
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
     if (isUniqueViolation(error)) back("Ce paiement a déjà été enregistré (double soumission détectée)");
     throw error;
   }

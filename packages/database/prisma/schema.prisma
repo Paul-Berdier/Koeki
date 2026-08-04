@@ -207,7 +207,7 @@ model Invitation {
   tokenHash      String           @unique
   status         InvitationStatus @default(PENDING)
   roleId         String
-  ninjaProfileId String?          @unique
+  ninjaProfileId String?
   createdById    String
   consumedById   String?          @unique
   expiresAt      DateTime
@@ -220,6 +220,7 @@ model Invitation {
   consumedBy     User?            @relation("InvitationConsumer", fields: [consumedById], references: [id])
 
   @@index([status, expiresAt])
+  @@index([ninjaProfileId])
 }
 
 model NinjaGrade {

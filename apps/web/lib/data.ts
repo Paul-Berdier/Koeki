@@ -183,10 +183,10 @@ export async function getNinjas(params: { q?: string | undefined; grade?: string
   };
 }
 
-/** Fresh, uncached fiscal lines for one ninja — used by server actions before writing. */
-export async function loadNinjaFiscal(ninjaId: string): Promise<AssessmentAggregate[] | null> {
+/** Fresh, uncached fiscal lines for one ninja — pass the transaction client to read post-lock state. */
+export async function loadNinjaFiscal(ninjaId: string, client: Pick<typeof prisma, "ninjaProfile"> = prisma): Promise<AssessmentAggregate[] | null> {
   const service = await getRpService();
-  const ninja = await prisma.ninjaProfile.findUnique({
+  const ninja = await client.ninjaProfile.findUnique({
     where: { id: ninjaId },
     include: { assessments: { include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } }, taxYear: { select: { rpYear: true } } } } }
   });
@@ -458,7 +458,7 @@ export async function getAdmin(): Promise<AdminData> {
     approval: { amount: approval?.amount ?? "50000", isValidated: approval?.isValidated ?? false },
     policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,
     rpTimeLabel: rpLabel,
-    invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: state.label === "En attente" }; }),
+    invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: invitation.status === "PENDING" }; }),
     users: users.map((user) => ({ id: user.id, name: user.name ?? user.email ?? user.id, roles: user.roles.map((entry) => roleLabels[entry.role.code as keyof typeof roleLabels] ?? entry.role.label).join(", ") || "Sans rôle", revoked: user.revokedAt !== null })),
     roles: [...roles].sort((a, b) => roleOrder.indexOf(a.code) - roleOrder.indexOf(b.code)).map((role) => ({ id: role.id, code: role.code, label: roleLabels[role.code as keyof typeof roleLabels] ?? role.label })),
     freeNinjas: freeNinjas.map((ninja) => ({ id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}` }))

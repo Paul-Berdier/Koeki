@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { awardPoints, isUniqueViolation, nextTransactionReceipt, writeAudit, type Tx } from "@/lib/finance";
+import { awardPoints, isUniqueViolation, nextTransactionReceipt, withReceiptRetry, writeAudit, type Tx } from "@/lib/finance";
 import { hasPermission, requireWriteAccess } from "@/lib/session";
 
 const QUANTITY_SCALE = 10_000n;
@@ -41,7 +41,7 @@ export async function recordResourceTransaction(formData: FormData) {
     const quantityRaw = formData.get(`quantity_${index}`);
     if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
       const quantity = Number(quantityRaw.replace(",", "."));
-      if (!Number.isFinite(quantity) || quantity <= 0) back(`Quantité invalide sur la ligne ${index}`);
+      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité invalide sur la ligne ${index} (entre 0,01 et 1 000 000)`);
       if (lines.some((line) => line.resourceId === resourceId)) back("Une même ressource apparaît deux fois");
       lines.push({ resourceId, quantity });
     }
@@ -51,7 +51,7 @@ export async function recordResourceTransaction(formData: FormData) {
   if (!ninja) back("Ninja introuvable");
   let receipt = "";
   try {
-    receipt = await prisma.$transaction(async (tx) => {
+    receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
       const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint }> = [];
       for (const line of lines) {
         const resource = await tx.resource.findUnique({ where: { id: line.resourceId } });
@@ -73,7 +73,7 @@ export async function recordResourceTransaction(formData: FormData) {
       if (!needsApproval) await applyValidatedTransaction(tx, { id: transaction.id, type, ninjaId, receiptNumber, totalAmount, idempotencyKey }, items, session.userId);
       await writeAudit(tx, { actorId: session.userId, action: type === "BUYBACK" ? (needsApproval ? "BUYBACK_PENDING_APPROVAL" : "BUYBACK_RECORDED") : "DONATION_RECORDED", entityType: "ResourceTransaction", entityId: transaction.id, reason: `${type === "BUYBACK" ? "Rachat" : "Don"} ${receiptNumber} — ${Number(totalAmount)} Ryō`, newValues: { items: items.map((item) => ({ resourceId: item.resourceId, quantity: item.quantity, unitPrice: Number(item.unitPrice) })) } });
       return receiptNumber;
-    });
+    }));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
     if (isUniqueViolation(error)) back("Cette transaction a déjà été enregistrée (double soumission détectée)");
