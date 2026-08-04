@@ -1,0 +1,466 @@
+import { cache } from "react";
+import { prisma, type TaxAssessmentStatus } from "@koeki/database";
+import { allocatePayment, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo, simulateCraft, type DebtLine } from "@koeki/domain";
+import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
+import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, type BadgeStatus } from "./format";
+import { demoMode, roleLabels, type SessionInfo } from "./session";
+import type { AdminData, AuditData, CraftingData, DashboardData, InventoryData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
+
+const sumBig = (values: bigint[]) => values.reduce((total, value) => total + value, 0n);
+const EXCLUDED: TaxAssessmentStatus[] = ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED", "DRAFT"];
+
+export const pointEventLabels: Record<string, string> = {
+  TAX_PAYMENT: "Paiement de taxe", ON_TIME_PAYMENT: "Paiement dans les délais", EARLY_PAYMENT: "Paiement anticipé", REGULARIZATION: "Régularisation",
+  DONATION: "Don", RESOURCE_SALE: "Vente de ressources", SPECIAL_EVENT: "Événement spécial", MANUAL_ADJUSTMENT: "Ajustement manuel", REVERSAL: "Écriture inverse"
+};
+export const movementTypeLabels: Record<string, string> = {
+  DONATION_IN: "Don", BUYBACK_IN: "Rachat", CRAFT_CONSUMPTION: "Consommation atelier", CRAFT_OUTPUT: "Production atelier",
+  MANUAL_ADJUSTMENT: "Ajustement", TRANSFER_IN: "Transfert entrant", TRANSFER_OUT: "Transfert sortant", LOSS: "Perte"
+};
+
+export const getRpService = cache(async () => {
+  const setting = await prisma.appSetting.findUnique({ where: { key: "rpTime" } });
+  const parsed = setting ? rpTimeConfigSchema.safeParse(setting.value) : null;
+  return createRpTimeService(parsed?.success ? parsed.data : defaultRpTimeConfig);
+});
+
+const getUserNames = cache(async () => new Map((await prisma.user.findMany({ select: { id: true, name: true } })).map((user) => [user.id, user.name ?? "Agent Kōeki"])));
+const shortName = (name: string) => { const [first, second] = name.trim().split(/\s+/); return first && second ? `${first} ${second.charAt(0)}.` : name; };
+
+interface AssessmentAggregate { id: string; rpYear: number; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; dueAt: Date; status: TaxAssessmentStatus }
+interface NinjaAggregate {
+  id: string; code: string; firstName: string; lastName: string; alias: string | null; clan: string | null; status: string;
+  gradeCode: string; gradeLabel: string; referenceAgentId: string | null; userId: string | null; notes: string | null;
+  points: number; debt: bigint; lateYears: number; badge: BadgeStatus; statusLabel: string; due: string; nextDueAt: Date | null; assessments: AssessmentAggregate[];
+}
+
+function computeAssessment(assessment: {
+  id: string; originalAmount: bigint; dueAt: Date; status: TaxAssessmentStatus; gradeLabelSnapshot: string;
+  taxYear: { rpYear: number }; penalties: Array<{ amount: bigint }>; adjustments: Array<{ amount: bigint }>; exemptions: Array<{ amount: bigint }>;
+  allocations: Array<{ amount: bigint; payment: { status: string } }>;
+}, currentRpYear: number, now: Date): AssessmentAggregate {
+  const penalties = sumBig(assessment.penalties.map((entry) => entry.amount));
+  const adjustments = sumBig(assessment.adjustments.map((entry) => entry.amount));
+  const exemptions = sumBig(assessment.exemptions.map((entry) => entry.amount));
+  const paid = sumBig(assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").map((entry) => entry.amount));
+  const gross = assessment.originalAmount + penalties + adjustments;
+  const remaining = EXCLUDED.includes(assessment.status) ? 0n : gross - exemptions - paid > 0n ? gross - exemptions - paid : 0n;
+  const status: TaxAssessmentStatus = EXCLUDED.includes(assessment.status) ? assessment.status
+    : remaining === 0n ? "PAID"
+    : assessment.dueAt < now ? "OVERDUE"
+    : paid > 0n ? "PARTIALLY_PAID"
+    : assessment.taxYear.rpYear > currentRpYear ? "UPCOMING" : "DUE";
+  return { id: assessment.id, rpYear: assessment.taxYear.rpYear, gradeLabel: assessment.gradeLabelSnapshot, original: assessment.originalAmount, penalties, adjustments, exemptions, paid, remaining, dueAt: assessment.dueAt, status };
+}
+
+const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
+  const [service, ninjas] = await Promise.all([getRpService(), prisma.ninjaProfile.findMany({
+    where: { status: { not: "ARCHIVED" } },
+    include: {
+      currentGrade: true, pointEntries: { select: { points: true } },
+      assessments: { include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } }, taxYear: { select: { rpYear: true } } } }
+    }
+  })]);
+  const now = new Date();
+  const currentRpYear = service.currentRpYear(now);
+  return ninjas.map((ninja) => {
+    const assessments = ninja.assessments.map((assessment) => computeAssessment(assessment, currentRpYear, now)).sort((a, b) => b.rpYear - a.rpYear);
+    const open = assessments.filter((assessment) => assessment.remaining > 0n);
+    const debt = sumBig(open.map((assessment) => assessment.remaining));
+    const overdue = open.filter((assessment) => assessment.dueAt < now);
+    const lateYears = overdue.length ? Math.max(...overdue.map((assessment) => service.completeLateYears(assessment.dueAt, now))) : 0;
+    const upcoming = open.filter((assessment) => assessment.dueAt >= now).sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())[0];
+    const soon = upcoming && upcoming.dueAt.getTime() - now.getTime() < 2 * 86_400_000;
+    const badge: BadgeStatus = overdue.length ? "overdue" : soon ? "warning" : open.length ? "due" : "paid";
+    const statusLabel = overdue.length ? "En retard" : soon ? "Échéance proche" : open.length ? "À payer" : "À jour";
+    const due = overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : "—";
+    return {
+      id: ninja.id, code: ninja.code, firstName: ninja.firstName, lastName: ninja.lastName, alias: ninja.alias, clan: ninja.clan, status: ninja.status,
+      gradeCode: ninja.currentGrade.code, gradeLabel: ninja.currentGrade.label, referenceAgentId: ninja.referenceAgentId, userId: ninja.userId, notes: ninja.notes,
+      points: ninja.pointEntries.reduce((total, entry) => total + entry.points, 0), debt, lateYears, badge, statusLabel, due, nextDueAt: upcoming?.dueAt ?? null, assessments
+    };
+  });
+});
+
+const activePriceMap = cache(async () => {
+  const prices = await prisma.resourcePriceHistory.findMany({ where: { effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, orderBy: { effectiveFrom: "desc" } });
+  const map = new Map<string, bigint>();
+  for (const price of prices) if (!map.has(price.resourceId)) map.set(price.resourceId, price.pricePerUnit);
+  return map;
+});
+
+const stockMap = cache(async () => {
+  const grouped = await prisma.inventoryMovement.groupBy({ by: ["resourceId"], _sum: { quantity: true } });
+  return new Map(grouped.map((entry) => [entry.resourceId, Number(entry._sum.quantity ?? 0)]));
+});
+
+export async function getShellInfo(session: SessionInfo | null): Promise<ShellInfo> {
+  if (demoMode) return demoShell;
+  const [service, aggregates] = await Promise.all([getRpService(), loadNinjaAggregates()]);
+  const now = new Date();
+  const year = service.currentRpYear(now);
+  const firstRole = session?.roles[0];
+  return {
+    rpYear: year, rpDayLabel: `Jour fiscal ${Math.min(7, Math.floor(service.progress(now) * 7) + 1)} sur 7`, rpProgress: service.progress(now),
+    overdueCount: aggregates.filter((ninja) => ninja.badge === "overdue").length,
+    userName: session?.name ?? "Session inconnue", userRoleLabel: firstRole ? roleLabels[firstRole] : "Sans rôle"
+  };
+}
+
+export async function getDashboard(): Promise<DashboardData> {
+  if (demoMode) return demoDashboard;
+  const [service, aggregates, prices, stocks, penaltySetting, reportsToReview, resources] = await Promise.all([
+    getRpService(), loadNinjaAggregates(), activePriceMap(), stockMap(),
+    prisma.appSetting.findUnique({ where: { key: "latePenalty" } }),
+    prisma.agentReport.count({ where: { status: "SUBMITTED" } }),
+    prisma.resource.findMany({ where: { isActive: true } })
+  ]);
+  const now = new Date();
+  const rpYear = service.currentRpYear(now);
+  const all = aggregates.flatMap((ninja) => ninja.assessments);
+  const rate = (year: number) => {
+    const rows = all.filter((assessment) => assessment.rpYear === year && !EXCLUDED.includes(assessment.status));
+    const expected = sumBig(rows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions));
+    const collected = sumBig(rows.map((row) => row.paid));
+    return { expected, collected, percent: expected > 0n ? Number((collected * 100n) / expected) : rows.length ? 100 : 0 };
+  };
+  const current = rate(rpYear);
+  const previous = rate(rpYear - 1);
+  const years = [...new Set(all.map((assessment) => assessment.rpYear))].filter((year) => year <= rpYear).sort((a, b) => a - b).slice(-5);
+  const criticalStocks = resources.filter((resource) => (stocks.get(resource.id) ?? 0) <= Number(resource.criticalStock)).map((resource) => resource.name);
+  const buybacks = await prisma.resourceTransaction.findMany({ where: { type: "BUYBACK", status: "VALIDATED", createdAt: { gte: service.startOfRpYear(rpYear) } }, select: { totalAmount: true } });
+  const penaltyConfig = penaltySetting?.value as { latePenaltyPercentBps?: number | null; isRateValidated?: boolean } | undefined;
+  const [payments, transactions] = await Promise.all([
+    prisma.taxPayment.findMany({ orderBy: { createdAt: "desc" }, take: 6, include: { ninja: true } }),
+    prisma.resourceTransaction.findMany({ orderBy: { createdAt: "desc" }, take: 6, include: { ninja: true } })
+  ]);
+  const activity = [
+    ...payments.map((payment) => ({ code: payment.receiptNumber, label: "Paiement de taxe", subject: `${payment.ninja.firstName} ${payment.ninja.lastName}`, amount: payment.amount, direction: "in" as const, createdAt: payment.createdAt, statusLabel: payment.status === "VALIDATED" ? "Validée" : payment.status === "REVERSED" ? "Contre-passée" : "En attente", status: (payment.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus })),
+    ...transactions.map((transaction) => ({ code: transaction.receiptNumber, label: transaction.type === "BUYBACK" ? "Rachat de ressources" : "Don enregistré", subject: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, amount: transaction.totalAmount, direction: (transaction.type === "BUYBACK" ? "out" : "in") as "in" | "out", createdAt: transaction.createdAt, statusLabel: transaction.status === "VALIDATED" ? "Validée" : transaction.status === "PENDING_APPROVAL" ? "À valider" : "En attente", status: (transaction.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus }))
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 6)
+    .map(({ createdAt, ...row }) => ({ ...row, at: relativeTime(createdAt, now) }));
+  const stockValue = sumBig(resources.map((resource) => BigInt(Math.max(0, Math.round(stocks.get(resource.id) ?? 0))) * (prices.get(resource.id) ?? 0n)));
+  const overdueNinjas = aggregates.filter((ninja) => ninja.badge === "overdue");
+  return {
+    rpYear, expected: current.expected, collected: current.collected, debt: sumBig(aggregates.map((ninja) => ninja.debt)),
+    buybacks: sumBig(buybacks.map((entry) => entry.totalAmount)), buybackCount: buybacks.length, stockValue, criticalCount: criticalStocks.length, overdueNinjas: overdueNinjas.length,
+    recoveryRateBps: current.expected > 0n ? Number((current.collected * 10_000n) / current.expected) : 0,
+    previousDeltaBps: previous.expected > 0n ? (current.expected > 0n ? Number((current.collected * 10_000n) / current.expected) - Number((previous.collected * 10_000n) / previous.expected) : null) : null,
+    recoveryByYear: years.map((year) => ({ rpYear: year, percent: rate(year).percent })),
+    priorities: {
+      penaltyRateMissing: !penaltyConfig?.latePenaltyPercentBps || !penaltyConfig.isRateValidated,
+      overdueCount: overdueNinjas.length, overdueOldCount: overdueNinjas.filter((ninja) => ninja.lateYears >= 2).length,
+      criticalStocks, reportsToReview
+    },
+    activity
+  };
+}
+
+export async function getNinjas(params: { q?: string | undefined; grade?: string | undefined; statut?: string | undefined; page?: number | undefined }): Promise<NinjasData> {
+  if (demoMode) return demoNinjas;
+  const [aggregates, users, grades] = await Promise.all([loadNinjaAggregates(), getUserNames(), prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })]);
+  const query = params.q?.trim().toLowerCase();
+  let rows = aggregates;
+  if (query) rows = rows.filter((ninja) => [`${ninja.firstName} ${ninja.lastName}`, ninja.code, ninja.alias ?? ""].some((value) => value.toLowerCase().includes(query)));
+  if (params.grade) rows = rows.filter((ninja) => ninja.gradeCode === params.grade);
+  if (params.statut) rows = rows.filter((ninja) => ninja.badge === params.statut);
+  rows = [...rows].sort((a, b) => (b.debt > a.debt ? 1 : b.debt < a.debt ? -1 : a.lastName.localeCompare(b.lastName)));
+  const pageSize = 25;
+  const total = rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, params.page ?? 1), pageCount);
+  const upToDate = aggregates.filter((ninja) => ninja.badge === "paid").length;
+  const overdue = aggregates.filter((ninja) => ninja.badge === "overdue").length;
+  const debt = sumBig(aggregates.map((ninja) => ninja.debt));
+  return {
+    summaryLine: `${aggregates.length} dossier${aggregates.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
+    grades: grades.map((grade) => ({ code: grade.code, label: grade.label })),
+    ninjas: rows.slice((page - 1) * pageSize, page * pageSize).map((ninja): NinjaRow => ({
+      id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, grade: ninja.gradeLabel, points: ninja.points,
+      debt: ninja.debt, badge: ninja.badge, statusLabel: ninja.statusLabel, agent: ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "—", due: ninja.due
+    })),
+    total, page, pageCount
+  };
+}
+
+/** Fresh, uncached fiscal lines for one ninja — used by server actions before writing. */
+export async function loadNinjaFiscal(ninjaId: string): Promise<AssessmentAggregate[] | null> {
+  const service = await getRpService();
+  const ninja = await prisma.ninjaProfile.findUnique({
+    where: { id: ninjaId },
+    include: { assessments: { include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } }, taxYear: { select: { rpYear: true } } } } }
+  });
+  if (!ninja) return null;
+  const now = new Date();
+  return ninja.assessments.map((assessment) => computeAssessment(assessment, service.currentRpYear(now), now));
+}
+
+export function buildDebtLines(assessments: AssessmentAggregate[]): Array<DebtLine & { label: string }> {
+  return assessments.filter((assessment) => assessment.remaining > 0n).sort((a, b) => a.rpYear - b.rpYear).flatMap((assessment) => {
+    const unpaidPenalties = assessment.penalties > assessment.paid ? assessment.penalties - assessment.paid : 0n;
+    const penaltyRemaining = unpaidPenalties < assessment.remaining ? unpaidPenalties : assessment.remaining;
+    const principalRemaining = assessment.remaining - penaltyRemaining;
+    const lines: Array<DebtLine & { label: string }> = [];
+    if (penaltyRemaining > 0n) lines.push({ id: `${assessment.id}:PENALTY`, assessmentId: assessment.id, rpYear: assessment.rpYear, kind: "PENALTY", remaining: ryo(penaltyRemaining), label: `Majoration année ${assessment.rpYear}` });
+    if (principalRemaining > 0n) lines.push({ id: `${assessment.id}:PRINCIPAL`, assessmentId: assessment.id, rpYear: assessment.rpYear, kind: "PRINCIPAL", remaining: ryo(principalRemaining), label: `Taxe année ${assessment.rpYear}` });
+    return lines;
+  });
+}
+
+export async function getNinjaDetail(id: string, options: { previewAmount?: bigint | undefined; canSeeNotes: boolean }): Promise<NinjaDetailData | null> {
+  if (demoMode) return { ...demoNinjaDetail, preview: options.previewAmount ? { amount: options.previewAmount, lines: [{ label: "Taxe année 46", amount: options.previewAmount }], unallocated: 0n } : null };
+  const aggregates = await loadNinjaAggregates();
+  const ninja = aggregates.find((entry) => entry.id === id);
+  if (!ninja) return null;
+  const [grades, entries, payments, transactions, linked] = await Promise.all([
+    prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    prisma.pointLedgerEntry.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
+    prisma.taxPayment.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
+    prisma.resourceTransaction.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
+    ninjaUserName(id)
+  ]);
+  const debtLines = buildDebtLines(ninja.assessments);
+  const preview = options.previewAmount && options.previewAmount > 0n
+    ? (() => { const result = allocatePayment(ryo(options.previewAmount), debtLines); return { amount: options.previewAmount!, lines: result.allocations.map((allocation) => ({ label: debtLines.find((line) => line.id === allocation.debtLineId)?.label ?? "Dette", amount: allocation.amount as bigint })), unallocated: result.unallocated as bigint }; })()
+    : null;
+  const operations = [
+    ...payments.map((payment) => ({ id: payment.id, receipt: payment.receiptNumber, label: "Paiement de taxe", amount: payment.amount, createdAt: payment.createdAt, statusLabel: payment.status === "VALIDATED" ? "Validée" : payment.status === "REVERSED" ? "Contre-passée" : "En attente", badge: (payment.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus })),
+    ...transactions.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, label: transaction.type === "BUYBACK" ? "Rachat de ressources" : "Don", amount: transaction.totalAmount, createdAt: transaction.createdAt, statusLabel: transaction.status === "VALIDATED" ? "Validée" : "À valider", badge: (transaction.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus }))
+  ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 12).map(({ createdAt, ...row }) => ({ ...row, at: formatDate(createdAt) }));
+  return {
+    id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, clan: ninja.clan, statusLabel: ninja.status === "ACTIVE" ? "Actif" : ninja.status,
+    grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
+    linkedUserName: linked, notes: options.canSeeNotes ? ninja.notes : null,
+    totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points,
+    assessments: ninja.assessments.map((assessment) => ({ id: assessment.id, rpYear: assessment.rpYear, gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: assessmentStatusLabels[assessment.status], badge: assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) })),
+    pointEntries: entries.map((entry) => ({ id: entry.id, at: formatDate(entry.createdAt), label: pointEventLabels[entry.eventType] ?? entry.eventType, points: entry.points, reason: entry.reason })),
+    operations, preview
+  };
+}
+
+async function ninjaUserName(ninjaId: string) {
+  const profile = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId }, include: { user: { select: { name: true } } } });
+  return profile?.user?.name ?? null;
+}
+
+export async function getRecovery(): Promise<RecoveryData> {
+  if (demoMode) return demoRecovery;
+  const [aggregates, users] = await Promise.all([loadNinjaAggregates(), getUserNames()]);
+  const overdue = aggregates.filter((ninja) => ninja.badge === "overdue").sort((a, b) => b.lateYears - a.lateYears || (b.debt > a.debt ? 1 : -1));
+  const critical = overdue.filter((ninja) => ninja.lateYears >= 2);
+  const averageLate = overdue.length ? (overdue.reduce((total, ninja) => total + ninja.lateYears, 0) / overdue.length).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : "0";
+  return {
+    metrics: {
+      priorityDebt: sumBig(critical.map((ninja) => ninja.debt)), priorityCount: critical.length, averageLate: `${averageLate} ans RP`,
+      totalDebt: sumBig(overdue.map((ninja) => ninja.debt)), unassigned: overdue.filter((ninja) => !ninja.referenceAgentId).length
+    },
+    rows: overdue.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: ninja.debt, due: ninja.due, agent: ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "À attribuer" }))
+  };
+}
+
+export async function getResources(canApprove: boolean): Promise<ResourcesData> {
+  if (demoMode) return demoResources;
+  const [service, prices, stocks, resources] = await Promise.all([getRpService(), activePriceMap(), stockMap(), prisma.resource.findMany({ include: { category: true, unit: true }, orderBy: { code: "asc" } })]);
+  const since = service.startOfRpYear(service.currentRpYear());
+  const [buybacks, donations, pending] = await Promise.all([
+    prisma.resourceTransaction.findMany({ where: { type: "BUYBACK", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
+    prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
+    canApprove ? prisma.resourceTransaction.findMany({ where: { status: "PENDING_APPROVAL" }, include: { ninja: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([])
+  ]);
+  return {
+    metrics: {
+      buybackTotal: sumBig(buybacks.map((entry) => entry.totalAmount)), buybackCount: buybacks.length,
+      donationValue: sumBig(donations.map((entry) => entry.totalAmount)), donationCount: donations.length,
+      activeCount: resources.filter((resource) => resource.isActive).length, totalCount: resources.length
+    },
+    resources: resources.map((resource) => {
+      const stock = stocks.get(resource.id) ?? 0;
+      const critical = stock <= Number(resource.criticalStock);
+      const low = stock <= Number(resource.minimumStock);
+      return {
+        id: resource.id, code: resource.code, name: resource.name, category: resource.category.label, unit: resource.unit.symbol,
+        price: prices.get(resource.id) ?? 0n, stock,
+        badge: (!resource.isActive ? "draft" : critical ? "overdue" : low ? "warning" : "paid") as BadgeStatus,
+        stateLabel: !resource.isActive ? "Inactive" : critical ? "Critique" : low ? "Stock bas" : "Disponible"
+      };
+    }),
+    pendingApprovals: pending.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, ninja: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, total: transaction.totalAmount, at: formatDate(transaction.createdAt) }))
+  };
+}
+
+export async function getInventory(): Promise<InventoryData> {
+  if (demoMode) return demoInventory;
+  const [prices, stocks, resources, users] = await Promise.all([activePriceMap(), stockMap(), prisma.resource.findMany({ where: { isActive: true }, include: { unit: true }, orderBy: { name: "asc" } }), getUserNames()]);
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const [today, latest] = await Promise.all([
+    prisma.inventoryMovement.findMany({ where: { occurredAt: { gte: startOfDay } }, select: { quantity: true } }),
+    prisma.inventoryMovement.findMany({ orderBy: { occurredAt: "desc" }, take: 12, include: { resource: { include: { unit: true } } } })
+  ]);
+  const alerts = resources.flatMap((resource): InventoryData["alerts"] => {
+    const stock = stocks.get(resource.id) ?? 0;
+    if (stock <= Number(resource.criticalStock)) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "critical", threshold: Number(resource.criticalStock) }];
+    if (stock <= Number(resource.minimumStock)) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "low", threshold: Number(resource.minimumStock) }];
+    return [];
+  }).sort((a, b) => (a.level === b.level ? 0 : a.level === "critical" ? -1 : 1));
+  return {
+    metrics: {
+      stockValue: sumBig(resources.map((resource) => BigInt(Math.max(0, Math.round(stocks.get(resource.id) ?? 0))) * (prices.get(resource.id) ?? 0n))),
+      movementsToday: today.length, inToday: today.filter((movement) => Number(movement.quantity) > 0).length, outToday: today.filter((movement) => Number(movement.quantity) < 0).length,
+      criticalCount: alerts.filter((alert) => alert.level === "critical").length, lowCount: alerts.filter((alert) => alert.level === "low").length
+    },
+    alerts,
+    movements: latest.map((movement) => ({ id: movement.id, at: formatDateTime(movement.occurredAt), resource: movement.resource.name, type: movementTypeLabels[movement.type] ?? movement.type, quantity: Number(movement.quantity), unit: movement.resource.unit.symbol, agent: shortName(users.get(movement.agentId) ?? "Système"), justification: movement.justification })),
+    resources: resources.map((resource) => ({ id: resource.id, name: resource.name, stock: stocks.get(resource.id) ?? 0, unit: resource.unit.symbol }))
+  };
+}
+
+export async function getCrafting(): Promise<CraftingData> {
+  if (demoMode) return demoCrafting;
+  const [stocks, recipes, executions] = await Promise.all([
+    stockMap(),
+    prisma.craftRecipe.findMany({ where: { status: "ACTIVE" }, include: { ingredients: true } }),
+    prisma.craftExecution.count()
+  ]);
+  const rows = recipes.map((recipe) => {
+    const simulation = simulateCraft(recipe.ingredients.map((ingredient) => ({ resourceId: ingredient.resourceId, quantity: Number(ingredient.quantity) })), [...stocks.entries()].map(([resourceId, quantity]) => ({ resourceId, quantity })));
+    const hours = Math.floor(recipe.durationRpMinutes / 60);
+    return {
+      id: recipe.id, code: recipe.code, name: recipe.name, category: recipe.category, minimumGrade: recipe.minimumGradeCode, cost: recipe.cost,
+      craftable: recipe.ingredients.length ? simulation.maximum : 0,
+      duration: hours > 0 ? `${hours} h${recipe.durationRpMinutes % 60 ? ` ${recipe.durationRpMinutes % 60}` : ""} RP` : `${recipe.durationRpMinutes} min RP`, version: recipe.version
+    };
+  });
+  return {
+    metrics: {
+      activeCount: recipes.length, categoryCount: new Set(recipes.map((recipe) => recipe.category)).size,
+      craftableCount: rows.filter((row) => row.craftable > 0).length, limitedCount: rows.filter((row) => row.craftable === 0).length, executions
+    },
+    recipes: rows
+  };
+}
+
+export async function getStatistics(): Promise<StatisticsData> {
+  if (demoMode) return demoStatistics;
+  const [service, aggregates, users] = await Promise.all([getRpService(), loadNinjaAggregates(), getUserNames()]);
+  const rpYear = service.currentRpYear();
+  const since = service.startOfRpYear(rpYear);
+  const all = aggregates.flatMap((ninja) => ninja.assessments);
+  const currentRows = all.filter((assessment) => assessment.rpYear === rpYear && !EXCLUDED.includes(assessment.status));
+  const expected = sumBig(currentRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions));
+  const collected = sumBig(currentRows.map((row) => row.paid));
+  const previousRows = all.filter((assessment) => assessment.rpYear === rpYear - 1 && !EXCLUDED.includes(assessment.status));
+  const previousExpected = sumBig(previousRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions));
+  const previousCollected = sumBig(previousRows.map((row) => row.paid));
+  const debtByGradeMap = new Map<string, bigint>();
+  for (const ninja of aggregates) if (ninja.debt > 0n) debtByGradeMap.set(ninja.gradeLabel, (debtByGradeMap.get(ninja.gradeLabel) ?? 0n) + ninja.debt);
+  const maxDebt = [...debtByGradeMap.values()].reduce((max, value) => (value > max ? value : max), 1n);
+  const [payments, transactions, points] = await Promise.all([
+    prisma.taxPayment.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, select: { recordedById: true, amount: true } }),
+    prisma.resourceTransaction.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, include: { items: { include: { resource: { include: { unit: true } } } } } }),
+    prisma.pointLedgerEntry.aggregate({ where: { createdAt: { gte: since }, points: { gt: 0 } }, _sum: { points: true } })
+  ]);
+  const agentStats = new Map<string, { payments: number; collected: bigint; transactions: number }>();
+  for (const payment of payments) { const entry = agentStats.get(payment.recordedById) ?? { payments: 0, collected: 0n, transactions: 0 }; entry.payments++; entry.collected += payment.amount; agentStats.set(payment.recordedById, entry); }
+  for (const transaction of transactions) { const entry = agentStats.get(transaction.agentId) ?? { payments: 0, collected: 0n, transactions: 0 }; entry.transactions++; agentStats.set(transaction.agentId, entry); }
+  const maxVolume = Math.max(1, ...[...agentStats.values()].map((entry) => entry.payments + entry.transactions));
+  const maxCollected = [...agentStats.values()].reduce((max, entry) => (entry.collected > max ? entry.collected : max), 1n);
+  const resourceTotals = new Map<string, { name: string; typeLabel: string; quantity: number; unit: string }>();
+  for (const transaction of transactions) for (const item of transaction.items) {
+    const key = `${item.resourceId}:${transaction.type}`;
+    const entry = resourceTotals.get(key) ?? { name: item.resource.name, typeLabel: transaction.type === "BUYBACK" ? "Rachat" : "Don", quantity: 0, unit: item.resource.unit.symbol };
+    entry.quantity += Number(item.quantity);
+    resourceTotals.set(key, entry);
+  }
+  return {
+    rpYear, expected, collected, remaining: expected > collected ? expected - collected : 0n,
+    rateBps: expected > 0n ? Number((collected * 10_000n) / expected) : 0,
+    previousDeltaBps: previousExpected > 0n && expected > 0n ? Number((collected * 10_000n) / expected) - Number((previousCollected * 10_000n) / previousExpected) : null,
+    debtByGrade: [...debtByGradeMap.entries()].map(([grade, amount]) => ({ grade, amount, percent: Number((amount * 100n) / maxDebt) })).sort((a, b) => (b.amount > a.amount ? 1 : -1)),
+    agents: [...agentStats.entries()].map(([userId, entry]) => {
+      const name = users.get(userId) ?? "Agent Kōeki";
+      const volumeScore = (entry.payments + entry.transactions) / maxVolume;
+      const amountScore = Number((entry.collected * 100n) / maxCollected) / 100;
+      return { name, initials: name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(), payments: entry.payments, collected: entry.collected, transactions: entry.transactions, score: Math.round(100 * (0.6 * volumeScore + 0.4 * amountScore)) };
+    }).sort((a, b) => b.score - a.score),
+    topResources: [...resourceTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5),
+    pointsDistributed: points._sum.points ?? 0
+  };
+}
+
+export async function getReports(session: SessionInfo, canReview: boolean): Promise<ReportsData> {
+  if (demoMode) return demoReports;
+  const reports = await prisma.agentReport.findMany({
+    where: canReview || session.roles.includes("AUDITOR") ? {} : { authorId: session.userId },
+    include: { author: { select: { name: true } } }, orderBy: { periodStart: "desc" }, take: 30
+  });
+  const statusLabelMap: Record<string, { label: string; badge: BadgeStatus }> = {
+    DRAFT: { label: "Brouillon", badge: "draft" }, SUBMITTED: { label: "Soumis", badge: "pending" }, REVIEWED: { label: "Examiné", badge: "warning" },
+    RETURNED: { label: "Renvoyé", badge: "overdue" }, APPROVED: { label: "Approuvé", badge: "paid" }
+  };
+  return {
+    metrics: {
+      toReview: reports.filter((report) => report.status === "SUBMITTED").length,
+      approved: reports.filter((report) => report.status === "APPROVED").length,
+      covered: reports.reduce((total, report) => total + report.paymentCount + report.donationCount + report.buybackCount, 0),
+      processed: sumBig(reports.map((report) => report.collectedAmount + report.processedValue)),
+      corrections: reports.reduce((total, report) => total + report.correctionCount, 0)
+    },
+    reports: reports.map((report) => {
+      const state = statusLabelMap[report.status] ?? { label: report.status, badge: "draft" as BadgeStatus };
+      return {
+        id: report.id, period: `${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`, agent: report.author.name ?? "Agent Kōeki",
+        payments: report.paymentCount, donationBuybacks: `${report.donationCount + report.buybackCount}`, processed: report.collectedAmount + report.processedValue,
+        statusLabel: state.label, badge: state.badge, canReview: canReview && report.status === "SUBMITTED"
+      };
+    })
+  };
+}
+
+export async function getAudit(page: number): Promise<AuditData> {
+  if (demoMode) return demoAudit;
+  const pageSize = 25;
+  const [total, rows] = await Promise.all([
+    prisma.auditLog.count(),
+    prisma.auditLog.findMany({ orderBy: { createdAt: "desc" }, skip: (Math.max(1, page) - 1) * pageSize, take: pageSize, include: { actor: { select: { name: true } } } })
+  ]);
+  return {
+    rows: rows.map((row) => ({ id: row.id, at: formatDateTime(row.createdAt), actor: row.actor?.name ?? "Système", action: row.action, entity: `${row.entityType}·${row.entityId.slice(0, 10)}`, summary: row.reason ?? "—" })),
+    total, page: Math.max(1, page), pageCount: Math.max(1, Math.ceil(total / pageSize))
+  };
+}
+
+export async function getAdmin(): Promise<AdminData> {
+  if (demoMode) return demoAdmin;
+  const [penaltySetting, approvalSetting, rpSetting, policy, invitations, users, roles, freeNinjas] = await Promise.all([
+    prisma.appSetting.findUnique({ where: { key: "latePenalty" } }),
+    prisma.appSetting.findUnique({ where: { key: "approvalThreshold" } }),
+    prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
+    prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
+    prisma.invitation.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { role: true, ninjaProfile: { select: { code: true } } } }),
+    prisma.user.findMany({ include: { roles: { include: { role: true } } }, orderBy: { createdAt: "asc" } }),
+    prisma.role.findMany(),
+    prisma.ninjaProfile.findMany({ where: { userId: null, status: "ACTIVE" }, orderBy: { code: "asc" }, select: { id: true, code: true, firstName: true, lastName: true } })
+  ]);
+  const penalty = penaltySetting?.value as { latePenaltyPercentBps?: number | null; latePenaltyBasis?: string; maxPenaltyApplications?: number; maxAssessmentDebt?: string; isPenaltyAutomationEnabled?: boolean; isRateValidated?: boolean } | undefined;
+  const approval = approvalSetting?.value as { amount?: string; isValidated?: boolean } | undefined;
+  const rp = rpSetting ? rpTimeConfigSchema.safeParse(rpSetting.value) : null;
+  const rpLabel = rp?.success ? `${Math.round(rp.data.realMillisecondsPerRpYear / 86_400_000)} jours réels = 1 année RP` : "1 semaine réelle = 1 année RP";
+  const invitationStatus = (invitation: { status: string; expiresAt: Date }): { label: string; badge: BadgeStatus } =>
+    invitation.status === "USED" ? { label: "Utilisée", badge: "paid" }
+    : invitation.status === "REVOKED" ? { label: "Révoquée", badge: "overdue" }
+    : invitation.expiresAt < new Date() ? { label: "Expirée", badge: "draft" } : { label: "En attente", badge: "pending" };
+  const roleOrder: string[] = ["SUPER_ADMIN", "KOEKI_MANAGER", "ECONOMIC_AGENT", "AUDITOR", "NINJA"];
+  return {
+    penalty: {
+      percentBps: penalty?.latePenaltyPercentBps ?? null, isValidated: penalty?.isRateValidated ?? false, isEnabled: penalty?.isPenaltyAutomationEnabled ?? false,
+      basis: penalty?.latePenaltyBasis ?? "ORIGINAL_TAX", maxApplications: penalty?.maxPenaltyApplications ?? 4, maxDebt: penalty?.maxAssessmentDebt ?? "32000"
+    },
+    approval: { amount: approval?.amount ?? "50000", isValidated: approval?.isValidated ?? false },
+    policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,
+    rpTimeLabel: rpLabel,
+    invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: state.label === "En attente" }; }),
+    users: users.map((user) => ({ id: user.id, name: user.name ?? user.email ?? user.id, roles: user.roles.map((entry) => roleLabels[entry.role.code as keyof typeof roleLabels] ?? entry.role.label).join(", ") || "Sans rôle", revoked: user.revokedAt !== null })),
+    roles: [...roles].sort((a, b) => roleOrder.indexOf(a.code) - roleOrder.indexOf(b.code)).map((role) => ({ id: role.id, code: role.code, label: roleLabels[role.code as keyof typeof roleLabels] ?? role.label })),
+    freeNinjas: freeNinjas.map((ninja) => ({ id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}` }))
+  };
+}

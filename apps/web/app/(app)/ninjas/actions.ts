@@ -1,0 +1,108 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import { prisma } from "@koeki/database";
+import { allocatePayment, ryo } from "@koeki/domain";
+import { buildDebtLines, getRpService, loadNinjaFiscal } from "@/lib/data";
+import { awardPoints, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, writeAudit } from "@/lib/finance";
+import { requireWriteAccess } from "@/lib/session";
+
+const createNinjaSchema = z.object({
+  firstName: z.string().trim().min(1, "Le prénom est obligatoire").max(80),
+  lastName: z.string().trim().min(1, "Le nom est obligatoire").max(80),
+  gradeId: z.string().min(1, "Le grade est obligatoire"),
+  alias: z.string().trim().max(80).optional().transform((value) => value || null),
+  clan: z.string().trim().max(80).optional().transform((value) => value || null),
+  notes: z.string().trim().max(2000).optional().transform((value) => value || null)
+});
+
+export async function createNinja(formData: FormData) {
+  const session = await requireWriteAccess("ninjas:write");
+  const parsed = createNinjaSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect(`/ninjas/new?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
+  const grade = await prisma.ninjaGrade.findUnique({ where: { id: parsed.data.gradeId } });
+  if (!grade) redirect("/ninjas/new?erreur=Grade%20inconnu");
+  let ninjaId: string | null = null;
+  for (let attempt = 0; attempt < 3 && !ninjaId; attempt++) {
+    const last = await prisma.ninjaProfile.findFirst({ orderBy: { code: "desc" }, select: { code: true } });
+    const next = `NIN-${String((last ? Number(last.code.slice(4)) : 0) + 1).padStart(6, "0")}`;
+    try {
+      ninjaId = await prisma.$transaction(async (tx) => {
+        const ninja = await tx.ninjaProfile.create({ data: { code: next, firstName: parsed.data.firstName, lastName: parsed.data.lastName, alias: parsed.data.alias, clan: parsed.data.clan, notes: parsed.data.notes, currentGradeId: grade.id } });
+        await tx.ninjaGradeHistory.create({ data: { ninjaId: ninja.id, gradeId: grade.id, effectiveFrom: new Date(), reason: "Création du dossier", changedById: session.userId } });
+        await writeAudit(tx, { actorId: session.userId, action: "NINJA_CREATED", entityType: "NinjaProfile", entityId: ninja.id, newValues: { code: next, firstName: parsed.data.firstName, lastName: parsed.data.lastName, grade: grade.code } });
+        return ninja.id;
+      });
+    } catch (error) { if (!isUniqueViolation(error)) throw error; }
+  }
+  if (!ninjaId) redirect("/ninjas/new?erreur=Conflit%20de%20code%2C%20r%C3%A9essayez");
+  redirect(`/ninjas/${ninjaId}`);
+}
+
+const paymentSchema = z.object({
+  ninjaId: z.string().min(1),
+  amount: z.coerce.number().int().positive("Le montant doit être un entier positif"),
+  method: z.enum(["ESPECES", "TRANSFERT", "AUTRE"]),
+  reference: z.string().trim().max(120).optional().transform((value) => value || null),
+  idempotencyKey: z.string().uuid()
+});
+
+export async function recordPayment(formData: FormData) {
+  const session = await requireWriteAccess("payments:write");
+  const parsed = paymentSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
+  const { ninjaId, amount, method, reference, idempotencyKey } = parsed.data;
+  const back = (message: string) => redirect(`/ninjas/${ninjaId}?erreur=${encodeURIComponent(message)}`);
+  const assessments = await loadNinjaFiscal(ninjaId);
+  if (!assessments) back("Ninja introuvable");
+  const debtLines = buildDebtLines(assessments!);
+  if (!debtLines.length) back("Aucune dette ouverte pour ce ninja");
+  const allocation = allocatePayment(ryo(amount), debtLines);
+  if (allocation.unallocated > 0n) back("Le montant dépasse la dette ouverte — réduisez le paiement");
+  const service = await getRpService();
+  const balanceBefore = debtLines.reduce((total, line) => total + line.remaining, 0n);
+  let receipt = "";
+  try {
+    receipt = await prisma.$transaction(async (tx) => {
+      const receiptNumber = await nextPaymentReceipt(tx);
+      const payment = await tx.taxPayment.create({ data: {
+        receiptNumber, ninjaId, recordedById: session.userId, amount: BigInt(amount), method, reference, status: "VALIDATED",
+        balanceBefore, balanceAfter: balanceBefore - BigInt(amount), idempotencyKey, validatedAt: new Date()
+      } });
+      await tx.taxPaymentAllocation.createMany({ data: allocation.allocations.map((entry, index) => ({ paymentId: payment.id, assessmentId: entry.assessmentId, amount: entry.amount, allocationOrder: index + 1 })) });
+      const touched = [...new Set(allocation.allocations.map((entry) => entry.assessmentId))];
+      const overdueTouched = assessments!.some((assessment) => touched.includes(assessment.id) && assessment.dueAt < new Date());
+      for (const assessmentId of touched) await refreshAssessmentStatus(tx, assessmentId, service.currentRpYear());
+      await awardPoints(tx, { ninjaId, eventType: "TAX_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
+      if (!overdueTouched) await awardPoints(tx, { ninjaId, eventType: "ON_TIME_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
+      await writeAudit(tx, { actorId: session.userId, action: "PAYMENT_RECORDED", entityType: "TaxPayment", entityId: payment.id, reason: `Paiement de ${amount} Ryō (${receiptNumber})`, newValues: { amount, method, allocations: allocation.allocations.map((entry) => ({ assessmentId: entry.assessmentId, amount: Number(entry.amount) })) } });
+      return receiptNumber;
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) back("Ce paiement a déjà été enregistré (double soumission détectée)");
+    throw error;
+  }
+  redirect(`/ninjas/${ninjaId}?recu=${encodeURIComponent(receipt)}`);
+}
+
+const gradeChangeSchema = z.object({ ninjaId: z.string().min(1), gradeId: z.string().min(1), reason: z.string().trim().min(3, "Un motif est obligatoire").max(300) });
+
+export async function changeGrade(formData: FormData) {
+  const session = await requireWriteAccess("ninjas:write");
+  const parsed = gradeChangeSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
+  const { ninjaId, gradeId, reason } = parsed.data;
+  const [ninja, grade] = await Promise.all([
+    prisma.ninjaProfile.findUnique({ where: { id: ninjaId }, include: { currentGrade: true } }),
+    prisma.ninjaGrade.findUnique({ where: { id: gradeId } })
+  ]);
+  if (!ninja || !grade) redirect(`/ninjas/${ninjaId}?erreur=Dossier%20ou%20grade%20introuvable`);
+  if (ninja!.currentGradeId !== gradeId) await prisma.$transaction(async (tx) => {
+    await tx.ninjaGradeHistory.updateMany({ where: { ninjaId, effectiveTo: null }, data: { effectiveTo: new Date() } });
+    await tx.ninjaGradeHistory.create({ data: { ninjaId, gradeId, effectiveFrom: new Date(), reason, changedById: session.userId } });
+    await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { currentGradeId: gradeId, version: { increment: 1 } } });
+    await writeAudit(tx, { actorId: session.userId, action: "GRADE_CHANGED", entityType: "NinjaProfile", entityId: ninjaId, reason, previousValues: { grade: ninja!.currentGrade.code }, newValues: { grade: grade!.code } });
+  });
+  redirect(`/ninjas/${ninjaId}`);
+}

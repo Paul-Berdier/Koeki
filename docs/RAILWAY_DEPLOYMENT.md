@@ -46,19 +46,29 @@ STORAGE_ACCESS_KEY=<clé Kōeki>
 STORAGE_SECRET_KEY=<secret Kōeki>
 ```
 
-`DEMO_MODE` doit être absent. Health check : `/api/health`. Commande de démarrage : `pnpm --filter @koeki/web start`.
+`DEMO_MODE` doit être absent. Health check : `/api/health` (répond `database: "ok"` quand PostgreSQL est joignable). Commande de démarrage (définie dans `railway.json`) : `pnpm db:deploy && pnpm --filter @koeki/web start` — les migrations s’appliquent automatiquement à chaque déploiement.
 
-## 4. Migrations et seed
+## 4. Amorçage de la base
 
-Après la première construction, ouvrir une commande ponctuelle sur `koeki-web` :
+Pour une production vierge, ouvrir une commande ponctuelle sur `koeki-web` :
 
 ```text
-pnpm db:generate
-pnpm db:deploy
-pnpm db:seed
+pnpm db:seed:bootstrap
 ```
 
-Le seed crée uniquement des données fictives. Pour une production vierge, exécuter le seed une fois puis supprimer les profils de démonstration avant ouverture, ou remplacer le seed par une commande de bootstrap administrateur contrôlée.
+Ce bootstrap crée uniquement les référentiels : rôles, grades, barème initial, catégories et unités de ressources, réglages (`latePenalty` désactivé, `rpTime`, seuil d’approbation non validé), règles de points inactives et un utilisateur système `systeme@koeki.local` (SUPER_ADMIN, non connectable — il sert d’auteur aux invitations générées par script). Aucun ninja fictif, aucune taxe, aucun stock.
+
+`pnpm db:seed` reste réservé au développement local : il crée les données fictives de démonstration.
+
+## 4 bis. Première invitation
+
+Toujours dans une commande ponctuelle sur `koeki-web` :
+
+```text
+pnpm db:invite
+```
+
+Le script affiche une URL `APP_URL/invite/<jeton>` (rôle `SUPER_ADMIN` par défaut, 7 jours). Variables optionnelles : `INVITE_ROLE` (`KOEKI_MANAGER`, `ECONOMIC_AGENT`, `NINJA`, `AUDITOR`) et `INVITE_EXPIRES_DAYS`. Les invitations suivantes se génèrent depuis la page Administration de l’application.
 
 ## 5. Discord
 

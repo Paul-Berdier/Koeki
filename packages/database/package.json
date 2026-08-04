@@ -9,6 +9,7 @@
     "migrate": "prisma migrate dev",
     "deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
+    "seed:bootstrap": "tsx prisma/bootstrap.ts",
     "invite": "tsx scripts/create-invitation.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json"

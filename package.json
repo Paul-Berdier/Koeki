@@ -16,6 +16,8 @@
     "db:migrate": "pnpm --filter @koeki/database migrate",
     "db:deploy": "pnpm --filter @koeki/database deploy",
     "db:seed": "pnpm --filter @koeki/database seed",
+    "db:seed:bootstrap": "pnpm --filter @koeki/database seed:bootstrap",
+    "db:invite": "pnpm --filter @koeki/database invite",
     "worker": "pnpm --filter @koeki/worker start"
   },
   "devDependencies": {

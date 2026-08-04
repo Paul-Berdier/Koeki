@@ -1,5 +1,5 @@
 export type PointMode = "FIXED" | "PER_AMOUNT" | "PERCENTAGE" | "MULTIPLIER" | "MANUAL";
-export interface PointRuleInput { mode: PointMode; fixedPoints?: number; amount?: bigint; amountStep?: bigint; pointsPerStep?: number; percentageBps?: number; multiplier?: number; manualPoints?: number; min?: number; max?: number; }
+export interface PointRuleInput { mode: PointMode; fixedPoints?: number | undefined; amount?: bigint | undefined; amountStep?: bigint | undefined; pointsPerStep?: number | undefined; percentageBps?: number | undefined; multiplier?: number | undefined; manualPoints?: number | undefined; min?: number | undefined; max?: number | undefined; }
 export function calculatePoints(rule: PointRuleInput): number {
   let points = 0;
   if (rule.mode === "FIXED") points = rule.fixedPoints ?? 0;

@@ -41,11 +41,11 @@ export function MetricCard({ label, value, detail, tone = "neutral" }: { label: 
   return <article className={`metric-card tone-${tone}`}><div className="metric-label">{label}</div><div className="metric-value">{value}</div><p>{detail}</p></article>;
 }
 
-export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description: string; actions?: ReactNode }) {
+export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string | undefined; title: string; description: string; actions?: ReactNode }) {
   return <header className="page-header"><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1><p>{description}</p></div>{actions && <div className="page-actions">{actions}</div>}</header>;
 }
 
-export function SectionHeader({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
+export function SectionHeader({ title, description, action }: { title: string; description?: string | undefined; action?: ReactNode }) {
   return <div className="section-header"><div><h2>{title}</h2>{description && <p>{description}</p>}</div>{action}</div>;
 }
 
