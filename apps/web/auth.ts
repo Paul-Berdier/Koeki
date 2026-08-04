@@ -8,7 +8,7 @@ import { prisma } from "@koeki/database";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database", maxAge: 60 * 60 * 12, updateAge: 60 * 15 },
-  providers: [Discord({ authorization: { params: { scope: "identify guilds" } } })],
+  providers: [Discord({ clientId: process.env.DISCORD_CLIENT_ID ?? "", clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "", authorization: { params: { scope: "identify guilds" } } })],
   pages: { error: "/access-denied" },
   cookies: { sessionToken: { name: "__Secure-koeki.session-token", options: { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV === "production" } } },
   callbacks: {
