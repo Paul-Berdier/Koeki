@@ -1,5 +1,5 @@
 import type {
-  AdminData, AuditData, CraftingData, DashboardData, InventoryData, NinjaDetailData, NinjaRow, NinjasData,
+  AdminData, AuditData, CraftingData, DashboardData, EventsData, InventoryData, NinjaDetailData, NinjaRow, NinjasData,
   RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData
 } from "./types";
 
@@ -98,6 +98,14 @@ export const demoStatistics: StatisticsData = {
   ],
   topResources: [{ name: "Minerai de cuivre", typeLabel: "Rachat", quantity: 64, unit: "kg" }, { name: "Herbe du désert", typeLabel: "Don", quantity: 31, unit: "botte" }],
   pointsDistributed: 12480
+};
+
+export const demoEvents: EventsData = {
+  metrics: { open: 1, finished: 2, totalPrize: 150000n, participants: 131 },
+  events: [
+    { id: "ev1", name: "Tournoi Lavande", kindLabel: "Tournoi", statusLabel: "Terminé", badge: "paid", period: "20 — 29 juil.", resourceFocus: "Lavande", prize: 50000n, rewardPoints: 500, participants: 15, winner: "Doma Nua", isOpen: false },
+    { id: "ev2", name: "Tournoi récolte #1", kindLabel: "Tournoi", statusLabel: "Terminé", badge: "paid", period: "04 — 13 juil.", resourceFocus: "Toutes (hors Ryō)", prize: 100000n, rewardPoints: 1000, participants: 116, winner: "Kagemoto Shuni", isOpen: false }
+  ]
 };
 
 export const demoReports: ReportsData = {

@@ -54,6 +54,9 @@ export interface StatisticsData {
   pointsDistributed: number;
 }
 
+export interface EventRow { id: string; name: string; kindLabel: string; statusLabel: string; badge: BadgeStatus; period: string; resourceFocus: string | null; prize: bigint; rewardPoints: number; participants: number; winner: string | null; isOpen: boolean }
+export interface EventsData { metrics: { open: number; finished: number; totalPrize: bigint; participants: number }; events: EventRow[] }
+
 export interface ReportRow { id: string; period: string; agent: string; payments: number; donationBuybacks: string; processed: bigint; statusLabel: string; badge: BadgeStatus; canReview: boolean }
 export interface ReportsData { metrics: { toReview: number; approved: number; covered: number; processed: bigint; corrections: number }; reports: ReportRow[] }
 

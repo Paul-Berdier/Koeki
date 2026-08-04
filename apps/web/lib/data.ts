@@ -1,10 +1,10 @@
 import { cache } from "react";
 import { prisma, type TaxAssessmentStatus } from "@koeki/database";
 import { allocatePayment, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo, simulateCraft, type DebtLine } from "@koeki/domain";
-import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
+import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, type BadgeStatus } from "./format";
 import { demoMode, roleLabels, type SessionInfo } from "./session";
-import type { AdminData, AuditData, CraftingData, DashboardData, InventoryData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
+import type { AdminData, AuditData, CraftingData, DashboardData, EventsData, InventoryData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
 
 const sumBig = (values: bigint[]) => values.reduce((total, value) => total + value, 0n);
 const EXCLUDED: TaxAssessmentStatus[] = ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED", "DRAFT"];
@@ -45,8 +45,9 @@ function computeAssessment(assessment: {
   const paid = sumBig(assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").map((entry) => entry.amount));
   const gross = assessment.originalAmount + penalties + adjustments;
   const remaining = EXCLUDED.includes(assessment.status) ? 0n : gross - exemptions - paid > 0n ? gross - exemptions - paid : 0n;
+  // A zero-amount assessment stored as OVERDUE is legacy history ("semaine impayée" of the old register): keep it visible as late.
   const status: TaxAssessmentStatus = EXCLUDED.includes(assessment.status) ? assessment.status
-    : remaining === 0n ? "PAID"
+    : remaining === 0n ? (assessment.status === "OVERDUE" && paid === 0n && gross - exemptions <= 0n ? "OVERDUE" : "PAID")
     : assessment.dueAt < now ? "OVERDUE"
     : paid > 0n ? "PARTIALLY_PAID"
     : assessment.taxYear.rpYear > currentRpYear ? "UPCOMING" : "DUE";
@@ -384,6 +385,34 @@ export async function getStatistics(): Promise<StatisticsData> {
     }).sort((a, b) => b.score - a.score),
     topResources: [...resourceTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5),
     pointsDistributed: points._sum.points ?? 0
+  };
+}
+
+export const eventKindLabels: Record<string, string> = { TOURNOI: "Tournoi", THEATRE: "Théâtre", JEU: "Jeu", AUTRE: "Autre" };
+
+export async function getEvents(): Promise<EventsData> {
+  if (demoMode) return demoEvents;
+  const events = await prisma.event.findMany({ orderBy: { startsAt: "desc" }, take: 30, include: { winner: { select: { firstName: true, lastName: true } } } });
+  const stateMap: Record<string, { label: string; badge: BadgeStatus }> = {
+    PLANNED: { label: "À venir", badge: "pending" }, OPEN: { label: "En cours", badge: "due" },
+    FINISHED: { label: "Terminé", badge: "paid" }, CANCELLED: { label: "Annulé", badge: "draft" }
+  };
+  return {
+    metrics: {
+      open: events.filter((event) => event.status === "OPEN" || event.status === "PLANNED").length,
+      finished: events.filter((event) => event.status === "FINISHED").length,
+      totalPrize: sumBig(events.filter((event) => event.status !== "CANCELLED").map((event) => event.prize)),
+      participants: events.reduce((total, event) => total + event.participantCount, 0)
+    },
+    events: events.map((event) => {
+      const state = stateMap[event.status] ?? { label: event.status, badge: "draft" as BadgeStatus };
+      return {
+        id: event.id, name: event.name, kindLabel: eventKindLabels[event.kind] ?? event.kind, statusLabel: state.label, badge: state.badge,
+        period: `${formatDate(event.startsAt)}${event.endsAt ? ` — ${formatDate(event.endsAt)}` : ""}`, resourceFocus: event.resourceFocus,
+        prize: event.prize, rewardPoints: event.rewardPoints, participants: event.participantCount,
+        winner: event.winner ? `${event.winner.firstName} ${event.winner.lastName}`.trim() : null, isOpen: event.status === "OPEN" || event.status === "PLANNED"
+      };
+    })
   };
 }
 

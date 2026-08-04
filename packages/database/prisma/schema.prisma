@@ -124,6 +124,13 @@ enum NotificationStatus {
   ARCHIVED
 }
 
+enum EventStatus {
+  PLANNED
+  OPEN
+  FINISHED
+  CANCELLED
+}
+
 model User {
   id                 String         @id @default(cuid())
   email              String?        @unique
@@ -258,6 +265,7 @@ model NinjaProfile {
   payments             TaxPayment[]
   pointEntries         PointLedgerEntry[]
   resourceTransactions ResourceTransaction[]
+  eventsWon            Event[]
 
   @@index([lastName, firstName])
   @@index([currentGradeId, status])
@@ -594,6 +602,26 @@ model CraftExecution {
   createdAt      DateTime            @default(now())
   recipe         CraftRecipe         @relation(fields: [recipeId], references: [id])
   movements      InventoryMovement[]
+}
+
+model Event {
+  id               String        @id @default(cuid())
+  name             String
+  kind             String
+  description      String?       @db.Text
+  resourceFocus    String?
+  startsAt         DateTime
+  endsAt           DateTime?
+  status           EventStatus   @default(OPEN)
+  prize            BigInt        @default(0)
+  rewardPoints     Int           @default(0)
+  participantCount Int           @default(0)
+  winnerId         String?
+  createdById      String?
+  createdAt        DateTime      @default(now())
+  winner           NinjaProfile? @relation(fields: [winnerId], references: [id])
+
+  @@index([status, startsAt])
 }
 
 model AgentReport {

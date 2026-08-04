@@ -13,8 +13,9 @@ async function generateTaxes() {
   if (!policy) throw new Error("No active tax policy");
   const ninjas = await prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
   const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
-  // Catch-up: if a weekly run was missed, backfill every year since the first one ever generated.
-  const earliest = await prisma.taxYear.findFirst({ orderBy: { rpYear: "asc" }, select: { rpYear: true } });
+  // Catch-up: if a weekly run was missed, backfill every year since the first one the worker
+  // generated (imported legacy years have generatedAt null and are ignored).
+  const earliest = await prisma.taxYear.findFirst({ where: { generatedAt: { not: null } }, orderBy: { rpYear: "asc" }, select: { rpYear: true } });
   const firstYear = Math.max(earliest?.rpYear ?? rpYear, rpYear - 12);
   let created = 0;
   const years: number[] = [];
@@ -51,7 +52,7 @@ async function applyPenalties() {
 const assessmentStatusLabels: Record<string, string> = { DUE: "à payer", OVERDUE: "en retard", PARTIALLY_PAID: "partiellement payée" };
 
 async function sendReminders() {
-  const swept = await prisma.taxAssessment.updateMany({ where: { dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE"] } }, data: { status: "OVERDUE" } });
+  const swept = await prisma.taxAssessment.updateMany({ where: { dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE"] }, originalAmount: { gt: 0 } }, data: { status: "OVERDUE" } });
   const assessments = await prisma.taxAssessment.findMany({ where: { status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } }, include: { ninja: { select: { userId: true, firstName: true, lastName: true } }, taxYear: { select: { rpYear: true } } } });
   let sent = 0;
   for (const assessment of assessments) {

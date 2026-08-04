@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3, BookOpenText, Boxes, FileText, HandCoins,
-  LayoutDashboard, LogOut, Menu, PackageSearch, ScrollText, Settings, ShieldCheck, Users, X
+  LayoutDashboard, LogOut, Menu, PackageSearch, ScrollText, Settings, ShieldCheck, Trophy, Users, X
 } from "lucide-react";
 import type { ShellInfo } from "@/lib/types";
 
@@ -16,6 +16,7 @@ const navigation = [
   { href: "/resources", label: "Ressources", icon: PackageSearch },
   { href: "/inventory", label: "Inventaire", icon: Boxes },
   { href: "/crafting", label: "Artisanat", icon: BookOpenText },
+  { href: "/events", label: "Événements", icon: Trophy },
   { href: "/statistics", label: "Statistiques", icon: BarChart3 },
   { href: "/reports", label: "Rapports", icon: FileText },
   { href: "/audit", label: "Registre d’audit", icon: ScrollText },
