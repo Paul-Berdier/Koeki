@@ -3,15 +3,18 @@ import { AlertTriangle, ArrowRight, Boxes, CircleCheck, Clock3, Plus, ReceiptTex
 import { EmptyState, MetricCard, MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getDashboard } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
-import { requireSession } from "@/lib/session";
+import { demoMode, requireSession } from "@/lib/session";
+import { prisma } from "@koeki/database";
 
 export default async function DashboardPage() {
-  await requireSession();
+  const session = await requireSession();
+  const ownProfile = demoMode ? { id: "demo" } : await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
   const data = await getDashboard();
   const rate = formatPercentBps(data.recoveryRateBps);
   return <div className="page-wrap">
     <PageHeader eyebrow={`Situation du village · année RP ${data.rpYear}`} title="Salle des comptes" description="Une lecture immédiate des finances, des échéances et des opérations à traiter."
       actions={<><Link className="button button-ghost" href="/reports"><ReceiptText size={17} /> Rapprocher la journée</Link><Link className="button button-primary" href="/ninjas"><Plus size={17} /> Enregistrer</Link></>} />
+    {!ownProfile && <p className="notice" role="status">Bienvenue à la Kōeki ! Vous n’avez pas encore de fiche ninja : <Link href="/profil" className="text-link">enregistrez votre identité de shinobi</Link> pour lier vos taxes, points et opérations à votre compte.</p>}
 
     <section className="metric-grid" aria-label="Indicateurs principaux">
       <MetricCard label="Recettes fiscales" value={<MoneyDisplay amount={data.collected} />} detail={`${rate} des taxes attendues`} tone="good" />

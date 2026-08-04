@@ -101,7 +101,7 @@ export async function getShellInfo(session: SessionInfo | null): Promise<ShellIn
   const year = service.currentRpYear(now);
   const firstRole = session?.roles[0];
   return {
-    rpYear: year, rpDayLabel: `Jour fiscal ${Math.min(7, Math.floor(service.progress(now) * 7) + 1)} sur 7`, rpProgress: service.progress(now),
+    rpYear: year, rpDayLabel: `Mois RP ${Math.min(7, Math.floor(service.progress(now) * 7) + 1)} sur 7`, rpProgress: service.progress(now),
     overdueCount: aggregates.filter((ninja) => ninja.badge === "overdue").length,
     userName: session?.name ?? "Session inconnue", userRoleLabel: firstRole ? roleLabels[firstRole] : "Sans rôle"
   };

@@ -3,7 +3,7 @@ import type {
   RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData
 } from "./types";
 
-export const demoShell: ShellInfo = { rpYear: 48, rpDayLabel: "Jour fiscal 3 sur 7", rpProgress: 0.43, overdueCount: 12, userName: "Sonemi Hakumei", userRoleLabel: "Responsable Kōeki" };
+export const demoShell: ShellInfo = { rpYear: 48, rpDayLabel: "Mois RP 3 sur 7", rpProgress: 0.43, overdueCount: 12, userName: "Sonemi Hakumei", userRoleLabel: "Responsable Kōeki" };
 
 const ninjaRows: NinjaRow[] = [
   { id: "demo-41", code: "NIN-000041", name: "Aoki Hoki", alias: "La Cigale", grade: "Chunin", points: 2440, debt: 0n, badge: "paid", statusLabel: "À jour", agent: "Sonemi H.", due: "—" },

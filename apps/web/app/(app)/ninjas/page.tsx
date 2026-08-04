@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Filter, Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { EmptyState, GradeBadge, MoneyDisplay, NinjaAvatar, PageHeader, PointDisplay, StatusBadge } from "@koeki/ui";
+import { NinjaFilters } from "@/components/ninja-filters";
 import { getNinjas } from "@/lib/data";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { prisma } from "@koeki/database";
@@ -23,14 +24,7 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
   return <div className="page-wrap">
     <PageHeader eyebrow="Registre administratif" title="Ninjas" description={data.summaryLine}
       actions={canWrite ? <Link className="button button-primary" href="/ninjas/new"><Plus size={17} /> Nouveau ninja</Link> : undefined} />
-    <form method="get" className="filter-bar" aria-label="Recherche et filtres">
-      <label className="search-field"><Search size={18} aria-hidden="true" /><span className="sr-only">Rechercher un ninja</span><input type="search" name="q" defaultValue={q} placeholder="Nom, prénom, code ou pseudonyme…" /></label>
-      <label className="sr-only" htmlFor="filter-grade">Grade</label>
-      <select id="filter-grade" name="grade" className="button button-ghost" defaultValue={grade ?? ""}><option value="">Tous les grades</option>{data.grades.map((entry) => <option key={entry.code} value={entry.code}>{entry.label}</option>)}</select>
-      <label className="sr-only" htmlFor="filter-statut">Situation fiscale</label>
-      <select id="filter-statut" name="statut" className="button button-ghost" defaultValue={statut ?? ""}><option value="">Toutes situations</option><option value="paid">À jour</option><option value="due">À payer</option><option value="warning">Échéance proche</option><option value="overdue">En retard</option></select>
-      <button className="button button-ghost" type="submit"><Filter size={17} /> Filtrer</button>
-    </form>
+    <NinjaFilters grades={data.grades} />
 
     <section className="panel ninja-table-panel">
       {data.ninjas.length ? <div className="table-scroll"><table className="ninja-table"><thead><tr><th>Ninja</th><th>Grade</th><th>Situation</th><th>Dette</th><th>Points</th><th>Agent</th><th>Échéance</th></tr></thead><tbody>{data.ninjas.map((ninja) => <tr key={ninja.code}><td><Link href={`/ninjas/${ninja.id}`} className="person-cell"><NinjaAvatar name={ninja.name} /><span><strong>{ninja.name}</strong><small>{ninja.code}{ninja.alias && ` · ${ninja.alias}`}</small></span></Link></td><td><GradeBadge>{ninja.grade}</GradeBadge></td><td><StatusBadge status={ninja.badge}>{ninja.statusLabel}</StatusBadge></td><td className={ninja.debt > 0n ? "negative" : "muted"}>{ninja.debt ? <MoneyDisplay amount={ninja.debt} /> : "Aucune"}</td><td><PointDisplay points={ninja.points} /></td><td>{ninja.agent}</td><td>{ninja.due}</td></tr>)}</tbody></table></div>

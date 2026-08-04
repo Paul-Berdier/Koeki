@@ -30,7 +30,13 @@ async function main() {
   for (const [code, label] of categorySeed) await prisma.resourceCategory.upsert({ where: { code }, create: { code, label }, update: { label } });
   for (const [code, label, symbol] of unitSeed) await prisma.resourceUnit.upsert({ where: { code }, create: { code, label, symbol }, update: { label, symbol } });
   await prisma.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value: { latePenaltyPercentBps: null, latePenaltyBasis: "ORIGINAL_TAX", latePenaltyFrequencyRpYears: 1, maxPenaltyApplications: 4, maxAssessmentDebt: "32000", isPenaltyAutomationEnabled: false, isRateValidated: false } }, update: {} });
-  await prisma.appSetting.upsert({ where: { key: "rpTime" }, create: { key: "rpTime", value: { realAnchorAt: "2026-01-05T00:00:00.000Z", rpAnchorYear: 20, realMillisecondsPerRpYear: 604800000, timezone: "Europe/Paris", fiscalYearStartOffsetMs: 0, dueDelayMs: 259200000 } }, update: {} });
+  // Cadence RP : 1 jour réel = 1 mois RP, 1 semaine réelle = 1 année RP. L'année bascule le
+  // dimanche à minuit (Europe/Paris) — c'est aussi l'échéance de paiement (dueDelay = année entière).
+  const sundayMidnightConfig = { realAnchorAt: "2026-01-04T23:00:00.000Z", rpAnchorYear: 20, realMillisecondsPerRpYear: 604800000, timezone: "Europe/Paris", fiscalYearStartOffsetMs: 0, dueDelayMs: 604800000 };
+  const currentRp = await prisma.appSetting.findUnique({ where: { key: "rpTime" } });
+  const legacyRp = currentRp?.value as { realAnchorAt?: string; dueDelayMs?: number } | undefined;
+  if (!currentRp) await prisma.appSetting.create({ data: { key: "rpTime", value: sundayMidnightConfig } });
+  else if (legacyRp?.realAnchorAt === "2026-01-05T00:00:00.000Z" && legacyRp?.dueDelayMs === 259200000) await prisma.appSetting.update({ where: { key: "rpTime" }, data: { value: sundayMidnightConfig, version: { increment: 1 } } });
   await prisma.appSetting.upsert({ where: { key: "approvalThreshold" }, create: { key: "approvalThreshold", value: { amount: "50000", isValidated: false } }, update: {} });
   // Inactive templates: managers must review and activate point rules explicitly — no silent game-balance defaults.
   const pointRuleSeed = [

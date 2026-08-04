@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, KeyRound, Search } from "lucide-react";
+import { ArrowLeft, KeyRound, Pencil, Search } from "lucide-react";
 import { EmptyState, GradeBadge, MetricCard, MoneyDisplay, NinjaAvatar, PageHeader, PointDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getNinjaDetail } from "@/lib/data";
 import { lateYearsLabel } from "@/lib/format";
@@ -25,7 +25,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const error = typeof query.erreur === "string" ? query.erreur : null;
   return <div className="page-wrap">
     <PageHeader eyebrow={`Dossier ${data.code}`} title={data.name} description={`${data.grade.label}${data.alias ? ` · « ${data.alias} »` : ""} · ${data.statusLabel}`}
-      actions={<Link className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link>} />
+      actions={<>{canWrite && <Link className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</Link>}<Link className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
     {receipt && <p className="notice" role="status">Paiement validé — reçu <code>{receipt}</code> enregistré et audité.</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
 
@@ -62,7 +62,11 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
             {data.notes && <div style={{ gridColumn: "1/-1" }}><span>Notes internes</span>{data.notes}</div>}
           </div>
         </section>
-        {canPay && <section className="panel">
+        {canPay && data.totalDebt === 0n && <section className="panel">
+          <SectionHeader title="Encaisser des Ryōs" description="Paiement de taxes" />
+          <p className="notice" style={{ margin: 18 }}>Aucune taxe ouverte pour ce dossier : la prochaine taxe annuelle sera générée au passage de l’année RP (dimanche minuit). Les dons et rachats de ressources s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>
+        </section>}
+        {canPay && data.totalDebt > 0n && <section className="panel">
           <SectionHeader title="Enregistrer un paiement" description="Allocation recalculée côté serveur" />
           <form method="get" action={`/ninjas/${data.id}`} className="form-grid" style={{ paddingBottom: 0 }}>
             <label>Montant reçu (Ryō)<input type="number" name="montant" min={1} step={1} required defaultValue={data.preview ? String(data.preview.amount) : undefined} /></label>
