@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { connection } from "next/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,6 +10,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { colorScheme: "dark", themeColor: "#17140f" };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // A per-request CSP nonce can only be attached while rendering dynamically.
+  await connection();
   return <html lang="fr"><body>{children}</body></html>;
 }
