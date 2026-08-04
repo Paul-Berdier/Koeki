@@ -1,4 +1,5 @@
-import { CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { EmptyState, MoneyDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
 import { ModulePage } from "@/components/module-page";
 import { getResources } from "@/lib/data";
@@ -31,7 +32,8 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
     </section>}
   </aside> : undefined;
   return <ModulePage eyebrow="Catalogue et tarification" title="Ressources" description="Prix publics historisés, unités contrôlées et disponibilité du village."
-    actionLabel={canTransact ? "Nouvelle transaction" : undefined} actionHref="/resources/transaction" registerDescription="Catalogue et prix actifs" aside={aside} metrics={[
+    actionLabel={canTransact ? "Nouvelle transaction" : undefined} actionHref="/resources/transaction" registerDescription="Catalogue et prix actifs"
+    registerAction={canManage ? <Link className="text-link" href="/resources/new">Nouvelle ressource <ArrowRight size={15} /></Link> : undefined} aside={aside} metrics={[
     { label: "Rachats ce cycle", value: <MoneyDisplay amount={data.metrics.buybackTotal} />, detail: `${data.metrics.buybackCount} opération${data.metrics.buybackCount > 1 ? "s" : ""}` },
     { label: "Dons reçus", value: <MoneyDisplay amount={data.metrics.donationValue} />, detail: `${data.metrics.donationCount} don${data.metrics.donationCount > 1 ? "s" : ""} · valeur estimée`, tone: "good" },
     { label: "Validations en attente", value: String(data.pendingApprovals.length), detail: data.pendingApprovals.length ? "Rachats au-dessus du seuil" : "Aucun rachat bloqué", tone: data.pendingApprovals.length ? "warn" : "neutral" },
@@ -39,7 +41,7 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
   ]}>
     {receipt && <p className="notice" role="status" style={{ margin: "12px 20px 0" }}>Transaction validée — reçu <code>{receipt}</code>.</p>}
     {error && <p className="notice error" role="alert" style={{ margin: "12px 20px 0" }}>{error}</p>}
-    {data.resources.length ? <div className="table-scroll"><table><thead><tr><th>Code</th><th>Ressource</th><th>Catégorie</th><th>Prix unitaire</th><th>Stock</th><th>Disponibilité</th></tr></thead><tbody>{data.resources.map((resource) => <tr key={resource.id}><td><code>{resource.code}</code></td><td><strong>{resource.name}</strong></td><td>{resource.category}</td><td>{resource.price > 0n ? <MoneyDisplay amount={resource.price} /> : <span className="muted">Non défini</span>}</td><td>{resource.stock.toLocaleString("fr-FR")} {resource.unit}</td><td><StatusBadge status={resource.badge}>{resource.stateLabel}</StatusBadge></td></tr>)}</tbody></table></div>
-      : <EmptyState title="Catalogue vide" description="Créez les ressources via le seed d’amorçage ou l’administration." />}
+    {data.resources.length ? <div className="table-scroll"><table><thead><tr><th>Code</th><th>Ressource</th><th>Catégorie</th><th>Prix unitaire</th><th>Stock</th><th>Disponibilité</th></tr></thead><tbody>{data.resources.map((resource) => <tr key={resource.id}><td><code>{resource.code}</code></td><td>{canManage ? <Link href={`/resources/${resource.id}/modifier`}><strong>{resource.name}</strong></Link> : <strong>{resource.name}</strong>}</td><td>{resource.category}</td><td>{resource.price > 0n ? <MoneyDisplay amount={resource.price} /> : <span className="muted">Non défini</span>}</td><td>{resource.stock.toLocaleString("fr-FR")} {resource.unit}</td><td><StatusBadge status={resource.badge}>{resource.stateLabel}</StatusBadge></td></tr>)}</tbody></table></div>
+      : <EmptyState title="Catalogue vide" description="Créez votre première ressource avec le lien « Nouvelle ressource » ci-dessus." />}
   </ModulePage>;
 }

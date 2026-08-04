@@ -14,7 +14,8 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const query = await searchParams;
   if (!demoMode && session.roles.length === 1 && session.roles[0] === "NINJA") {
     const own = await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
-    if (own?.id !== id) redirect("/access-denied");
+    if (!own) redirect("/profil");
+    if (own!.id !== id) redirect("/access-denied");
   }
   const canPay = hasPermission(session, "payments:write");
   const canWrite = hasPermission(session, "ninjas:write");

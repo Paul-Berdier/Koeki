@@ -34,7 +34,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <SectionHeader title="Générer une invitation" description="Jeton à usage unique, seul le hash est stocké" />
         {canWrite ? <form action={createInvitation} className="form-grid">
           <div className="form-row">
-            <label>Rôle<select name="roleId" required>{data.roles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>
+            <label>Rôle<select name="roleId" required defaultValue={data.roles.find((role) => role.code === "ECONOMIC_AGENT")?.id}>{data.roles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>
             <label>Expiration<select name="expiresDays" defaultValue="7"><option value="3">3 jours</option><option value="7">7 jours</option><option value="14">14 jours</option><option value="30">30 jours</option></select></label>
           </div>
           <label>Rattacher à un ninja (facultatif)<select name="ninjaProfileId" defaultValue=""><option value="">Aucun</option>{data.freeNinjas.map((ninja) => <option key={ninja.id} value={ninja.id}>{ninja.code} · {ninja.name}</option>)}</select></label>
@@ -53,7 +53,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <SectionHeader title="Majorations de retard" description="Aucune automatisation sans taux validé" />
           {canWrite ? <form action={updatePenaltySettings} className="form-grid">
             <div className="form-row">
-              <label>Taux (points de base, 1000 = 10 %)<input type="number" name="percentBps" min={1} max={10000} defaultValue={data.penalty.percentBps ?? ""} placeholder="Non défini" /></label>
+              <label>Taux de majoration (% par semaine de retard)<input type="number" name="percent" min={0.01} max={100} step={0.01} defaultValue={data.penalty.percentBps === null ? "" : data.penalty.percentBps / 100} placeholder="Ex. 10" /></label>
               <label>Base de calcul<select name="basis" defaultValue={data.penalty.basis}><option value="ORIGINAL_TAX">Taxe originale</option><option value="REMAINING_PRINCIPAL">Principal restant</option><option value="CURRENT_DEBT">Dette actuelle</option></select></label>
             </div>
             <div className="form-row">

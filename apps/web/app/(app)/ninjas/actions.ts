@@ -104,7 +104,7 @@ export async function deleteNinja(formData: FormData) {
   const hasHistory = counts.assessments + counts.payments + counts.pointEntries + counts.resourceTransactions + counts.invitations > 0;
   await prisma.$transaction(async (tx) => {
     if (hasHistory) {
-      await tx.ninjaProfile.update({ where: { id: ninjaId as string }, data: { status: "ARCHIVED", version: { increment: 1 } } });
+      await tx.ninjaProfile.update({ where: { id: ninjaId as string }, data: { status: "ARCHIVED", userId: null, version: { increment: 1 } } });
       await writeAudit(tx, { actorId: session.userId, action: "NINJA_ARCHIVED", entityType: "NinjaProfile", entityId: ninjaId as string, reason: "Historique financier présent : archivage au lieu d’une suppression" });
     } else {
       await tx.ninjaGradeHistory.deleteMany({ where: { ninjaId: ninjaId as string } });

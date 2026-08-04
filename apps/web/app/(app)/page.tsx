@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AlertTriangle, ArrowRight, Boxes, CircleCheck, Clock3, Plus, ReceiptText } from "lucide-react";
 import { EmptyState, MetricCard, MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getDashboard } from "@/lib/data";
@@ -9,6 +10,7 @@ import { prisma } from "@koeki/database";
 export default async function DashboardPage() {
   const session = await requireSession();
   const ownProfile = demoMode ? { id: "demo" } : await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
+  if (!demoMode && session.roles.length === 1 && session.roles[0] === "NINJA") redirect(ownProfile ? `/ninjas/${ownProfile.id}` : "/profil");
   const data = await getDashboard();
   const rate = formatPercentBps(data.recoveryRateBps);
   return <div className="page-wrap">

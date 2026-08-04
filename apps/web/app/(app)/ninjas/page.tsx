@@ -11,7 +11,7 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
   const session = await requireSession();
   if (!demoMode && session.roles.length === 1 && session.roles[0] === "NINJA") {
     const own = await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
-    redirect(own ? `/ninjas/${own.id}` : "/access-denied");
+    redirect(own ? `/ninjas/${own.id}` : "/profil");
   }
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : undefined;

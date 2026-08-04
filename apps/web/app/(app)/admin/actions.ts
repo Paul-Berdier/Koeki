@@ -64,7 +64,8 @@ export async function revokeInvitation(formData: FormData) {
 }
 
 const penaltySchema = z.object({
-  percentBps: z.union([z.literal(""), z.coerce.number().int().min(1).max(10_000)]).transform((value) => (value === "" ? null : value)),
+  // Saisi en pourcentage (ex. 10 ou 12,5), stocké en points de base pour un calcul entier exact.
+  percent: z.union([z.literal(""), z.string().trim().transform((value) => Number(value.replace(",", "."))).pipe(z.number().min(0.01, "Taux invalide").max(100, "Taux maximum : 100 %"))]).transform((value) => (value === "" ? null : Math.round((value as number) * 100))),
   basis: z.enum(["ORIGINAL_TAX", "REMAINING_PRINCIPAL", "CURRENT_DEBT"]),
   maxApplications: z.coerce.number().int().min(1).max(20),
   maxDebt: z.coerce.number().int().min(0),
@@ -78,12 +79,12 @@ export async function updatePenaltySettings(formData: FormData) {
   const back = (message: string): never => redirect(`/admin?erreur=${encodeURIComponent(message)}`);
   if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
   const data = parsed.data!;
-  const validated = data.isRateValidated === "on" && data.percentBps !== null;
+  const validated = data.isRateValidated === "on" && data.percent !== null;
   const enabled = data.isEnabled === "on" && validated;
   if (data.isEnabled === "on" && !validated) back("Impossible d’activer l’automatisation sans taux défini et validé");
   const previous = await prisma.appSetting.findUnique({ where: { key: "latePenalty" } });
   const value = {
-    latePenaltyPercentBps: data.percentBps, latePenaltyBasis: data.basis, latePenaltyFrequencyRpYears: 1,
+    latePenaltyPercentBps: data.percent, latePenaltyBasis: data.basis, latePenaltyFrequencyRpYears: 1,
     maxPenaltyApplications: data.maxApplications, maxAssessmentDebt: String(data.maxDebt), isPenaltyAutomationEnabled: enabled, isRateValidated: validated
   };
   await prisma.$transaction(async (tx) => {

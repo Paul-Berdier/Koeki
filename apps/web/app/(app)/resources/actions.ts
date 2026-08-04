@@ -102,6 +102,84 @@ export async function approveTransaction(formData: FormData) {
   redirect("/resources");
 }
 
+const resourceSchema = z.object({
+  name: z.string().trim().min(2, "Le nom est obligatoire").max(120),
+  categoryId: z.string().min(1, "La catégorie est obligatoire"),
+  unitId: z.string().min(1, "L’unité est obligatoire"),
+  description: z.string().trim().max(500).optional().transform((value) => value || null),
+  minimumStock: z.coerce.number().min(0).default(0),
+  criticalStock: z.coerce.number().min(0).default(0)
+});
+
+const codeBase = (name: string) => name.normalize("NFD").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
+
+export async function createResource(formData: FormData) {
+  const session = await requireWriteAccess("settings:manage");
+  const back = (message: string): never => redirect(`/resources/new?erreur=${encodeURIComponent(message)}`);
+  const parsed = resourceSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
+  const priceRaw = formData.get("price");
+  const price = typeof priceRaw === "string" && priceRaw !== "" ? Number(priceRaw) : null;
+  if (price !== null && (!Number.isInteger(price) || price < 0)) back("Prix invalide (entier en Ryō)");
+  const data = parsed.data!;
+  if (data.criticalStock > data.minimumStock && data.minimumStock > 0) back("Le seuil critique doit être inférieur ou égal au seuil bas");
+  const base = codeBase(data.name);
+  let created = false;
+  for (let attempt = 0; attempt < 3 && !created; attempt++) {
+    const count = await prisma.resource.count({ where: { code: { startsWith: `RES-${base}-` } } });
+    const code = `RES-${base}-${String(count + 1 + attempt).padStart(2, "0")}`;
+    try {
+      await prisma.$transaction(async (tx) => {
+        const resource = await tx.resource.create({ data: { code, name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock) } });
+        if (price !== null && price > 0) await tx.resourcePriceHistory.create({ data: { resourceId: resource.id, pricePerUnit: BigInt(price), effectiveFrom: new Date(), createdById: session.userId } });
+        await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_CREATED", entityType: "Resource", entityId: resource.id, newValues: { code, name: data.name, price } });
+      });
+      created = true;
+    } catch (error) { if (!isUniqueViolation(error)) throw error; }
+  }
+  if (!created) back("Conflit de code, réessayez");
+  redirect("/resources");
+}
+
+const updateResourceSchema = resourceSchema.extend({ resourceId: z.string().min(1), isActive: z.literal("on").optional() });
+
+export async function updateResource(formData: FormData) {
+  const session = await requireWriteAccess("settings:manage");
+  const parsed = updateResourceSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect(`/resources?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
+  const { resourceId, isActive, ...data } = parsed.data!;
+  const previous = await prisma.resource.findUnique({ where: { id: resourceId } });
+  if (!previous) redirect("/resources?erreur=Ressource%20introuvable");
+  await prisma.$transaction(async (tx) => {
+    await tx.resource.update({ where: { id: resourceId }, data: { name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), isActive: isActive === "on" } });
+    await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_UPDATED", entityType: "Resource", entityId: resourceId,
+      previousValues: { name: previous!.name, minimumStock: Number(previous!.minimumStock), criticalStock: Number(previous!.criticalStock), isActive: previous!.isActive },
+      newValues: { name: data.name, minimumStock: data.minimumStock, criticalStock: data.criticalStock, isActive: isActive === "on" } });
+  });
+  redirect("/resources");
+}
+
+/** Hard-deletes only unused resources; anything referenced by movements, prices, transactions or recipes is deactivated. */
+export async function deleteResource(formData: FormData) {
+  const session = await requireWriteAccess("settings:manage");
+  const resourceId = formData.get("resourceId");
+  if (typeof resourceId !== "string" || !resourceId || formData.get("confirm") !== "on") redirect("/resources?erreur=Confirmation%20requise");
+  const resource = await prisma.resource.findUnique({ where: { id: resourceId as string }, include: { _count: { select: { movements: true, prices: true, transactionItems: true, recipeIngredients: true, recipeOutputs: true } } } });
+  if (!resource) redirect("/resources?erreur=Ressource%20introuvable");
+  const counts = resource!._count;
+  const inUse = counts.movements + counts.prices + counts.transactionItems + counts.recipeIngredients + counts.recipeOutputs > 0;
+  await prisma.$transaction(async (tx) => {
+    if (inUse) {
+      await tx.resource.update({ where: { id: resourceId as string }, data: { isActive: false } });
+      await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_DEACTIVATED", entityType: "Resource", entityId: resourceId as string, reason: "Historique présent : désactivation au lieu d’une suppression" });
+    } else {
+      await tx.resource.delete({ where: { id: resourceId as string } });
+      await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_DELETED", entityType: "Resource", entityId: resourceId as string, newValues: { code: resource!.code } });
+    }
+  });
+  redirect("/resources");
+}
+
 const priceSchema = z.object({ resourceId: z.string().min(1), price: z.coerce.number().int().min(0, "Prix invalide"), reason: z.string().trim().min(3, "Un motif est obligatoire").max(300) });
 
 export async function updatePrice(formData: FormData) {
