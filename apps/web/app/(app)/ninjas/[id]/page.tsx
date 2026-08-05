@@ -23,6 +23,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const isOwner = ownProfile?.id === id;
   const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "audit:read") });
   if (!data) notFound();
+  const donatable = !demoMode && canPay ? await prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }], include: { unit: true } }) : [];
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
@@ -56,7 +57,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
       </div>
       <div>
         {canPay && <section className="panel">
-          <SectionHeader title="Encaisser un paiement" description="Cochez les semaines réglées par ce versement — le reçu et l’audit suivent" />
+          <SectionHeader title="Encaisser un règlement" description="Cochez les semaines réglées, puis ce que le joueur donne : des Ryō, des objets, ou les deux" />
           {settleable.length ? <form action={recordPayment} className="form-grid">
             <input type="hidden" name="ninjaId" value={data.id} />
             <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
@@ -69,13 +70,17 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
                 </label>)}
               </div>
             </fieldset>
-            <div className="form-row">
-              <label>Montant reçu (Ryō) *<input type="number" name="amount" min={1} step={1} required placeholder="Versé par le joueur" /></label>
-              <label>Moyen<select name="method" defaultValue="ESPECES"><option value="ESPECES">Espèces</option><option value="TRANSFERT">Transfert</option><option value="AUTRE">Autre</option></select></label>
-            </div>
+            <label>Ryō reçus<input type="number" name="amount" min={0} step={1} defaultValue={0} /></label>
+            <fieldset>
+              <legend>Objets donnés (la couverture vient du barème de la base)</legend>
+              {[1, 2, 3, 4].map((index) => <div className="form-row" key={index}>
+                <label>Objet {index}<select name={`resourceId_${index}`} defaultValue=""><option value="">—</option>{donatable.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}{resource.exemptionPerUnit > 0n ? ` — couvre ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/${resource.unit.symbol}` : ""}</option>)}</select></label>
+                <label>Quantité<input type="number" name={`quantity_${index}`} min={0} step="0.01" placeholder="0" /></label>
+              </div>)}
+            </fieldset>
             <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} placeholder="Arrangement, contexte…" /></label>
-            <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Encaisser et solder les semaines cochées</button></div>
-          </form> : <p className="notice" style={{ margin: 18 }}>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>}
+            <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Régler les semaines cochées</button></div>
+          </form> : <p className="notice" style={{ margin: 18 }}>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>}
         </section>}
         {canWrite && settleable.length > 0 && <section className="panel">
           <SectionHeader title="Remettre une année" description="Annule la semaine sans encaissement — motif obligatoire, audité" />

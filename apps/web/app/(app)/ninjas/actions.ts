@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { getRpService, loadNinjaFiscal } from "@/lib/data";
-import { awardPoints, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { awardPoints, grantExemption, isUniqueViolation, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
@@ -173,29 +173,43 @@ export async function deleteNinja(formData: FormData) {
 
 const paymentSchema = z.object({
   ninjaId: z.string().min(1),
-  amount: z.coerce.number().int().positive("Le montant doit être un entier positif"),
-  method: z.enum(["ESPECES", "TRANSFERT", "AUTRE"]),
+  amount: z.coerce.number().int().min(0, "Montant invalide").max(100_000_000).default(0),
   reference: z.string().trim().max(120).optional().transform((value) => value || null),
   idempotencyKey: z.string().uuid()
 });
 
-/** Core payment flow: the agent enters the amount received and ticks the weeks it
- *  settles. Weeks with an open debt are covered oldest-first; ticked weeks from the
- *  old register (no amount) share the surplus and get the matching exceptional debt
- *  so the money is honestly booked. */
+const scaledTimes = (quantity: number, rate: bigint) => (BigInt(Math.round(quantity * 10_000)) * rate) / 10_000n;
+
+/** Core settlement flow: the agent ticks the weeks, then records what the player gave —
+ *  Ryō and/or donated items. Item coverage is computed from each resource's per-unit
+ *  exemption rate in the database. Donated value applies first (as exemptions), Ryō
+ *  complete the rest; ticked old-register weeks (no amount) share the surplus through
+ *  matching exceptional-debt entries. Any unused donated value stays as credit. */
 export async function recordPayment(formData: FormData) {
   const session = await requireWriteAccess("payments:write");
   const parsed = paymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
-  const { ninjaId, amount, method, reference, idempotencyKey } = parsed.data;
+  const { ninjaId, amount, reference, idempotencyKey } = parsed.data;
   const back = (message: string) => redirect(`/ninjas/${ninjaId}?erreur=${encodeURIComponent(message)}`);
   const selected = formData.getAll("years").map(String).filter(Boolean);
   if (!selected.length) back("Cochez au moins une semaine à régler");
+  const items: Array<{ resourceId: string; quantity: number }> = [];
+  for (let index = 1; index <= 4; index++) {
+    const resourceId = formData.get(`resourceId_${index}`);
+    const quantityRaw = formData.get(`quantity_${index}`);
+    if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
+      const quantity = Number(quantityRaw.replace(",", "."));
+      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité invalide sur l’objet ${index}`);
+      if (items.some((item) => item.resourceId === resourceId)) back("Un même objet apparaît deux fois");
+      items.push({ resourceId, quantity });
+    }
+  }
+  if (amount === 0 && !items.length) back("Indiquez des Ryō reçus et/ou des objets donnés");
   const service = await getRpService();
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
-      // Serialize concurrent payments on the same record, then recompute on locked state.
+      // Serialize concurrent settlements on the same record, then recompute on locked state.
       await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaId} FOR UPDATE`;
       const assessments = await loadNinjaFiscal(ninjaId, tx);
       if (!assessments) throw new Error("VALIDATION:Ninja introuvable");
@@ -203,47 +217,83 @@ export async function recordPayment(formData: FormData) {
       if (targets.length !== selected.length) throw new Error("VALIDATION:Semaine introuvable pour ce dossier");
       if (targets.some((target) => ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED"].includes(target.status))) throw new Error("VALIDATION:Une semaine cochée est déjà exonérée ou remise");
       if (targets.some((target) => target.remaining === 0n && target.status !== "OVERDUE")) throw new Error("VALIDATION:Une semaine cochée est déjà soldée");
+
+      // Donated items become a validated donation (stock, points, credit) whose value covers the weeks.
+      let donationValue = 0n;
+      let donationReceipt: string | null = null;
+      if (items.length) {
+        const lines: Array<{ resourceId: string; quantity: number; exemptionPerUnit: bigint; unitPrice: bigint }> = [];
+        for (const item of items) {
+          const resource = await tx.resource.findUnique({ where: { id: item.resourceId } });
+          if (!resource || !resource.isActive) throw new Error("VALIDATION:Objet inconnu ou inactif");
+          lines.push({ resourceId: item.resourceId, quantity: item.quantity, exemptionPerUnit: resource.exemptionPerUnit, unitPrice: resource.exemptionPerUnit });
+          donationValue += scaledTimes(item.quantity, resource.exemptionPerUnit);
+        }
+        donationReceipt = await nextTransactionReceipt(tx, "DONATION");
+        const transaction = await tx.resourceTransaction.create({ data: {
+          receiptNumber: donationReceipt, type: "DONATION", status: "VALIDATED", ninjaId, agentId: session.userId,
+          totalAmount: donationValue, idempotencyKey: `${idempotencyKey}:don`, validatedAt: new Date()
+        } });
+        await tx.resourceTransactionItem.createMany({ data: lines.map((line) => ({ transactionId: transaction.id, resourceId: line.resourceId, quantity: new Prisma.Decimal(line.quantity), unitPriceSnapshot: line.unitPrice, lineTotal: scaledTimes(line.quantity, line.exemptionPerUnit) })) });
+        for (const line of lines) await tx.inventoryMovement.create({ data: { resourceId: line.resourceId, type: "DONATION_IN", quantity: new Prisma.Decimal(line.quantity), unitCost: line.unitPrice, transactionId: transaction.id, agentId: session.userId, justification: `Reçu ${donationReceipt}`, idempotencyKey: `${idempotencyKey}:don:${line.resourceId}` } });
+        await awardPoints(tx, { ninjaId, eventType: "DONATION", amount: donationValue, sourceType: "ResourceTransaction", sourceId: transaction.id });
+        await grantExemption(tx, { ninjaId, amount: donationValue, sourceType: "ResourceTransaction", sourceId: transaction.id, reason: `Don ${donationReceipt}` });
+      }
+
       const debtTargets = targets.filter((target) => target.remaining > 0n);
       const legacyTargets = targets.filter((target) => target.remaining === 0n);
       const debtTotal = debtTargets.reduce((total, target) => total + target.remaining, 0n);
-      let left = BigInt(amount);
+      const potRyo = BigInt(amount);
+      if (legacyTargets.length && potRyo + donationValue < debtTotal) throw new Error(`VALIDATION:Couverture insuffisante — les semaines à dette cochées totalisent ${Number(debtTotal).toLocaleString("fr-FR")} ¥`);
+      let donLeft = donationValue, ryoLeft = potRyo;
+      const exemptionUses: Array<{ assessmentId: string; rpYear: number; amount: bigint }> = [];
       const allocations: Array<{ assessmentId: string; amount: bigint }> = [];
       for (const target of debtTargets) {
-        const take = left >= target.remaining ? target.remaining : left;
-        if (take > 0n) allocations.push({ assessmentId: target.id, amount: take });
-        left -= take;
+        let need = target.remaining;
+        const fromDon = donLeft < need ? donLeft : need;
+        if (fromDon > 0n) { exemptionUses.push({ assessmentId: target.id, rpYear: target.rpYear, amount: fromDon }); donLeft -= fromDon; need -= fromDon; }
+        const fromRyo = ryoLeft < need ? ryoLeft : need;
+        if (fromRyo > 0n) { allocations.push({ assessmentId: target.id, amount: fromRyo }); ryoLeft -= fromRyo; need -= fromRyo; }
       }
-      if (legacyTargets.length && BigInt(amount) < debtTotal) throw new Error(`VALIDATION:Montant insuffisant — les semaines à dette cochée totalisent ${Number(debtTotal).toLocaleString("fr-FR")} ¥`);
-      if (!legacyTargets.length && left > 0n) throw new Error("VALIDATION:Le montant dépasse les semaines cochées — réduisez-le ou cochez d’autres semaines");
       if (legacyTargets.length) {
-        const share = left / BigInt(legacyTargets.length);
-        let remainder = left % BigInt(legacyTargets.length);
+        const leftover = donLeft + ryoLeft;
+        const share = leftover / BigInt(legacyTargets.length);
+        let remainder = leftover % BigInt(legacyTargets.length);
         for (const target of legacyTargets) {
-          const extra = share + (remainder > 0n ? 1n : 0n);
+          let extra = share + (remainder > 0n ? 1n : 0n);
           if (remainder > 0n) remainder -= 1n;
-          if (extra > 0n) {
-            await tx.taxAdjustment.create({ data: { assessmentId: target.id, type: "EXCEPTIONAL_DEBT", amount: extra, reason: `Régularisation ancien registre — semaine RP ${target.rpYear}`, createdById: session.userId } });
-            allocations.push({ assessmentId: target.id, amount: extra });
-          }
+          if (extra === 0n) continue;
+          await tx.taxAdjustment.create({ data: { assessmentId: target.id, type: "EXCEPTIONAL_DEBT", amount: extra, reason: `Régularisation ancien registre — semaine RP ${target.rpYear}`, createdById: session.userId } });
+          const fromDon = donLeft < extra ? donLeft : extra;
+          if (fromDon > 0n) { exemptionUses.push({ assessmentId: target.id, rpYear: target.rpYear, amount: fromDon }); donLeft -= fromDon; extra -= fromDon; }
+          if (extra > 0n) { allocations.push({ assessmentId: target.id, amount: extra }); ryoLeft -= extra; }
         }
       }
-      const balanceBefore = assessments.reduce((total, assessment) => total + assessment.remaining, 0n) + (legacyTargets.length ? left : 0n);
-      const receiptNumber = await nextPaymentReceipt(tx);
-      const payment = await tx.taxPayment.create({ data: {
-        receiptNumber, ninjaId, recordedById: session.userId, amount: BigInt(amount), method, reference, status: "VALIDATED",
-        balanceBefore, balanceAfter: balanceBefore - BigInt(amount), idempotencyKey, validatedAt: new Date()
-      } });
-      if (allocations.length) await tx.taxPaymentAllocation.createMany({ data: allocations.map((entry, index) => ({ paymentId: payment.id, assessmentId: entry.assessmentId, amount: entry.amount, allocationOrder: index + 1 })) });
-      const overdueTouched = targets.some((target) => target.dueAt < new Date());
+      if (ryoLeft > 0n) throw new Error("VALIDATION:Il reste des Ryō non affectés — réduisez le montant ou cochez d’autres semaines (le surplus d’objets, lui, reste en crédit)");
+
+      let paymentReceipt: string | null = null;
+      if (potRyo > 0n) {
+        paymentReceipt = await nextPaymentReceipt(tx);
+        const balanceBefore = assessments.reduce((total, assessment) => total + assessment.remaining, 0n);
+        const payment = await tx.taxPayment.create({ data: {
+          receiptNumber: paymentReceipt, ninjaId, recordedById: session.userId, amount: potRyo, method: "RYO", reference, status: "VALIDATED",
+          balanceBefore, balanceAfter: balanceBefore > potRyo ? balanceBefore - potRyo : 0n, idempotencyKey, validatedAt: new Date()
+        } });
+        if (allocations.length) await tx.taxPaymentAllocation.createMany({ data: allocations.map((entry, index) => ({ paymentId: payment.id, assessmentId: entry.assessmentId, amount: entry.amount, allocationOrder: index + 1 })) });
+        await awardPoints(tx, { ninjaId, eventType: legacyTargets.length ? "REGULARIZATION" : "TAX_PAYMENT", amount: potRyo, sourceType: "TaxPayment", sourceId: payment.id });
+      }
+      for (const use of exemptionUses) {
+        await tx.taxExemption.create({ data: { assessmentId: use.assessmentId, amount: use.amount, reason: `Couvert par don${donationReceipt ? ` (${donationReceipt})` : ""}`, grantedById: session.userId } });
+        await grantExemption(tx, { ninjaId, amount: -use.amount, sourceType: "TaxSettlement", sourceId: `${idempotencyKey}:${use.assessmentId}`, reason: `Semaine RP ${use.rpYear} couverte par don` });
+      }
       for (const target of targets) await refreshAssessmentStatus(tx, target.id, service.currentRpYear());
-      await awardPoints(tx, { ninjaId, eventType: legacyTargets.length ? "REGULARIZATION" : "TAX_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
-      if (!overdueTouched) await awardPoints(tx, { ninjaId, eventType: "ON_TIME_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
-      await writeAudit(tx, { actorId: session.userId, action: "PAYMENT_RECORDED", entityType: "TaxPayment", entityId: payment.id, reason: `Paiement de ${amount} Ryō (${receiptNumber}) — semaines RP ${targets.map((target) => target.rpYear).join(", ")}`, newValues: { amount, method, weeks: targets.map((target) => target.rpYear), allocations: allocations.map((entry) => ({ assessmentId: entry.assessmentId, amount: Number(entry.amount) })) } });
-      return receiptNumber;
+      const mainReceipt = paymentReceipt ?? donationReceipt ?? "";
+      await writeAudit(tx, { actorId: session.userId, action: "PAYMENT_RECORDED", entityType: paymentReceipt ? "TaxPayment" : "ResourceTransaction", entityId: mainReceipt, reason: `Règlement semaines RP ${targets.map((target) => target.rpYear).join(", ")} — ${Number(potRyo).toLocaleString("fr-FR")} Ryō${donationValue > 0n ? ` + ${Number(donationValue).toLocaleString("fr-FR")} ¥ d’objets donnés` : ""}${reference ? ` (${reference})` : ""}`, newValues: { ryo: Number(potRyo), donationValue: Number(donationValue), weeks: targets.map((target) => target.rpYear), receipts: [paymentReceipt, donationReceipt].filter(Boolean) } });
+      return mainReceipt;
     }));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
-    if (isUniqueViolation(error)) back("Ce paiement a déjà été enregistré (double soumission détectée)");
+    if (isUniqueViolation(error)) back("Ce règlement a déjà été enregistré (double soumission détectée)");
     throw error;
   }
   redirect(`/ninjas/${ninjaId}?recu=${encodeURIComponent(receipt)}`);
