@@ -29,7 +29,7 @@ export default async function ResourceTransactionPage({ searchParams }: { search
           <legend>Ressources (jusqu’à 5 lignes)</legend>
           {[1, 2, 3, 4, 5].map((index) => <div className="form-row" key={index}>
             <label>Ressource {index}<select name={`resourceId_${index}`} defaultValue=""><option value="">—</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name} ({resource.unit.symbol})</option>)}</select></label>
-            <label>Quantité<input type="number" name={`quantity_${index}`} min={0} step="0.01" placeholder="0" /></label>
+            <label>Quantité<input type="number" name={`quantity_${index}`} min={0} step={1} placeholder="0" /></label>
           </div>)}
         </fieldset>
         <div className="form-actions"><button className="button button-primary" type="submit"><HandCoins size={16} /> Enregistrer et générer le reçu</button></div>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, KeyRound, Pencil } from "lucide-react";
 import { EmptyState, GradeBadge, MetricCard, MoneyDisplay, NinjaAvatar, PageHeader, PointDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
+import { SettlementItems } from "@/components/settlement-items";
 import { getNinjaDetail } from "@/lib/data";
 import { lateYearsLabel } from "@/lib/format";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
@@ -66,18 +67,11 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
               <div className="mini-list" style={{ padding: 0 }}>
                 {settleable.map((row) => <label key={row.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--paper-100)" }}>
                   <input type="checkbox" name="years" value={row.id} defaultChecked={row.badge === "overdue"} style={{ minHeight: 0, width: 16, height: 16 }} />
-                  RP {row.rpYear} — {row.remaining > 0n ? <>reste <MoneyDisplay amount={row.remaining} /></> : "impayée (ancien registre)"}
+                  RP {row.rpYear} — {row.remaining > 0n ? <>reste <MoneyDisplay amount={row.remaining} />{row.penalties > 0n && <> (dont majorations <MoneyDisplay amount={row.penalties} />)</>}</> : "impayée (ancien registre)"}
                 </label>)}
               </div>
             </fieldset>
-            <label>Ryō reçus<input type="number" name="amount" min={0} step={1} defaultValue={0} /></label>
-            <fieldset>
-              <legend>Objets donnés (la couverture vient du barème de la base)</legend>
-              {[1, 2, 3, 4].map((index) => <div className="form-row" key={index}>
-                <label>Objet {index}<select name={`resourceId_${index}`} defaultValue=""><option value="">—</option>{donatable.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}{resource.exemptionPerUnit > 0n ? ` — couvre ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/${resource.unit.symbol}` : ""}</option>)}</select></label>
-                <label>Quantité<input type="number" name={`quantity_${index}`} min={0} step="0.01" placeholder="0" /></label>
-              </div>)}
-            </fieldset>
+            <SettlementItems resources={donatable.map((resource) => ({ id: resource.id, label: `${resource.name}${resource.exemptionPerUnit > 0n ? ` — couvre ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/${resource.unit.symbol}` : ""}`, rate: Number(resource.exemptionPerUnit) }))} />
             <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} placeholder="Arrangement, contexte…" /></label>
             <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Régler les semaines cochées</button></div>
           </form> : <p className="notice" style={{ margin: 18 }}>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>}

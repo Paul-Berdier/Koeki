@@ -194,12 +194,13 @@ export async function recordPayment(formData: FormData) {
   const selected = formData.getAll("years").map(String).filter(Boolean);
   if (!selected.length) back("Cochez au moins une semaine à régler");
   const items: Array<{ resourceId: string; quantity: number }> = [];
-  for (let index = 1; index <= 4; index++) {
+  for (let index = 1; index <= 500; index++) {
     const resourceId = formData.get(`resourceId_${index}`);
     const quantityRaw = formData.get(`quantity_${index}`);
-    if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
-      const quantity = Number(quantityRaw.replace(",", "."));
-      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité invalide sur l’objet ${index}`);
+    if (resourceId === null && quantityRaw === null) break;
+    if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw && quantityRaw !== "0") {
+      const quantity = Number(quantityRaw);
+      if (!Number.isInteger(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité invalide sur l’objet ${index} — nombre entier requis`);
       if (items.some((item) => item.resourceId === resourceId)) back("Un même objet apparaît deux fois");
       items.push({ resourceId, quantity });
     }

@@ -272,6 +272,22 @@ async function importExemptions() {
   }, { timeout: 300_000, maxWait: 30_000 });
 }
 
+/** The Excel gives one exemption rate per tier (T1..T4): every equipment piece and
+ *  every plan of a tier covers that tier's value when donated. */
+async function fixTierExemptions() {
+  const FLAG_TIERS = "legacyTierExemptions2026-08-05";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_TIERS } })) { console.log("import-legacy/barèmes tiers : déjà appliqué"); return; }
+  const TIERS: Array<[string, bigint]> = [["T1", 200n], ["T2", 6000n], ["T3", 25000n], ["T4", 200000n]];
+  let updated = 0;
+  for (const [tier, rate] of TIERS) {
+    const result = await prisma.resource.updateMany({ where: { OR: [{ name: { endsWith: ` ${tier}` } }, { name: tier }] }, data: { exemptionPerUnit: rate } });
+    updated += result.count;
+  }
+  await prisma.appSetting.create({ data: { key: FLAG_TIERS, value: { appliedAt: new Date().toISOString(), updated } } });
+  await prisma.auditLog.create({ data: { action: "LEGACY_TIER_EXEMPTIONS", entityType: "Resource", entityId: FLAG_TIERS, requestId: randomUUID(), reason: `Barème d’exonération par tier appliqué à ${updated} équipements et plans (T1 200, T2 6 000, T3 25 000, T4 200 000 ¥/u)` } });
+  console.log(`import-legacy/barèmes tiers : ${updated} équipements et plans mis à jour`);
+}
+
 async function main() {
   await importCore();
   await importTaxHistory();
@@ -279,5 +295,6 @@ async function main() {
   await fixCatalog();
   await taxAmnesty();
   await importExemptions();
+  await fixTierExemptions();
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
