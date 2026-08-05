@@ -5,7 +5,7 @@ import { EmptyState, GradeBadge, MetricCard, MoneyDisplay, NinjaAvatar, PageHead
 import { getNinjaDetail } from "@/lib/data";
 import { lateYearsLabel } from "@/lib/format";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
-import { changeGrade, recordPayment } from "../actions";
+import { changeGrade, recordPayment, settleAssessment } from "../actions";
 import { prisma } from "@koeki/database";
 
 export default async function NinjaDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -26,10 +26,13 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   if (!data) notFound();
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
+  const info = typeof query.info === "string" ? query.info : null;
+  const settleable = data.assessments.filter((row) => row.remaining > 0n || row.badge === "overdue" || row.badge === "due" || row.badge === "warning");
   return <div className="page-wrap">
     <PageHeader eyebrow={`Dossier ${data.code}`} title={data.name} description={`${data.grade.label}${data.alias ? ` · « ${data.alias} »` : ""} · ${data.statusLabel}`}
       actions={<>{(canWrite || isOwner) && <Link className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</Link>}<Link className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
     {receipt && <p className="notice" role="status">Paiement validé — reçu <code>{receipt}</code> enregistré et audité.</p>}
+    {info && <p className="notice" role="status">{info}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
 
     <section className="metric-grid" aria-label="Situation fiscale">
@@ -90,6 +93,23 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
             </div>
             <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Confirmer le paiement</button></div>
           </form>}
+        </section>}
+        {canWrite && settleable.length > 0 && <section className="panel">
+          <SectionHeader title="Régulariser une année" description="Encaissez le montant convenu avec le joueur, ou remettez la dette — motivé et audité" />
+          <form action={settleAssessment} className="form-grid">
+            <input type="hidden" name="ninjaId" value={data.id} />
+            <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
+            <label>Année concernée<select name="assessmentId" required>{settleable.map((row) => <option key={row.id} value={row.id}>RP {row.rpYear} — {row.remaining > 0n ? `reste ${new Intl.NumberFormat("fr-FR").format(Number(row.remaining))} ¥` : row.statusLabel === "En retard" ? "impayée (ancien registre)" : row.statusLabel}</option>)}</select></label>
+            <div className="form-row">
+              <label>Décision<select name="mode" defaultValue="PAYE"><option value="PAYE">Payée — encaisser le montant</option><option value="REMISE">Remise — annuler cette année</option></select></label>
+              <label>Montant payé (Ryō)<input type="number" name="amount" min={1} step={1} placeholder="Convenu avec le joueur" /></label>
+            </div>
+            <div className="form-row">
+              <label>Moyen<select name="method" defaultValue="ESPECES"><option value="ESPECES">Espèces</option><option value="EXONERATION">Crédit d’exonération</option><option value="TRANSFERT">Transfert</option><option value="AUTRE">Autre</option></select></label>
+              <label>Motif *<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Arrangement validé le…" /></label>
+            </div>
+            <div className="form-actions"><button className="button button-primary" type="submit">Appliquer la régularisation</button></div>
+          </form>
         </section>}
         <section className="panel">
           <SectionHeader title="Points" description="Dernières écritures du registre" />

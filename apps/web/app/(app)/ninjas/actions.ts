@@ -228,6 +228,69 @@ export async function recordPayment(formData: FormData) {
   redirect(`/ninjas/${ninjaId}?recu=${encodeURIComponent(receipt)}`);
 }
 
+const settleSchema = z.object({
+  ninjaId: z.string().min(1),
+  assessmentId: z.string().min(1, "Choisissez une année"),
+  mode: z.enum(["PAYE", "REMISE"]),
+  amount: z.union([z.literal(""), z.coerce.number().int().min(1).max(100_000_000)]).transform((value) => (value === "" ? null : value)),
+  method: z.enum(["ESPECES", "TRANSFERT", "EXONERATION", "AUTRE"]).default("ESPECES"),
+  reason: z.string().trim().min(3, "Un motif est obligatoire").max(300),
+  idempotencyKey: z.string().uuid()
+});
+
+/** Manager settlement of a single tax year: record the amount actually agreed with the
+ *  player (creating the matching exceptional debt when the assessment carried none, e.g.
+ *  the old register's zero-amount weeks), or waive it entirely. */
+export async function settleAssessment(formData: FormData) {
+  const session = await requireWriteAccess("taxes:write");
+  const parsed = settleSchema.safeParse(Object.fromEntries(formData));
+  const ninjaIdRaw = typeof formData.get("ninjaId") === "string" ? String(formData.get("ninjaId")) : "";
+  const back = (message: string): never => redirect(`/ninjas/${ninjaIdRaw}?erreur=${encodeURIComponent(message)}`);
+  if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
+  const { ninjaId, assessmentId, mode, amount, method, reason, idempotencyKey } = parsed.data!;
+  if (mode === "PAYE" && (amount === null || amount <= 0)) back("Indiquez le montant réellement payé");
+  const service = await getRpService();
+  let outcome = "";
+  try {
+    outcome = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaId} FOR UPDATE`;
+      const assessments = await loadNinjaFiscal(ninjaId, tx);
+      const target = assessments?.find((assessment) => assessment.id === assessmentId);
+      if (!target) throw new Error("VALIDATION:Année fiscale introuvable pour ce dossier");
+      if (mode === "REMISE") {
+        await tx.taxAssessment.update({ where: { id: assessmentId }, data: { status: "WAIVED", version: { increment: 1 } } });
+        await writeAudit(tx, { actorId: session.userId, action: "TAX_WAIVED", entityType: "TaxAssessment", entityId: assessmentId, reason, previousValues: { status: target.status, remaining: Number(target.remaining) } });
+        return `Année RP ${target.rpYear} remise (annulée) — motif consigné`;
+      }
+      const agreed = BigInt(amount!);
+      if (["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED"].includes(target.status)) throw new Error("VALIDATION:Cette année est déjà exonérée ou remise");
+      // Align the year's open debt with the agreed amount before collecting it.
+      if (target.remaining < agreed) await tx.taxAdjustment.create({ data: { assessmentId, type: "EXCEPTIONAL_DEBT", amount: agreed - target.remaining, reason: `Régularisation : ${reason}`, createdById: session.userId } });
+      if (method === "EXONERATION") {
+        const credit = await exemptionBalance(tx, ninjaId);
+        if (credit < agreed) throw new Error(`VALIDATION:Crédit d’exonération insuffisant (${credit.toLocaleString("fr-FR")} ¥ disponibles)`);
+      }
+      const receiptNumber = await nextPaymentReceipt(tx);
+      const balanceBefore = assessments!.reduce((total, assessment) => total + assessment.remaining, 0n) + (target.remaining < agreed ? agreed - target.remaining : 0n);
+      const payment = await tx.taxPayment.create({ data: {
+        receiptNumber, ninjaId, recordedById: session.userId, amount: agreed, method, reference: `Régularisation RP ${target.rpYear}`,
+        status: "VALIDATED", balanceBefore, balanceAfter: balanceBefore - agreed, idempotencyKey, validatedAt: new Date()
+      } });
+      await tx.taxPaymentAllocation.create({ data: { paymentId: payment.id, assessmentId, amount: agreed, allocationOrder: 1 } });
+      if (method === "EXONERATION") await grantExemption(tx, { ninjaId, amount: -agreed, sourceType: "TaxPayment", sourceId: payment.id, reason: `Régularisation payée par exonération (${receiptNumber})` });
+      await refreshAssessmentStatus(tx, assessmentId, service.currentRpYear());
+      await awardPoints(tx, { ninjaId, eventType: "REGULARIZATION", amount: agreed, sourceType: "TaxPayment", sourceId: payment.id });
+      await writeAudit(tx, { actorId: session.userId, action: "TAX_REGULARIZED", entityType: "TaxAssessment", entityId: assessmentId, reason, newValues: { rpYear: target.rpYear, amount: Number(agreed), method, receipt: receiptNumber } });
+      return `Année RP ${target.rpYear} régularisée — ${Number(agreed).toLocaleString("fr-FR")} Ryō encaissés (reçu ${receiptNumber})`;
+    }));
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
+    if (isUniqueViolation(error)) back("Régularisation déjà enregistrée (double soumission détectée)");
+    throw error;
+  }
+  redirect(`/ninjas/${ninjaId}?info=${encodeURIComponent(outcome)}`);
+}
+
 const gradeChangeSchema = z.object({ ninjaId: z.string().min(1), gradeId: z.string().min(1), reason: z.string().trim().min(3, "Un motif est obligatoire").max(300) });
 
 export async function changeGrade(formData: FormData) {
