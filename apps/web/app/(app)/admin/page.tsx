@@ -5,13 +5,14 @@ import { EmptyState, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getAdmin } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
 import { demoMode, hasPermission, requireSession, roleLabels } from "@/lib/session";
-import { createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updatePenaltySettings } from "./actions";
+import { createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updatePenaltySettings, updateTaxRates } from "./actions";
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
   if (!hasPermission(session, "settings:manage") && !hasPermission(session, "users:manage")) redirect("/access-denied");
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;
+  const info = typeof query.info === "string" ? query.info : null;
   const data = await getAdmin();
   const canUsers = !demoMode && hasPermission(session, "users:manage");
   const canWrite = !demoMode;
@@ -23,6 +24,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   return <div className="page-wrap">
     <PageHeader eyebrow="Accès responsable" title="Administration" description="Politiques, invitations, permissions et paramètres structurants." />
     {error && <p className="notice error" role="alert">{error}</p>}
+    {info && <p className="notice" role="status">{info}</p>}
     {lastInvite && <div className="notice" role="status" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
       <span>Invitation <strong>{roleLabels[lastInvite.role as keyof typeof roleLabels] ?? lastInvite.role}</strong> générée — transmettez ce lien unique (affiché une seule fois) :<br /><code>{appUrl}/invite/{lastInvite.token}</code></span>
       <form action={dismissLastInvite}><button className="button button-ghost" type="submit" aria-label="Masquer le lien"><X size={15} /></button></form>
@@ -49,6 +51,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       </section>
 
       <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+        <section className="panel" id="bareme-panel">
+          <SectionHeader title="Barème hebdomadaire par grade" description="Publier un nouveau barème refacture immédiatement la semaine en cours pour tous les ninjas (les paiements déjà enregistrés sont préservés, le crédit d’exonération s’applique automatiquement)" />
+          {canWrite ? <form action={updateTaxRates} className="form-grid">
+            {data.gradeRates.map((rate) => <div className="form-row" key={rate.gradeId} style={{ gridTemplateColumns: "1fr 140px", alignItems: "center" }}>
+              <span style={{ fontSize: 12 }}>{rate.label}</span>
+              <label className="sr-only" htmlFor={`rate-${rate.gradeId}`}>Taxe hebdomadaire {rate.label}</label>
+              <input id={`rate-${rate.gradeId}`} type="number" name={`rate_${rate.gradeId}`} min={0} step={1} defaultValue={rate.amount} />
+            </div>)}
+            <div className="form-actions"><button className="button button-primary" type="submit">Publier le barème et refacturer la semaine</button></div>
+          </form> : <p className="notice" style={{ margin: 18 }}>Mode démonstration : édition désactivée.</p>}
+        </section>
         <section className="panel" id="penalty-panel">
           <SectionHeader title="Majorations de retard" description="Aucune automatisation sans taux validé" />
           {canWrite ? <form action={updatePenaltySettings} className="form-grid">

@@ -14,7 +14,7 @@ export interface DashboardData {
 export interface NinjaRow { id: string; code: string; name: string; alias: string | null; grade: string; points: number; debt: bigint; badge: BadgeStatus; statusLabel: string; agent: string; due: string }
 export interface NinjasData { summaryLine: string; grades: Array<{ code: string; label: string }>; ninjas: NinjaRow[]; total: number; page: number; pageCount: number }
 
-export interface AssessmentRow { id: string; rpYear: number; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; statusLabel: string; badge: BadgeStatus; dueAt: string }
+export interface AssessmentRow { id: string; rpYear: number; period: string; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; statusLabel: string; badge: BadgeStatus; dueAt: string }
 export interface NinjaDetailData {
   id: string; code: string; name: string; alias: string | null; clan: string | null; statusLabel: string;
   grade: { code: string; label: string }; grades: Array<{ id: string; code: string; label: string }>;
@@ -65,6 +65,7 @@ export interface AuditData { rows: Array<{ id: string; at: string; actor: string
 
 export interface AdminData {
   penalty: { percentBps: number | null; isValidated: boolean; isEnabled: boolean; basis: string; maxApplications: number; maxDebt: string };
+  gradeRates: Array<{ gradeId: string; label: string; amount: number }>;
   approval: { amount: string; isValidated: boolean };
   policy: { name: string; version: number; rateCount: number } | null;
   rpTimeLabel: string;

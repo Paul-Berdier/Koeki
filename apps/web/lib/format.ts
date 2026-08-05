@@ -31,4 +31,7 @@ export function relativeTime(date: Date, now = new Date()) {
 }
 
 export function lateYearsLabel(lateYears: number) { return lateYears === 0 ? "—" : lateYears === 1 ? "1 an RP" : `${lateYears} ans RP`; }
+
+/** Real-world range of an RP week whose deadline is `dueAt` (Sunday midnight). */
+export function weekPeriod(dueAt: Date) { return `du ${formatDate(new Date(dueAt.getTime() - 604_800_000))} au ${formatDate(new Date(dueAt.getTime() - 60_000))}`; }
 export function formatPercentBps(bps: number) { return `${(bps / 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`; }

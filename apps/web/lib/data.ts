@@ -2,7 +2,7 @@ import { cache } from "react";
 import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
 import { allocatePayment, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo, simulateCraft, type DebtLine } from "@koeki/domain";
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
-import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, type BadgeStatus } from "./format";
+import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
 import { demoMode, roleLabels, type SessionInfo } from "./session";
 import type { AdminData, AuditData, CraftingData, DashboardData, EventsData, InventoryData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
 
@@ -236,7 +236,7 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
     grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
     linkedUserName: linked, notes: options.canSeeNotes ? ninja.notes : null,
     totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points, exemptionBalance: exemption._sum.amount ?? 0n,
-    assessments: ninja.assessments.map((assessment) => ({ id: assessment.id, rpYear: assessment.rpYear, gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: assessmentStatusLabels[assessment.status], badge: assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) })),
+    assessments: ninja.assessments.map((assessment) => ({ id: assessment.id, rpYear: assessment.rpYear, period: weekPeriod(assessment.dueAt), gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: assessmentStatusLabels[assessment.status], badge: assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) })),
     pointEntries: entries.map((entry) => ({ id: entry.id, at: formatDate(entry.createdAt), label: pointEventLabels[entry.eventType] ?? entry.eventType, points: entry.points, reason: entry.reason })),
     operations, preview
   };
@@ -501,11 +501,12 @@ export async function getAudit(page: number, filters: AuditFilterParams = {}): P
 
 export async function getAdmin(): Promise<AdminData> {
   if (demoMode) return demoAdmin;
-  const [penaltySetting, approvalSetting, rpSetting, policy, invitations, users, roles, freeNinjas] = await Promise.all([
+  const [penaltySetting, approvalSetting, rpSetting, policy, allGrades, invitations, users, roles, freeNinjas] = await Promise.all([
     prisma.appSetting.findUnique({ where: { key: "latePenalty" } }),
     prisma.appSetting.findUnique({ where: { key: "approvalThreshold" } }),
     prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
     prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
+    prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     prisma.invitation.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { role: true, ninjaProfile: { select: { code: true } } } }),
     prisma.user.findMany({ include: { roles: { include: { role: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.role.findMany(),
@@ -526,6 +527,7 @@ export async function getAdmin(): Promise<AdminData> {
       basis: penalty?.latePenaltyBasis ?? "ORIGINAL_TAX", maxApplications: penalty?.maxPenaltyApplications ?? 4, maxDebt: penalty?.maxAssessmentDebt ?? "32000"
     },
     approval: { amount: approval?.amount ?? "50000", isValidated: approval?.isValidated ?? false },
+    gradeRates: allGrades.map((grade) => ({ gradeId: grade.id, label: grade.label, amount: Number(policy?.rates.find((rate) => rate.gradeId === grade.id)?.amount ?? 0n) })),
     policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,
     rpTimeLabel: rpLabel,
     invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: invitation.status === "PENDING" }; }),

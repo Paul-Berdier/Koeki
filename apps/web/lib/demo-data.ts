@@ -39,8 +39,8 @@ export const demoNinjaDetail: NinjaDetailData = {
   grade: { code: "JONIN", label: "Jonin" }, grades: [{ id: "g1", code: "JONIN", label: "Jonin" }],
   linkedUserName: null, notes: null, totalDebt: 32000n, lateYears: 2, nextDue: "Dépassée", pointsBalance: 2000, exemptionBalance: 12400n,
   assessments: [
-    { id: "a47", rpYear: 47, gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 18000n, remaining: 7000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" },
-    { id: "a46", rpYear: 46, gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 0n, remaining: 25000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" }
+    { id: "a47", rpYear: 47, period: "du 21/07 au 27/07", gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 18000n, remaining: 7000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" },
+    { id: "a46", rpYear: 46, period: "du 14/07 au 20/07", gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 0n, remaining: 25000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" }
   ],
   pointEntries: [{ id: "p1", at: "12 juil.", label: "Paiement de taxe", points: 150, reason: null }],
   operations: [{ id: "o1", receipt: "PAY-2026-000112", label: "Paiement de taxe", amount: 18000n, at: "12 juil.", statusLabel: "Validée", badge: "paid" }],
@@ -130,6 +130,7 @@ export const demoAudit: AuditData = {
 
 export const demoAdmin: AdminData = {
   penalty: { percentBps: null, isValidated: false, isEnabled: false, basis: "ORIGINAL_TAX", maxApplications: 4, maxDebt: "32000" },
+  gradeRates: [],
   approval: { amount: "50000", isValidated: false },
   policy: { name: "Barème initial", version: 1, rateCount: 10 },
   rpTimeLabel: "1 semaine réelle = 1 année RP",
