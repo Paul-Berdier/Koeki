@@ -1,5 +1,8 @@
-import { Prisma, prisma } from "@koeki/database";
+import { randomUUID } from "node:crypto";
+import { prisma } from "@koeki/database";
 import { calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo } from "@koeki/domain";
+
+const isUniqueViolation = (error: unknown) => (error as { code?: string } | null)?.code === "P2002";
 
 async function rpService() {
   const setting = await prisma.appSetting.findUnique({ where: { key: "rpTime" } });
@@ -44,7 +47,7 @@ async function applyPenalties() {
     const decision = calculateNextPenalty({ originalTax: ryo(assessment.originalAmount), remainingPrincipal: ryo(remainingPrincipal), currentDebt: ryo(currentDebt < 0n ? 0n : currentDebt), appliedPenaltyIndexes: assessment.penalties.map((item) => item.applicationIndex), completeLateYears: service.completeLateYears(assessment.dueAt) }, { latePenaltyPercentBps: config.latePenaltyPercentBps, latePenaltyBasis: config.latePenaltyBasis ?? "ORIGINAL_TAX", latePenaltyFrequencyRpYears: config.latePenaltyFrequencyRpYears ?? 1, maxPenaltyApplications: config.maxPenaltyApplications ?? 4, maxAssessmentDebt: ryo(config.maxAssessmentDebt ?? "32000"), isPenaltyAutomationEnabled: true, isRateValidated: true });
     if (!decision || decision.amount === 0n) continue;
     try { await prisma.taxPenalty.create({ data: { assessmentId: assessment.id, applicationIndex: decision.index, rpYearApplied: service.currentRpYear(), percentBps: config.latePenaltyPercentBps, basis: config.latePenaltyBasis ?? "ORIGINAL_TAX", basisAmount: assessment.originalAmount, amount: decision.amount } }); created++; }
-    catch (error) { if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error; }
+    catch (error) { if (!isUniqueViolation(error)) throw error; }
   }
   return { command: "penalties:apply", created, disabled: false };
 }
@@ -75,12 +78,15 @@ async function checkInventory() {
   const alerts: Array<{ resource: string; stock: number; level: string }> = [];
   for (const resource of resources) {
     const stock = stocks.get(resource.id) ?? 0;
-    const level = stock <= Number(resource.criticalStock) ? "critical" : stock <= Number(resource.minimumStock) ? "low" : null;
+    // A zero threshold means "not configured" — never alert on it.
+    const critical = Number(resource.criticalStock);
+    const minimum = Number(resource.minimumStock);
+    const level = critical > 0 && stock <= critical ? "critical" : minimum > 0 && stock <= minimum ? "low" : null;
     if (!level) continue;
     alerts.push({ resource: resource.code, stock, level });
     const already = await prisma.auditLog.findFirst({ where: { action: "INVENTORY_ALERT", entityType: "Resource", entityId: resource.id, createdAt: { gte: startOfDay } } });
     if (already) continue;
-    await prisma.auditLog.create({ data: { action: "INVENTORY_ALERT", entityType: "Resource", entityId: resource.id, reason: `Seuil ${level === "critical" ? "critique" : "bas"} atteint : ${stock} ${resource.unit.symbol}`, requestId: crypto.randomUUID() } });
+    await prisma.auditLog.create({ data: { action: "INVENTORY_ALERT", entityType: "Resource", entityId: resource.id, reason: `Seuil ${level === "critical" ? "critique" : "bas"} atteint : ${stock} ${resource.unit.symbol}`, requestId: randomUUID() } });
     for (const manager of managers) await prisma.notification.create({ data: { userId: manager.id, title: `Stock ${level === "critical" ? "critique" : "bas"} : ${resource.name}`, body: `${resource.name} — ${stock} ${resource.unit.symbol} restants (seuil ${level === "critical" ? "critique" : "bas"} : ${Number(level === "critical" ? resource.criticalStock : resource.minimumStock)}).` } });
   }
   return { command: "inventory:check", checked: resources.length, alerts };

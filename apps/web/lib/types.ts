@@ -26,7 +26,7 @@ export interface NinjaDetailData {
   preview: { amount: bigint; lines: Array<{ label: string; amount: bigint }>; unallocated: bigint } | null;
 }
 
-export interface RecoveryRow { id: string; name: string; code: string; debt: bigint; due: string; agent: string }
+export interface RecoveryRow { id: string; name: string; code: string; debt: bigint; legacyWeeks: number; due: string; agent: string }
 export interface RecoveryData { metrics: { priorityDebt: bigint; priorityCount: number; averageLate: string; totalDebt: bigint; unassigned: number }; rows: RecoveryRow[] }
 
 export interface ResourceRow { id: string; code: string; name: string; category: string; unit: string; price: bigint; stock: number; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }

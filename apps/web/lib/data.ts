@@ -31,7 +31,7 @@ interface AssessmentAggregate { id: string; rpYear: number; gradeLabel: string; 
 interface NinjaAggregate {
   id: string; code: string; firstName: string; lastName: string; alias: string | null; clan: string | null; status: string;
   gradeCode: string; gradeLabel: string; referenceAgentId: string | null; userId: string | null; notes: string | null;
-  points: number; debt: bigint; lateYears: number; badge: BadgeStatus; statusLabel: string; due: string; nextDueAt: Date | null; assessments: AssessmentAggregate[];
+  points: number; debt: bigint; lateYears: number; legacyLate: number; badge: BadgeStatus; statusLabel: string; due: string; nextDueAt: Date | null; assessments: AssessmentAggregate[];
 }
 
 function computeAssessment(assessment: {
@@ -72,13 +72,15 @@ const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
     const lateYears = overdue.length ? Math.max(...overdue.map((assessment) => service.completeLateYears(assessment.dueAt, now))) : 0;
     const upcoming = open.filter((assessment) => assessment.dueAt >= now).sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())[0];
     const soon = upcoming && upcoming.dueAt.getTime() - now.getTime() < 2 * 86_400_000;
-    const badge: BadgeStatus = overdue.length ? "overdue" : soon ? "warning" : open.length ? "due" : "paid";
-    const statusLabel = overdue.length ? "En retard" : soon ? "Échéance proche" : open.length ? "À payer" : "À jour";
-    const due = overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : "—";
+    // Zero-amount weeks kept OVERDUE come from the old register's fresh-start rule ("en tort").
+    const legacyLate = assessments.filter((assessment) => assessment.status === "OVERDUE" && assessment.remaining === 0n).length;
+    const badge: BadgeStatus = overdue.length ? "overdue" : soon ? "warning" : open.length ? "due" : legacyLate ? "warning" : "paid";
+    const statusLabel = overdue.length ? "En retard" : soon ? "Échéance proche" : open.length ? "À payer" : legacyLate ? "Reprise à régulariser" : "À jour";
+    const due = overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : legacyLate ? `${legacyLate} sem. ancien registre` : "—";
     return {
       id: ninja.id, code: ninja.code, firstName: ninja.firstName, lastName: ninja.lastName, alias: ninja.alias, clan: ninja.clan, status: ninja.status,
       gradeCode: ninja.currentGrade.code, gradeLabel: ninja.currentGrade.label, referenceAgentId: ninja.referenceAgentId, userId: ninja.userId, notes: ninja.notes,
-      points: ninja.pointEntries.reduce((total, entry) => total + entry.points, 0), debt, lateYears, badge, statusLabel, due, nextDueAt: upcoming?.dueAt ?? null, assessments
+      points: ninja.pointEntries.reduce((total, entry) => total + entry.points, 0), debt, lateYears, legacyLate, badge, statusLabel, due, nextDueAt: upcoming?.dueAt ?? null, assessments
     };
   });
 });
@@ -128,7 +130,7 @@ export async function getDashboard(): Promise<DashboardData> {
   const current = rate(rpYear);
   const previous = rate(rpYear - 1);
   const years = [...new Set(all.map((assessment) => assessment.rpYear))].filter((year) => year <= rpYear).sort((a, b) => a - b).slice(-5);
-  const criticalStocks = resources.filter((resource) => (stocks.get(resource.id) ?? 0) <= Number(resource.criticalStock)).map((resource) => resource.name);
+  const criticalStocks = resources.filter((resource) => Number(resource.criticalStock) > 0 && (stocks.get(resource.id) ?? 0) <= Number(resource.criticalStock)).map((resource) => resource.name);
   const buybacks = await prisma.resourceTransaction.findMany({ where: { type: "BUYBACK", status: "VALIDATED", createdAt: { gte: service.startOfRpYear(rpYear) } }, select: { totalAmount: true } });
   const penaltyConfig = penaltySetting?.value as { latePenaltyPercentBps?: number | null; isRateValidated?: boolean } | undefined;
   const [payments, transactions] = await Promise.all([
@@ -249,14 +251,19 @@ export async function getRecovery(): Promise<RecoveryData> {
   if (demoMode) return demoRecovery;
   const [aggregates, users] = await Promise.all([loadNinjaAggregates(), getUserNames()]);
   const overdue = aggregates.filter((ninja) => ninja.badge === "overdue").sort((a, b) => b.lateYears - a.lateYears || (b.debt > a.debt ? 1 : -1));
+  const legacyOnly = aggregates.filter((ninja) => ninja.badge !== "overdue" && ninja.legacyLate > 0).sort((a, b) => b.legacyLate - a.legacyLate);
   const critical = overdue.filter((ninja) => ninja.lateYears >= 2);
   const averageLate = overdue.length ? (overdue.reduce((total, ninja) => total + ninja.lateYears, 0) / overdue.length).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : "0";
+  const agentName = (ninja: NinjaAggregate) => (ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "À attribuer");
   return {
     metrics: {
       priorityDebt: sumBig(critical.map((ninja) => ninja.debt)), priorityCount: critical.length, averageLate: `${averageLate} ans RP`,
-      totalDebt: sumBig(overdue.map((ninja) => ninja.debt)), unassigned: overdue.filter((ninja) => !ninja.referenceAgentId).length
+      totalDebt: sumBig(overdue.map((ninja) => ninja.debt)), unassigned: legacyOnly.length
     },
-    rows: overdue.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: ninja.debt, due: ninja.due, agent: ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "À attribuer" }))
+    rows: [
+      ...overdue.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: ninja.debt, legacyWeeks: ninja.legacyLate, due: ninja.due, agent: agentName(ninja) })),
+      ...legacyOnly.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: 0n, legacyWeeks: ninja.legacyLate, due: ninja.due, agent: agentName(ninja) }))
+    ]
   };
 }
 
@@ -286,8 +293,8 @@ export async function getResources(canApprove: boolean, params: ResourceFilterPa
     categories: categories.map((category) => ({ code: category.code, label: category.label })),
     resources: filtered.map((resource) => {
       const stock = stocks.get(resource.id) ?? 0;
-      const critical = stock <= Number(resource.criticalStock);
-      const low = stock <= Number(resource.minimumStock);
+      const critical = Number(resource.criticalStock) > 0 && stock <= Number(resource.criticalStock);
+      const low = Number(resource.minimumStock) > 0 && stock <= Number(resource.minimumStock);
       return {
         id: resource.id, code: resource.code, name: resource.name, category: resource.category.label, unit: resource.unit.symbol,
         price: prices.get(resource.id) ?? 0n, stock,
@@ -310,8 +317,10 @@ export async function getInventory(): Promise<InventoryData> {
   ]);
   const alerts = resources.flatMap((resource): InventoryData["alerts"] => {
     const stock = stocks.get(resource.id) ?? 0;
-    if (stock <= Number(resource.criticalStock)) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "critical", threshold: Number(resource.criticalStock) }];
-    if (stock <= Number(resource.minimumStock)) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "low", threshold: Number(resource.minimumStock) }];
+    const critical = Number(resource.criticalStock);
+    const minimum = Number(resource.minimumStock);
+    if (critical > 0 && stock <= critical) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "critical", threshold: critical }];
+    if (minimum > 0 && stock <= minimum) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "low", threshold: minimum }];
     return [];
   }).sort((a, b) => (a.level === b.level ? 0 : a.level === "critical" ? -1 : 1));
   return {

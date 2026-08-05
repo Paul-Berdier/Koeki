@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 const isLocalDemo = process.env.DEMO_MODE === "true";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@koeki/ui", "@koeki/domain", "@koeki/auth"],
-  serverExternalPackages: ["@prisma/client", "@koeki/database"],
+  transpilePackages: ["@koeki/ui", "@koeki/domain", "@koeki/auth", "@koeki/database"],
+  serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg"],
   poweredByHeader: false,
   experimental: { optimizePackageImports: ["lucide-react"] },
   async headers() {
