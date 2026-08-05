@@ -12,6 +12,8 @@ export function ModulePage({ eyebrow, title, description, actionLabel, actionHre
   return <div className="page-wrap">
     <PageHeader eyebrow={eyebrow} title={title} description={description} actions={actionLabel && actionHref && <Link className="button button-primary" href={actionHref}><Plus size={17} />{actionLabel}</Link>} />
     <section className="metric-grid">{metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}</section>
-    <div className={aside ? "module-grid" : undefined}><section className="panel module-panel"><SectionHeader title={registerTitle} description={registerDescription} action={registerAction} />{children}</section>{aside}</div>
+    {/* The register table gets the full width — dense tables were being squeezed by a side column. */}
+    <section className="panel module-panel stack-panel"><SectionHeader title={registerTitle} description={registerDescription} action={registerAction} />{children}</section>
+    {aside}
   </div>;
 }

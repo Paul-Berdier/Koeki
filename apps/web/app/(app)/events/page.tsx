@@ -22,13 +22,13 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       <MetricCard label="Cagnottes distribuées" value={<MoneyDisplay amount={data.metrics.totalPrize} />} detail="Total des prix annoncés" tone="warn" />
       <MetricCard label="Participations" value={String(data.metrics.participants)} detail="Toutes éditions confondues" />
     </section>
-    <div className={canManage ? "module-grid" : undefined}>
-      <section className="panel module-panel">
+    <>
+      <section className="panel module-panel stack-panel">
         <SectionHeader title="Registre des événements" description="Vainqueurs, cagnottes et points attribués" />
         {data.events.length ? <div className="table-scroll"><table><thead><tr><th>Événement</th><th>Type</th><th>Période</th><th>Cagnotte</th><th>Points</th><th>Participants</th><th>Vainqueur</th><th>État</th>{canManage && <th></th>}</tr></thead><tbody>{data.events.map((event) => <tr key={event.id}><td><strong>{event.name}</strong>{event.resourceFocus && <><br/><code>{event.resourceFocus}</code></>}</td><td>{event.kindLabel}</td><td>{event.period}</td><td>{event.prize > 0n ? <MoneyDisplay amount={event.prize} /> : <span className="muted">—</span>}</td><td>{event.rewardPoints > 0 ? <PointDisplay points={event.rewardPoints} /> : <span className="muted">—</span>}</td><td>{event.participants || "—"}</td><td>{event.winner ? <strong>{event.winner}</strong> : <span className="muted">—</span>}</td><td><StatusBadge status={event.badge}>{event.statusLabel}</StatusBadge></td>{canManage && <td>{event.isOpen && <form action={cancelEvent}><input type="hidden" name="eventId" value={event.id} /><button className="button button-ghost" style={{ minHeight: 30 }} type="submit"><Ban size={14} /> Annuler</button></form>}</td>}</tr>)}</tbody></table></div>
           : <EmptyState title="Aucun événement" description="Créez le premier tournoi, une pièce de théâtre ou un jeu du village." />}
       </section>
-      {canManage && <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
+      {canManage && <aside className="aside-duo">
         <section className="panel">
           <SectionHeader title="Créer un événement" description="La cagnotte est versée en RP ; les points vont au vainqueur à la clôture" />
           <form action={createEvent} className="form-grid">
@@ -59,6 +59,6 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
           </form>
         </section>}
       </aside>}
-    </div>
+    </>
   </div>;
 }

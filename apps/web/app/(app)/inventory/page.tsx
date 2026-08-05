@@ -13,12 +13,12 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
   const data = await getInventory();
   const canAdjust = !demoMode && hasPermission(session, "inventory:write");
   const canOverride = hasPermission(session, "settings:manage");
-  const aside = canAdjust ? <aside><section className="panel">
+  const aside = canAdjust ? <aside className="aside-duo"><section className="panel">
     <SectionHeader title="Ajustement contrôlé" description="Chaque variation crée un mouvement immuable" />
     <form action={recordAdjustment} className="form-grid">
       <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
       <label>Ressource<select name="resourceId" required>{data.resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name} — stock {resource.stock.toLocaleString("fr-FR")} {resource.unit}</option>)}</select></label>
-      <label>Quantité (négatif = sortie)<input type="number" name="quantity" step="0.01" required placeholder="-2" /></label>
+      <label>Quantité (négatif = sortie)<input type="number" name="quantity" step={1} required placeholder="-2" /></label>
       <label>Justification<input type="text" name="justification" required minLength={3} maxLength={300} placeholder="Inventaire physique du 4 août…" /></label>
       {canOverride && <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" name="allowNegative" style={{ minHeight: 0, width: 16, height: 16 }} /> Autoriser un stock négatif (audité)</label>}
       <div className="form-actions"><button className="button button-primary" type="submit">Enregistrer le mouvement</button></div>
