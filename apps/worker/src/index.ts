@@ -28,7 +28,45 @@ async function generateTaxes() {
     created += result.count;
     if (result.count > 0) years.push(year);
   }
-  return { command: "taxes:generate", rpYear, created, years };
+  const exempted = await autoApplyExemptions(rpYear);
+  return { command: "taxes:generate", rpYear, created, years, exempted };
+}
+
+/** The exemption credit is not a manual payment method: it is deducted automatically
+ *  from each Sunday's tax while the balance lasts. Idempotent via the ledger's unique
+ *  (sourceType, sourceId) — one automatic deduction per assessment. */
+async function autoApplyExemptions(rpYear: number) {
+  const systemUser = await prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } });
+  if (!systemUser) return 0;
+  const assessments = await prisma.taxAssessment.findMany({
+    where: { taxYear: { rpYear }, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID", "OVERDUE"] } },
+    include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } } }
+  });
+  let applied = 0;
+  for (const assessment of assessments) {
+    const already = await prisma.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+    if (already) continue;
+    const balance = (await prisma.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
+    if (balance <= 0n) continue;
+    const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
+    const gross = assessment.originalAmount
+      + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n)
+      + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n)
+      - assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
+    const remaining = gross - paid;
+    if (remaining <= 0n) continue;
+    const use = balance < remaining ? balance : remaining;
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe année RP ${rpYear}` } });
+        await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
+        if (use >= remaining) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
+        await tx.auditLog.create({ data: { action: "TAX_AUTO_EXEMPTED", entityType: "TaxAssessment", entityId: assessment.id, requestId: randomUUID(), reason: `${use.toLocaleString("fr-FR")} ¥ de crédit d’exonération appliqués automatiquement (année RP ${rpYear})` } });
+      });
+      applied++;
+    } catch (error) { if (!isUniqueViolation(error)) throw error; }
+  }
+  return applied;
 }
 
 async function applyPenalties() {

@@ -3,9 +3,8 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { allocatePayment, ryo } from "@koeki/domain";
-import { buildDebtLines, getRpService, loadNinjaFiscal } from "@/lib/data";
-import { awardPoints, exemptionBalance, grantExemption, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { getRpService, loadNinjaFiscal } from "@/lib/data";
+import { awardPoints, isUniqueViolation, nextPaymentReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
@@ -175,49 +174,71 @@ export async function deleteNinja(formData: FormData) {
 const paymentSchema = z.object({
   ninjaId: z.string().min(1),
   amount: z.coerce.number().int().positive("Le montant doit être un entier positif"),
-  method: z.enum(["ESPECES", "TRANSFERT", "EXONERATION", "AUTRE"]),
+  method: z.enum(["ESPECES", "TRANSFERT", "AUTRE"]),
   reference: z.string().trim().max(120).optional().transform((value) => value || null),
   idempotencyKey: z.string().uuid()
 });
 
+/** Core payment flow: the agent enters the amount received and ticks the weeks it
+ *  settles. Weeks with an open debt are covered oldest-first; ticked weeks from the
+ *  old register (no amount) share the surplus and get the matching exceptional debt
+ *  so the money is honestly booked. */
 export async function recordPayment(formData: FormData) {
   const session = await requireWriteAccess("payments:write");
   const parsed = paymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
   const { ninjaId, amount, method, reference, idempotencyKey } = parsed.data;
   const back = (message: string) => redirect(`/ninjas/${ninjaId}?erreur=${encodeURIComponent(message)}`);
-  const preview = await loadNinjaFiscal(ninjaId);
-  if (!preview) back("Ninja introuvable");
-  if (!buildDebtLines(preview!).length) back("Aucune dette ouverte pour ce ninja");
+  const selected = formData.getAll("years").map(String).filter(Boolean);
+  if (!selected.length) back("Cochez au moins une semaine à régler");
   const service = await getRpService();
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
-      // Serialize concurrent payments on the same record, then recompute the allocation on locked state.
+      // Serialize concurrent payments on the same record, then recompute on locked state.
       await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaId} FOR UPDATE`;
       const assessments = await loadNinjaFiscal(ninjaId, tx);
-      const debtLines = buildDebtLines(assessments ?? []);
-      if (!debtLines.length) throw new Error("VALIDATION:Aucune dette ouverte pour ce ninja");
-      const allocation = allocatePayment(ryo(amount), debtLines);
-      if (allocation.unallocated > 0n) throw new Error("VALIDATION:Le montant dépasse la dette ouverte — réduisez le paiement");
-      const balanceBefore = debtLines.reduce((total, line) => total + line.remaining, 0n);
-      if (method === "EXONERATION") {
-        const credit = await exemptionBalance(tx, ninjaId);
-        if (credit < BigInt(amount)) throw new Error(`VALIDATION:Crédit d’exonération insuffisant (${credit.toLocaleString("fr-FR")} ¥ disponibles)`);
+      if (!assessments) throw new Error("VALIDATION:Ninja introuvable");
+      const targets = selected.map((id) => assessments.find((assessment) => assessment.id === id)).filter((target): target is NonNullable<typeof target> => Boolean(target)).sort((a, b) => a.rpYear - b.rpYear);
+      if (targets.length !== selected.length) throw new Error("VALIDATION:Semaine introuvable pour ce dossier");
+      if (targets.some((target) => ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED"].includes(target.status))) throw new Error("VALIDATION:Une semaine cochée est déjà exonérée ou remise");
+      if (targets.some((target) => target.remaining === 0n && target.status !== "OVERDUE")) throw new Error("VALIDATION:Une semaine cochée est déjà soldée");
+      const debtTargets = targets.filter((target) => target.remaining > 0n);
+      const legacyTargets = targets.filter((target) => target.remaining === 0n);
+      const debtTotal = debtTargets.reduce((total, target) => total + target.remaining, 0n);
+      let left = BigInt(amount);
+      const allocations: Array<{ assessmentId: string; amount: bigint }> = [];
+      for (const target of debtTargets) {
+        const take = left >= target.remaining ? target.remaining : left;
+        if (take > 0n) allocations.push({ assessmentId: target.id, amount: take });
+        left -= take;
       }
+      if (legacyTargets.length && BigInt(amount) < debtTotal) throw new Error(`VALIDATION:Montant insuffisant — les semaines à dette cochée totalisent ${Number(debtTotal).toLocaleString("fr-FR")} ¥`);
+      if (!legacyTargets.length && left > 0n) throw new Error("VALIDATION:Le montant dépasse les semaines cochées — réduisez-le ou cochez d’autres semaines");
+      if (legacyTargets.length) {
+        const share = left / BigInt(legacyTargets.length);
+        let remainder = left % BigInt(legacyTargets.length);
+        for (const target of legacyTargets) {
+          const extra = share + (remainder > 0n ? 1n : 0n);
+          if (remainder > 0n) remainder -= 1n;
+          if (extra > 0n) {
+            await tx.taxAdjustment.create({ data: { assessmentId: target.id, type: "EXCEPTIONAL_DEBT", amount: extra, reason: `Régularisation ancien registre — semaine RP ${target.rpYear}`, createdById: session.userId } });
+            allocations.push({ assessmentId: target.id, amount: extra });
+          }
+        }
+      }
+      const balanceBefore = assessments.reduce((total, assessment) => total + assessment.remaining, 0n) + (legacyTargets.length ? left : 0n);
       const receiptNumber = await nextPaymentReceipt(tx);
       const payment = await tx.taxPayment.create({ data: {
         receiptNumber, ninjaId, recordedById: session.userId, amount: BigInt(amount), method, reference, status: "VALIDATED",
         balanceBefore, balanceAfter: balanceBefore - BigInt(amount), idempotencyKey, validatedAt: new Date()
       } });
-      await tx.taxPaymentAllocation.createMany({ data: allocation.allocations.map((entry, index) => ({ paymentId: payment.id, assessmentId: entry.assessmentId, amount: entry.amount, allocationOrder: index + 1 })) });
-      if (method === "EXONERATION") await grantExemption(tx, { ninjaId, amount: -BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id, reason: `Taxe payée par exonération (${receiptNumber})` });
-      const touched = [...new Set(allocation.allocations.map((entry) => entry.assessmentId))];
-      const overdueTouched = assessments!.some((assessment) => touched.includes(assessment.id) && assessment.dueAt < new Date());
-      for (const assessmentId of touched) await refreshAssessmentStatus(tx, assessmentId, service.currentRpYear());
-      await awardPoints(tx, { ninjaId, eventType: "TAX_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
+      if (allocations.length) await tx.taxPaymentAllocation.createMany({ data: allocations.map((entry, index) => ({ paymentId: payment.id, assessmentId: entry.assessmentId, amount: entry.amount, allocationOrder: index + 1 })) });
+      const overdueTouched = targets.some((target) => target.dueAt < new Date());
+      for (const target of targets) await refreshAssessmentStatus(tx, target.id, service.currentRpYear());
+      await awardPoints(tx, { ninjaId, eventType: legacyTargets.length ? "REGULARIZATION" : "TAX_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
       if (!overdueTouched) await awardPoints(tx, { ninjaId, eventType: "ON_TIME_PAYMENT", amount: BigInt(amount), sourceType: "TaxPayment", sourceId: payment.id });
-      await writeAudit(tx, { actorId: session.userId, action: "PAYMENT_RECORDED", entityType: "TaxPayment", entityId: payment.id, reason: `Paiement de ${amount} Ryō (${receiptNumber})`, newValues: { amount, method, allocations: allocation.allocations.map((entry) => ({ assessmentId: entry.assessmentId, amount: Number(entry.amount) })) } });
+      await writeAudit(tx, { actorId: session.userId, action: "PAYMENT_RECORDED", entityType: "TaxPayment", entityId: payment.id, reason: `Paiement de ${amount} Ryō (${receiptNumber}) — semaines RP ${targets.map((target) => target.rpYear).join(", ")}`, newValues: { amount, method, weeks: targets.map((target) => target.rpYear), allocations: allocations.map((entry) => ({ assessmentId: entry.assessmentId, amount: Number(entry.amount) })) } });
       return receiptNumber;
     }));
   } catch (error) {
@@ -228,64 +249,33 @@ export async function recordPayment(formData: FormData) {
   redirect(`/ninjas/${ninjaId}?recu=${encodeURIComponent(receipt)}`);
 }
 
-const settleSchema = z.object({
+const waiveSchema = z.object({
   ninjaId: z.string().min(1),
   assessmentId: z.string().min(1, "Choisissez une année"),
-  mode: z.enum(["PAYE", "REMISE"]),
-  amount: z.union([z.literal(""), z.coerce.number().int().min(1).max(100_000_000)]).transform((value) => (value === "" ? null : value)),
-  method: z.enum(["ESPECES", "TRANSFERT", "EXONERATION", "AUTRE"]).default("ESPECES"),
-  reason: z.string().trim().min(3, "Un motif est obligatoire").max(300),
-  idempotencyKey: z.string().uuid()
+  reason: z.string().trim().min(3, "Un motif est obligatoire").max(300)
 });
 
-/** Manager settlement of a single tax year: record the amount actually agreed with the
- *  player (creating the matching exceptional debt when the assessment carried none, e.g.
- *  the old register's zero-amount weeks), or waive it entirely. */
-export async function settleAssessment(formData: FormData) {
+/** Waives a tax year entirely (statut Remise) — the player owes nothing for it. */
+export async function waiveAssessment(formData: FormData) {
   const session = await requireWriteAccess("taxes:write");
-  const parsed = settleSchema.safeParse(Object.fromEntries(formData));
+  const parsed = waiveSchema.safeParse(Object.fromEntries(formData));
   const ninjaIdRaw = typeof formData.get("ninjaId") === "string" ? String(formData.get("ninjaId")) : "";
   const back = (message: string): never => redirect(`/ninjas/${ninjaIdRaw}?erreur=${encodeURIComponent(message)}`);
   if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
-  const { ninjaId, assessmentId, mode, amount, method, reason, idempotencyKey } = parsed.data!;
-  if (mode === "PAYE" && (amount === null || amount <= 0)) back("Indiquez le montant réellement payé");
-  const service = await getRpService();
+  const { ninjaId, assessmentId, reason } = parsed.data!;
   let outcome = "";
   try {
-    outcome = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaId} FOR UPDATE`;
+    outcome = await prisma.$transaction(async (tx) => {
       const assessments = await loadNinjaFiscal(ninjaId, tx);
       const target = assessments?.find((assessment) => assessment.id === assessmentId);
       if (!target) throw new Error("VALIDATION:Année fiscale introuvable pour ce dossier");
-      if (mode === "REMISE") {
-        await tx.taxAssessment.update({ where: { id: assessmentId }, data: { status: "WAIVED", version: { increment: 1 } } });
-        await writeAudit(tx, { actorId: session.userId, action: "TAX_WAIVED", entityType: "TaxAssessment", entityId: assessmentId, reason, previousValues: { status: target.status, remaining: Number(target.remaining) } });
-        return `Année RP ${target.rpYear} remise (annulée) — motif consigné`;
-      }
-      const agreed = BigInt(amount!);
-      if (["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED"].includes(target.status)) throw new Error("VALIDATION:Cette année est déjà exonérée ou remise");
-      // Align the year's open debt with the agreed amount before collecting it.
-      if (target.remaining < agreed) await tx.taxAdjustment.create({ data: { assessmentId, type: "EXCEPTIONAL_DEBT", amount: agreed - target.remaining, reason: `Régularisation : ${reason}`, createdById: session.userId } });
-      if (method === "EXONERATION") {
-        const credit = await exemptionBalance(tx, ninjaId);
-        if (credit < agreed) throw new Error(`VALIDATION:Crédit d’exonération insuffisant (${credit.toLocaleString("fr-FR")} ¥ disponibles)`);
-      }
-      const receiptNumber = await nextPaymentReceipt(tx);
-      const balanceBefore = assessments!.reduce((total, assessment) => total + assessment.remaining, 0n) + (target.remaining < agreed ? agreed - target.remaining : 0n);
-      const payment = await tx.taxPayment.create({ data: {
-        receiptNumber, ninjaId, recordedById: session.userId, amount: agreed, method, reference: `Régularisation RP ${target.rpYear}`,
-        status: "VALIDATED", balanceBefore, balanceAfter: balanceBefore - agreed, idempotencyKey, validatedAt: new Date()
-      } });
-      await tx.taxPaymentAllocation.create({ data: { paymentId: payment.id, assessmentId, amount: agreed, allocationOrder: 1 } });
-      if (method === "EXONERATION") await grantExemption(tx, { ninjaId, amount: -agreed, sourceType: "TaxPayment", sourceId: payment.id, reason: `Régularisation payée par exonération (${receiptNumber})` });
-      await refreshAssessmentStatus(tx, assessmentId, service.currentRpYear());
-      await awardPoints(tx, { ninjaId, eventType: "REGULARIZATION", amount: agreed, sourceType: "TaxPayment", sourceId: payment.id });
-      await writeAudit(tx, { actorId: session.userId, action: "TAX_REGULARIZED", entityType: "TaxAssessment", entityId: assessmentId, reason, newValues: { rpYear: target.rpYear, amount: Number(agreed), method, receipt: receiptNumber } });
-      return `Année RP ${target.rpYear} régularisée — ${Number(agreed).toLocaleString("fr-FR")} Ryō encaissés (reçu ${receiptNumber})`;
-    }));
+      if (["EXEMPT", "WAIVED", "CANCELLED"].includes(target.status)) throw new Error("VALIDATION:Cette année est déjà exonérée ou remise");
+      await tx.taxAssessment.update({ where: { id: assessmentId }, data: { status: "WAIVED", version: { increment: 1 } } });
+      await writeAudit(tx, { actorId: session.userId, action: "TAX_WAIVED", entityType: "TaxAssessment", entityId: assessmentId, reason, previousValues: { status: target.status, remaining: Number(target.remaining) } });
+      return `Année RP ${target.rpYear} remise (annulée) — motif consigné`;
+    });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
-    if (isUniqueViolation(error)) back("Régularisation déjà enregistrée (double soumission détectée)");
     throw error;
   }
   redirect(`/ninjas/${ninjaId}?info=${encodeURIComponent(outcome)}`);

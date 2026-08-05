@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, KeyRound, Pencil, Search } from "lucide-react";
+import { ArrowLeft, KeyRound, Pencil } from "lucide-react";
 import { EmptyState, GradeBadge, MetricCard, MoneyDisplay, NinjaAvatar, PageHeader, PointDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getNinjaDetail } from "@/lib/data";
 import { lateYearsLabel } from "@/lib/format";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
-import { changeGrade, recordPayment, settleAssessment } from "../actions";
+import { changeGrade, recordPayment, waiveAssessment } from "../actions";
 import { prisma } from "@koeki/database";
 
 export default async function NinjaDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -21,8 +21,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const canWrite = hasPermission(session, "ninjas:write");
   const ownProfile = demoMode ? null : await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
   const isOwner = ownProfile?.id === id;
-  const previewAmount = typeof query.montant === "string" && /^\d+$/.test(query.montant) ? BigInt(query.montant) : undefined;
-  const data = await getNinjaDetail(id, { previewAmount, canSeeNotes: canWrite || hasPermission(session, "audit:read") });
+  const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "audit:read") });
   if (!data) notFound();
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
@@ -37,7 +36,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
 
     <section className="metric-grid" aria-label="Situation fiscale">
       <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : "good"} />
-      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats, dépensable sur les taxes" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
+      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats — déduit automatiquement de la taxe chaque dimanche" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
       <MetricCard label="Retard" value={lateYearsLabel(data.lateYears)} detail={data.lateYears >= 2 ? "Dossier prioritaire" : "Sous surveillance normale"} tone={data.lateYears >= 2 ? "danger" : data.lateYears > 0 ? "warn" : "good"} />
       <MetricCard label="Points" value={<PointDisplay points={data.pointsBalance} />} detail="Solde explicable depuis le registre" tone="neutral" />
     </section>
@@ -56,6 +55,39 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
         </section>
       </div>
       <div>
+        {canPay && <section className="panel">
+          <SectionHeader title="Encaisser un paiement" description="Cochez les semaines réglées par ce versement — le reçu et l’audit suivent" />
+          {settleable.length ? <form action={recordPayment} className="form-grid">
+            <input type="hidden" name="ninjaId" value={data.id} />
+            <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
+            <fieldset>
+              <legend>Semaines à régler</legend>
+              <div className="mini-list" style={{ padding: 0 }}>
+                {settleable.map((row) => <label key={row.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--paper-100)" }}>
+                  <input type="checkbox" name="years" value={row.id} defaultChecked={row.badge === "overdue"} style={{ minHeight: 0, width: 16, height: 16 }} />
+                  RP {row.rpYear} — {row.remaining > 0n ? <>reste <MoneyDisplay amount={row.remaining} /></> : "impayée (ancien registre)"}
+                </label>)}
+              </div>
+            </fieldset>
+            <div className="form-row">
+              <label>Montant reçu (Ryō) *<input type="number" name="amount" min={1} step={1} required placeholder="Versé par le joueur" /></label>
+              <label>Moyen<select name="method" defaultValue="ESPECES"><option value="ESPECES">Espèces</option><option value="TRANSFERT">Transfert</option><option value="AUTRE">Autre</option></select></label>
+            </div>
+            <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} placeholder="Arrangement, contexte…" /></label>
+            <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Encaisser et solder les semaines cochées</button></div>
+          </form> : <p className="notice" style={{ margin: 18 }}>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>}
+        </section>}
+        {canWrite && settleable.length > 0 && <section className="panel">
+          <SectionHeader title="Remettre une année" description="Annule la semaine sans encaissement — motif obligatoire, audité" />
+          <form action={waiveAssessment} className="form-grid">
+            <input type="hidden" name="ninjaId" value={data.id} />
+            <div className="form-row">
+              <label>Année concernée<select name="assessmentId" required>{settleable.map((row) => <option key={row.id} value={row.id}>RP {row.rpYear} — {row.remaining > 0n ? `reste ${new Intl.NumberFormat("fr-FR").format(Number(row.remaining))} ¥` : "impayée (ancien registre)"}</option>)}</select></label>
+              <label>Motif *<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Geste commercial, erreur…" /></label>
+            </div>
+            <div className="form-actions"><button className="button button-ghost" type="submit">Remettre cette année</button></div>
+          </form>
+        </section>}
         <section className="panel">
           <SectionHeader title="Identité" description="Registre administratif" />
           <div className="identity-list">
@@ -68,49 +100,6 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
             {data.notes && <div style={{ gridColumn: "1/-1" }}><span>Notes internes</span><div className="notes-block">{data.notes}</div></div>}
           </div>
         </section>
-        {canPay && data.totalDebt === 0n && <section className="panel">
-          <SectionHeader title="Encaisser des Ryōs" description="Paiement de taxes" />
-          <p className="notice" style={{ margin: 18 }}>Aucune taxe ouverte pour ce dossier : la prochaine taxe annuelle sera générée au passage de l’année RP (dimanche minuit). Les dons et rachats de ressources s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>
-        </section>}
-        {canPay && data.totalDebt > 0n && <section className="panel">
-          <SectionHeader title="Enregistrer un paiement" description="Allocation recalculée côté serveur" />
-          <form method="get" action={`/ninjas/${data.id}`} className="form-grid" style={{ paddingBottom: 0 }}>
-            <label>Montant reçu (Ryō)<input type="number" name="montant" min={1} step={1} required defaultValue={data.preview ? String(data.preview.amount) : undefined} /></label>
-            <div className="form-actions"><button className="button button-ghost" type="submit"><Search size={16} /> Prévisualiser la répartition</button></div>
-          </form>
-          {data.preview && <div className="allocation-preview" role="status">
-            <strong>Paiement reçu : <MoneyDisplay amount={data.preview.amount} /></strong>
-            <ul>{data.preview.lines.map((line) => <li key={line.label}><span>{line.label}</span><MoneyDisplay amount={line.amount} /></li>)}</ul>
-            {data.preview.unallocated > 0n && <p className="negative">Excédent non alloué : <MoneyDisplay amount={data.preview.unallocated} /> — réduisez le montant.</p>}
-          </div>}
-          {data.preview && data.preview.unallocated === 0n && <form action={recordPayment} className="form-grid" style={{ paddingTop: 0 }}>
-            <input type="hidden" name="ninjaId" value={data.id} />
-            <input type="hidden" name="amount" value={String(data.preview.amount)} />
-            <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
-            <div className="form-row">
-              <label>Moyen de paiement<select name="method" defaultValue={data.exemptionBalance > 0n ? "EXONERATION" : "ESPECES"}><option value="EXONERATION">Crédit d’exonération ({new Intl.NumberFormat("fr-FR").format(Number(data.exemptionBalance))} ¥ dispo)</option><option value="ESPECES">Espèces</option><option value="TRANSFERT">Transfert</option><option value="AUTRE">Autre</option></select></label>
-              <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} /></label>
-            </div>
-            <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Confirmer le paiement</button></div>
-          </form>}
-        </section>}
-        {canWrite && settleable.length > 0 && <section className="panel">
-          <SectionHeader title="Régulariser une année" description="Encaissez le montant convenu avec le joueur, ou remettez la dette — motivé et audité" />
-          <form action={settleAssessment} className="form-grid">
-            <input type="hidden" name="ninjaId" value={data.id} />
-            <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
-            <label>Année concernée<select name="assessmentId" required>{settleable.map((row) => <option key={row.id} value={row.id}>RP {row.rpYear} — {row.remaining > 0n ? `reste ${new Intl.NumberFormat("fr-FR").format(Number(row.remaining))} ¥` : row.statusLabel === "En retard" ? "impayée (ancien registre)" : row.statusLabel}</option>)}</select></label>
-            <div className="form-row">
-              <label>Décision<select name="mode" defaultValue="PAYE"><option value="PAYE">Payée — encaisser le montant</option><option value="REMISE">Remise — annuler cette année</option></select></label>
-              <label>Montant payé (Ryō)<input type="number" name="amount" min={1} step={1} placeholder="Convenu avec le joueur" /></label>
-            </div>
-            <div className="form-row">
-              <label>Moyen<select name="method" defaultValue="ESPECES"><option value="ESPECES">Espèces</option><option value="EXONERATION">Crédit d’exonération</option><option value="TRANSFERT">Transfert</option><option value="AUTRE">Autre</option></select></label>
-              <label>Motif *<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Arrangement validé le…" /></label>
-            </div>
-            <div className="form-actions"><button className="button button-primary" type="submit">Appliquer la régularisation</button></div>
-          </form>
-        </section>}
         <section className="panel">
           <SectionHeader title="Points" description="Dernières écritures du registre" />
           {data.pointEntries.length ? <div className="mini-list">{data.pointEntries.map((entry) => <div key={entry.id}><span>{entry.label}{entry.reason && <small>{entry.reason}</small>}<small>{entry.at}</small></span><strong className={entry.points < 0 ? "negative" : "positive"}>{entry.points > 0 ? "+" : ""}{entry.points} pts</strong></div>)}</div>
