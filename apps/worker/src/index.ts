@@ -16,19 +16,23 @@ async function generateTaxes() {
   if (!policy) throw new Error("No active tax policy");
   const ninjas = await prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
   const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
-  // Catch-up: if a weekly run was missed, backfill every year since the first one the worker
-  // generated (imported legacy years have generatedAt null and are ignored).
-  const earliest = await prisma.taxYear.findFirst({ where: { generatedAt: { not: null } }, orderBy: { rpYear: "asc" }, select: { rpYear: true } });
-  const firstYear = Math.max(earliest?.rpYear ?? rpYear, rpYear - 12);
+  // Catch-up bounded by the last week this job actually billed (imported legacy weeks are
+  // not billing runs), so a missed Sunday is filled in without ever back-billing history.
+  const marker = await prisma.appSetting.findUnique({ where: { key: "taxGeneration" } });
+  const lastBilled = (marker?.value as { lastRpYear?: number } | undefined)?.lastRpYear;
+  const firstYear = lastBilled ? Math.max(lastBilled + 1, rpYear - 12) : rpYear;
   let created = 0;
   const years: number[] = [];
   for (let year = firstYear; year <= rpYear; year++) {
     const taxYear = await prisma.taxYear.upsert({ where: { rpYear: year }, create: { rpYear: year, taxPolicyId: policy.id, startsAt: service.startOfRpYear(year), endsAt: service.endOfRpYear(year), dueAt: service.dueAt(year), generatedAt: new Date() }, update: {} });
+    if (!taxYear.generatedAt) await prisma.taxYear.update({ where: { id: taxYear.id }, data: { generatedAt: new Date() } });
     const result = await prisma.taxAssessment.createMany({ data: ninjas.map((ninja) => ({ ninjaId: ninja.id, taxYearId: taxYear.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label, originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: taxYear.dueAt, status: taxYear.dueAt > new Date() ? "UPCOMING" : "DUE" })), skipDuplicates: true });
     created += result.count;
     if (result.count > 0) years.push(year);
   }
   const exempted = await autoApplyExemptions(rpYear);
+  const value = { lastRpYear: rpYear, at: new Date().toISOString() };
+  await prisma.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value }, update: { value, version: { increment: 1 } } });
   return { command: "taxes:generate", rpYear, created, years, exempted };
 }
 

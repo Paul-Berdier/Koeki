@@ -215,6 +215,7 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
   const aggregates = await loadNinjaAggregates();
   const ninja = aggregates.find((entry) => entry.id === id);
   if (!ninja) return null;
+  const currentRpYear = (await getRpService()).currentRpYear();
   const [grades, entries, payments, transactions, linked, exemption] = await Promise.all([
     prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     prisma.pointLedgerEntry.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
@@ -236,7 +237,18 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
     grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
     linkedUserName: linked, notes: options.canSeeNotes ? ninja.notes : null,
     totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points, exemptionBalance: exemption._sum.amount ?? 0n,
-    assessments: ninja.assessments.map((assessment) => ({ id: assessment.id, rpYear: assessment.rpYear, period: weekPeriod(assessment.dueAt), gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: assessmentStatusLabels[assessment.status], badge: assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) })),
+    assessments: [...ninja.assessments]
+      // Current week first, then history newest-first, then weeks paid in advance last:
+      // an agent works on today, not on next December's prepaid lines.
+      .sort((a, b) => {
+        const future = (row: typeof a) => (row.rpYear > currentRpYear ? 1 : 0);
+        return future(a) - future(b) || (future(a) ? a.rpYear - b.rpYear : b.rpYear - a.rpYear);
+      })
+      .map((assessment) => {
+      // A zero-rate grade owes nothing: saying "Payée" would suggest money changed hands.
+      const notTaxable = assessment.original === 0n && assessment.paid === 0n && assessment.penalties === 0n && assessment.gradeLabel !== "Ancien registre";
+      return { id: assessment.id, rpYear: assessment.rpYear, period: weekPeriod(assessment.dueAt), gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: notTaxable ? "Non imposable" : assessmentStatusLabels[assessment.status], badge: notTaxable ? ("draft" as BadgeStatus) : assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) };
+    }),
     pointEntries: entries.map((entry) => ({ id: entry.id, at: formatDate(entry.createdAt), label: pointEventLabels[entry.eventType] ?? entry.eventType, points: entry.points, reason: entry.reason })),
     operations, preview
   };
@@ -501,7 +513,9 @@ export async function getAudit(page: number, filters: AuditFilterParams = {}): P
 
 export async function getAdmin(): Promise<AdminData> {
   if (demoMode) return demoAdmin;
-  const [penaltySetting, approvalSetting, rpSetting, policy, allGrades, invitations, users, roles, freeNinjas] = await Promise.all([
+  const service = await getRpService();
+  const currentRpYear = service.currentRpYear();
+  const [penaltySetting, approvalSetting, rpSetting, policy, allGrades, invitations, users, roles, freeNinjas, activeNinjas, currentYear] = await Promise.all([
     prisma.appSetting.findUnique({ where: { key: "latePenalty" } }),
     prisma.appSetting.findUnique({ where: { key: "approvalThreshold" } }),
     prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
@@ -510,8 +524,11 @@ export async function getAdmin(): Promise<AdminData> {
     prisma.invitation.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { role: true, ninjaProfile: { select: { code: true } } } }),
     prisma.user.findMany({ include: { roles: { include: { role: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.role.findMany(),
-    prisma.ninjaProfile.findMany({ where: { userId: null, status: "ACTIVE" }, orderBy: { code: "asc" }, select: { id: true, code: true, firstName: true, lastName: true } })
+    prisma.ninjaProfile.findMany({ where: { userId: null, status: "ACTIVE" }, orderBy: { code: "asc" }, select: { id: true, code: true, firstName: true, lastName: true } }),
+    prisma.ninjaProfile.count({ where: { status: "ACTIVE" } }),
+    prisma.taxYear.findUnique({ where: { rpYear: currentRpYear }, include: { _count: { select: { assessments: true } } } })
   ]);
+  const billable = currentYear ? await prisma.taxAssessment.count({ where: { taxYearId: currentYear.id, originalAmount: { gt: 0 } } }) : 0;
   const penalty = penaltySetting?.value as { latePenaltyPercentBps?: number | null; latePenaltyBasis?: string; maxPenaltyApplications?: number; maxAssessmentDebt?: string; isPenaltyAutomationEnabled?: boolean; isRateValidated?: boolean } | undefined;
   const approval = approvalSetting?.value as { amount?: string; isValidated?: boolean } | undefined;
   const rp = rpSetting ? rpTimeConfigSchema.safeParse(rpSetting.value) : null;
@@ -528,6 +545,7 @@ export async function getAdmin(): Promise<AdminData> {
     },
     approval: { amount: approval?.amount ?? "50000", isValidated: approval?.isValidated ?? false },
     gradeRates: allGrades.map((grade) => ({ gradeId: grade.id, label: grade.label, amount: Number(policy?.rates.find((rate) => rate.gradeId === grade.id)?.amount ?? 0n) })),
+    currentWeek: { rpYear: currentRpYear, period: weekPeriod(service.dueAt(currentRpYear)), lines: currentYear?._count.assessments ?? 0, billable, activeNinjas },
     policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,
     rpTimeLabel: rpLabel,
     invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: invitation.status === "PENDING" }; }),

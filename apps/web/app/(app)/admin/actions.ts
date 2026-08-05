@@ -169,6 +169,43 @@ export async function updateTaxRates(formData: FormData) {
   redirect(`/admin?info=${encodeURIComponent(`Barème v${version} appliqué — ${rebilled} taxes refacturées pour la semaine en cours${exempted ? `, dont ${exempted} couvertes par le crédit d’exonération` : ""}`)}`);
 }
 
+/** Opens (or completes) the current RP week for every active ninja at the active scale,
+ *  without waiting for Sunday's worker run. Idempotent: existing lines are left alone. */
+export async function billCurrentWeek() {
+  const session = await requireWriteAccess("settings:manage");
+  const policy = await prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
+  if (!policy) redirect("/admin?erreur=Aucune%20politique%20fiscale%20active");
+  const service = await getRpService();
+  const rpYear = service.currentRpYear();
+  const ninjas = await prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+  const rates = new Map(policy!.rates.map((rate) => [rate.gradeId, rate.amount]));
+  let created = 0, exempted = 0;
+  await prisma.$transaction(async (tx) => {
+    const year = await tx.taxYear.upsert({ where: { rpYear }, create: { rpYear, taxPolicyId: policy!.id, startsAt: service.startOfRpYear(rpYear), endsAt: service.endOfRpYear(rpYear), dueAt: service.dueAt(rpYear), generatedAt: new Date() }, update: { generatedAt: new Date() } });
+    const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({
+      ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy!.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
+      originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > new Date() ? "UPCOMING" as const : "DUE" as const
+    })), skipDuplicates: true });
+    created = result.count;
+    const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
+    for (const assessment of fresh) {
+      const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+      if (already) continue;
+      const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
+      if (balance <= 0n) continue;
+      const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+      await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${rpYear}` } });
+      await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: session.userId } });
+      if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID" } });
+      exempted++;
+    }
+    const marker = { lastRpYear: rpYear, at: new Date().toISOString() };
+    await tx.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value: marker }, update: { value: marker, version: { increment: 1 } } });
+    await writeAudit(tx, { actorId: session.userId, action: "TAX_WEEK_BILLED", entityType: "TaxYear", entityId: year.id, reason: `Semaine RP ${rpYear} ouverte manuellement — ${created} taxes créées, ${exempted} couvertes par le crédit d’exonération` });
+  }, { timeout: 180_000, maxWait: 15_000 });
+  redirect(`/admin?info=${encodeURIComponent(created ? `Semaine RP ${rpYear} facturée — ${created} taxe${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}${exempted ? `, dont ${exempted} couverte${exempted > 1 ? "s" : ""} par le crédit d’exonération` : ""}` : `Semaine RP ${rpYear} déjà facturée pour tous les ninjas actifs`)}`);
+}
+
 export async function revokeUserAccess(formData: FormData) {
   const session = await requireWriteAccess("users:manage");
   const userId = formData.get("userId");

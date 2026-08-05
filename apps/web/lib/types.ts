@@ -66,6 +66,7 @@ export interface AuditData { rows: Array<{ id: string; at: string; actor: string
 export interface AdminData {
   penalty: { percentBps: number | null; isValidated: boolean; isEnabled: boolean; basis: string; maxApplications: number; maxDebt: string };
   gradeRates: Array<{ gradeId: string; label: string; amount: number }>;
+  currentWeek: { rpYear: number; period: string; lines: number; billable: number; activeNinjas: number };
   approval: { amount: string; isValidated: boolean };
   policy: { name: string; version: number; rateCount: number } | null;
   rpTimeLabel: string;

@@ -5,7 +5,7 @@ import { EmptyState, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getAdmin } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
 import { demoMode, hasPermission, requireSession, roleLabels } from "@/lib/session";
-import { createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updatePenaltySettings, updateTaxRates } from "./actions";
+import { billCurrentWeek, createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updatePenaltySettings, updateTaxRates } from "./actions";
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
@@ -52,6 +52,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
       <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
         <section className="panel" id="bareme-panel">
+          <SectionHeader title="Semaine fiscale en cours" description={`Semaine RP ${data.currentWeek.rpYear} · ${data.currentWeek.period} — échéance dimanche minuit`} />
+          <div className="mini-list">
+            <div><span>Ninjas facturés</span><strong>{data.currentWeek.lines} / {data.currentWeek.activeNinjas}</strong></div>
+            <div><span>Dont réellement imposables</span><strong className={data.currentWeek.billable === 0 ? "negative" : "positive"}>{data.currentWeek.billable}</strong></div>
+          </div>
+          {data.currentWeek.billable === 0 && <p className="notice error" style={{ margin: "0 20px 16px" }} role="alert">Personne n’a de taxe à payer cette semaine : le barème est à 0 pour les grades des ninjas actifs. Renseignez les montants ci-dessous puis publiez, ou corrigez les grades.</p>}
+          {canWrite && <form action={billCurrentWeek} className="form-grid" style={{ paddingTop: 0 }}>
+            <div className="form-actions"><button className="button button-ghost" type="submit">Facturer la semaine en cours maintenant</button></div>
+          </form>}
+        </section>
+        <section className="panel">
           <SectionHeader title="Barème hebdomadaire par grade" description="Publier un nouveau barème refacture immédiatement la semaine en cours pour tous les ninjas (les paiements déjà enregistrés sont préservés, le crédit d’exonération s’applique automatiquement)" />
           {canWrite ? <form action={updateTaxRates} className="form-grid">
             {data.gradeRates.map((rate) => <div className="form-row" key={rate.gradeId} style={{ gridTemplateColumns: "1fr 140px", alignItems: "center" }}>

@@ -131,6 +131,7 @@ export const demoAudit: AuditData = {
 export const demoAdmin: AdminData = {
   penalty: { percentBps: null, isValidated: false, isEnabled: false, basis: "ORIGINAL_TAX", maxApplications: 4, maxDebt: "32000" },
   gradeRates: [],
+  currentWeek: { rpYear: 48, period: "du 03 août au 09 août", lines: 7, billable: 5, activeNinjas: 7 },
   approval: { amount: "50000", isValidated: false },
   policy: { name: "Barème initial", version: 1, rateCount: 10 },
   rpTimeLabel: "1 semaine réelle = 1 année RP",
