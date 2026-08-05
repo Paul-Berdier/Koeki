@@ -71,7 +71,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
                 </label>)}
               </div>
             </fieldset>
-            <SettlementItems resources={donatable.map((resource) => ({ id: resource.id, label: `${resource.name}${resource.exemptionPerUnit > 0n ? ` — couvre ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/${resource.unit.symbol}` : ""}`, rate: Number(resource.exemptionPerUnit) }))} />
+            <SettlementItems resources={donatable.map((resource) => ({ id: resource.id, name: resource.name, label: `${resource.name}${resource.exemptionPerUnit > 0n ? ` — couvre ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/${resource.unit.symbol}` : ""}`, rate: Number(resource.exemptionPerUnit) }))} />
             <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} placeholder="Arrangement, contexte…" /></label>
             <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Régler les semaines cochées</button></div>
           </form> : <p className="notice" style={{ margin: 18 }}>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>}
