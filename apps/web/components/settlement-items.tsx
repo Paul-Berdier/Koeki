@@ -28,13 +28,13 @@ export function SettlementItems({ resources }: { resources: DonatableItem[] }) {
       <datalist id="objets-registre">{resources.map((resource) => <option key={resource.id} value={resource.label} />)}</datalist>
       {rows.map((row, index) => {
         const matched = resolve(row.text);
-        return <div key={index} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 88px 38px", gap: 10, alignItems: "end", marginBottom: 10 }}>
+        return <div key={index} className="item-row">
           <label>Objet {index + 1}{row.text && !matched && <small style={{ color: "var(--terracotta-300)", textTransform: "none", letterSpacing: "normal" }}> — choisissez une proposition</small>}
             <input list="objets-registre" value={row.text} placeholder="Fer, Bague T4, Plan…" autoComplete="off" onChange={(event) => update(index, { text: event.target.value })} />
             <input type="hidden" name={`resourceId_${index + 1}`} value={matched?.id ?? ""} />
           </label>
           <label>Quantité<input type="number" name={`quantity_${index + 1}`} min={0} step={1} value={row.quantity} onChange={(event) => update(index, { quantity: event.target.value })} /></label>
-          <button type="button" className="button button-ghost" aria-label={`Retirer l’objet ${index + 1}`} style={{ width: 38, height: 38, minHeight: 38, padding: 0 }} disabled={rows.length === 1 && !row.text && !row.quantity} onClick={() => (rows.length === 1 ? setRows([{ text: "", quantity: "" }]) : setRows(rows.filter((_, i) => i !== index)))}><X size={14} /></button>
+          <button type="button" className="button button-ghost" aria-label={`Retirer l’objet ${index + 1}`} disabled={rows.length === 1 && !row.text && !row.quantity} onClick={() => (rows.length === 1 ? setRows([{ text: "", quantity: "" }]) : setRows(rows.filter((_, i) => i !== index)))}><X size={14} /></button>
         </div>;
       })}
       <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setRows([...rows, { text: "", quantity: "" }])}><Plus size={14} /> Ajouter un objet</button></div>

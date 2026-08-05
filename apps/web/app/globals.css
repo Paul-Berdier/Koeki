@@ -172,6 +172,10 @@ td strong { color: var(--paper-100); }.positive { color: var(--olive-300); }.neg
 .allocation-preview { margin: 0 20px 16px; padding: 12px 14px; border: 1px solid var(--border-strong); background: rgba(196,148,62,.06); border-radius: var(--radius-sm); font-size: 12px; }
 .allocation-preview ul { margin: 8px 0; padding: 0; list-style: none; display: grid; gap: 5px; }
 .allocation-preview li { display: flex; justify-content: space-between; gap: 12px; }
+.item-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 38px; gap: 10px; align-items: end; margin-bottom: 10px; }
+.item-row label { min-width: 0; }
+.item-row input { width: 100%; min-width: 0; }
+.item-row button { width: 38px; height: 38px; min-height: 38px; padding: 0; }
 .mini-list { padding: 10px 20px 16px; display: grid; gap: 8px; font-size: 11px; }
 .mini-list > div { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(222,180,93,.09); padding-bottom: 8px; }
 .mini-list small { color: var(--sand-500); display: block; margin-top: 2px; }
