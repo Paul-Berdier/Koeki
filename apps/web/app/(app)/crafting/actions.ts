@@ -47,7 +47,7 @@ export async function executeCraft(formData: FormData) {
 }
 
 const recipeSchema = z.object({
-  code: z.string().trim().regex(/^[A-Z0-9-]{3,20}$/, "Code invalide (majuscules, chiffres, tirets)"),
+  code: z.string().trim().optional().transform((value) => (value ?? "").toUpperCase()),
   name: z.string().trim().min(2).max(120),
   category: z.string().trim().min(2).max(60),
   description: z.string().trim().max(1000).optional().transform((value) => value || ""),
@@ -57,13 +57,15 @@ const recipeSchema = z.object({
   minimumGradeCode: z.string().trim().optional().transform((value) => value || null)
 });
 
+const codeBase = (name: string) => name.normalize("NFD").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
+
 export async function createRecipe(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
   const parsed = recipeSchema.safeParse(Object.fromEntries(formData));
   const back = (message: string): never => redirect(`/crafting/new?erreur=${encodeURIComponent(message)}`);
   if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
   const ingredients: Array<{ resourceId: string; quantity: number }> = [];
-  for (let index = 1; index <= 4; index++) {
+  for (let index = 1; index <= 8; index++) {
     const resourceId = formData.get(`ingredientId_${index}`);
     const quantityRaw = formData.get(`ingredientQty_${index}`);
     if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
@@ -73,11 +75,19 @@ export async function createRecipe(formData: FormData) {
       ingredients.push({ resourceId, quantity });
     }
   }
-  if (!ingredients.length) back("Ajoutez au moins un ingrédient");
+  if (!ingredients.length) back("Ajoutez au moins un ingrédient — tapez son nom puis choisissez une proposition de la liste");
   const outputId = formData.get("outputId");
   const outputQtyRaw = formData.get("outputQty");
   const output = typeof outputId === "string" && outputId && typeof outputQtyRaw === "string" && Number(outputQtyRaw) > 0 && Number(outputQtyRaw) <= 1_000_000 ? { resourceId: outputId, quantity: Number(outputQtyRaw) } : null;
   const data = parsed.data!;
+  if (data.code && !/^[A-Z0-9-]{3,20}$/.test(data.code)) back("Code invalide (3 à 20 caractères : majuscules, chiffres, tirets) — ou laissez-le vide");
+  if (!data.code) {
+    // No code given: mint a fresh REC-XXX-NN from the name — always a brand-new v1.
+    const base = codeBase(data.name);
+    const used = new Set((await prisma.craftRecipe.findMany({ where: { code: { startsWith: `REC-${base}-` } }, select: { code: true } })).map((recipe) => recipe.code));
+    let suffix = 1;
+    do { data.code = `REC-${base}-${String(suffix++).padStart(2, "0")}`; } while (used.has(data.code));
+  }
   const previous = await prisma.craftRecipe.findFirst({ where: { code: data.code }, orderBy: { version: "desc" } });
   let recipeId = "";
   try {

@@ -1,4 +1,5 @@
-import { BookOpen, Clock3, Hammer, Layers3 } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, BookOpen, Clock3, Hammer, Layers3 } from "lucide-react";
 import { EmptyState, MoneyDisplay, StatusBadge } from "@koeki/ui";
 import { ModulePage } from "@/components/module-page";
 import { getCrafting } from "@/lib/data";
@@ -32,6 +33,7 @@ export default async function CraftingPage({ searchParams }: { searchParams: Pro
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--sand-500)" }}>×<input type="number" name="quantity" min={1} max={recipe.craftable} defaultValue={1} style={{ width: 64, minHeight: 32, border: "1px solid var(--border-strong)", borderRadius: 4, background: "rgba(0,0,0,.12)", color: "inherit", padding: "4px 8px" }} /></label>
         <button className="button button-ghost" type="submit" style={{ minHeight: 32 }}>Fabriquer</button>
       </form>}
+      {canManage && <Link className="text-link" href={`/crafting/new?base=${recipe.id}`} style={{ marginTop: 10 }}>Nouvelle version <ArrowRight size={13} /></Link>}
     </article>)}</div>
       : <EmptyState title="Aucune recette active" description="Créez une première recette pour ouvrir les ateliers." />}
   </ModulePage>;
