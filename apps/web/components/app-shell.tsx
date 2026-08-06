@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  BarChart3, BookOpenText, Boxes, FileText, HandCoins,
+  BarChart3, BookOpenText, Boxes, FileText, HandCoins, HeartHandshake,
   LayoutDashboard, LogOut, Menu, PackageSearch, ScrollText, Settings, ShieldCheck, Trophy, UserCircle2, Users, X
 } from "lucide-react";
 import type { ShellInfo } from "@/lib/types";
@@ -15,6 +15,7 @@ const navigation = [
   { href: "/ninjas", label: "Ninjas", icon: Users },
   { href: "/recouvrement", label: "Recouvrement", icon: HandCoins },
   { href: "/resources", label: "Ressources", icon: PackageSearch },
+  { href: "/dons", label: "Dons", icon: HeartHandshake },
   { href: "/inventory", label: "Inventaire", icon: Boxes },
   { href: "/crafting", label: "Artisanat", icon: BookOpenText },
   { href: "/events", label: "Événements", icon: Trophy },

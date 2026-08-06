@@ -288,7 +288,7 @@ export async function getResources(canApprove: boolean, params: ResourceFilterPa
   const [buybacks, donations, pending] = await Promise.all([
     prisma.resourceTransaction.findMany({ where: { type: "BUYBACK", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
     prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
-    canApprove ? prisma.resourceTransaction.findMany({ where: { status: "PENDING_APPROVAL" }, include: { ninja: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([])
+    canApprove ? prisma.resourceTransaction.findMany({ where: { status: "PENDING_APPROVAL", type: "BUYBACK" }, include: { ninja: true }, orderBy: { createdAt: "asc" } }) : Promise.resolve([])
   ]);
   const query = params.q?.trim().toLowerCase();
   const filtered = resources.filter((resource) =>

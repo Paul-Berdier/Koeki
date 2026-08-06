@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { getRpService, loadNinjaFiscal } from "@/lib/data";
-import { awardPoints, grantExemption, isUniqueViolation, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { awardPoints, grantExemption, isUniqueViolation, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
@@ -178,7 +178,6 @@ const paymentSchema = z.object({
   idempotencyKey: z.string().uuid()
 });
 
-const scaledTimes = (quantity: number, rate: bigint) => (BigInt(Math.round(quantity * 10_000)) * rate) / 10_000n;
 
 /** Core settlement flow: the agent ticks the weeks, then records what the player gave —
  *  Ryō and/or donated items. Item coverage is computed from each resource's per-unit

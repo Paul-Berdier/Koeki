@@ -25,6 +25,32 @@ export async function nextTransactionReceipt(tx: Tx, type: "DONATION" | "BUYBACK
   return `${prefix}-${year}-${String(count + 1).padStart(6, "0")}`;
 }
 
+/** Multiplies a decimal quantity (4-digit precision) by an integer bigint rate, flooring the result. */
+export const scaledTimes = (quantity: number, rate: bigint) => (BigInt(Math.round(quantity * 10_000)) * rate) / 10_000n;
+
+export async function activePrice(tx: Tx, resourceId: string) {
+  const price = await tx.resourcePriceHistory.findFirst({ where: { resourceId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, orderBy: { effectiveFrom: "desc" } });
+  return price?.pricePerUnit ?? null;
+}
+
+/** Applies the side effects of a VALIDATED resource transaction: stock movements, points
+ *  (per-unit scale plus any active rule for donations, rules only for buybacks) and
+ *  tax-exemption credit. Shared by agent-recorded flows and ninja self-declarations. */
+export async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }>, actorId: string) {
+  for (const item of items) await tx.inventoryMovement.create({ data: {
+    resourceId: item.resourceId, type: transaction.type === "BUYBACK" ? "BUYBACK_IN" : "DONATION_IN", quantity: new Prisma.Decimal(item.quantity),
+    unitCost: item.unitPrice, transactionId: transaction.id, agentId: actorId, justification: `Reçu ${transaction.receiptNumber}`, idempotencyKey: `${transaction.idempotencyKey}:${item.resourceId}`
+  } });
+  // Old-register scale: a donation earns each resource's own points per donated unit.
+  const basePoints = transaction.type === "DONATION" ? items.reduce((total, item) => total + Number(scaledTimes(item.quantity, BigInt(item.pointsPerUnit))), 0) : 0;
+  const points = await awardPoints(tx, { ninjaId: transaction.ninjaId, eventType: transaction.type === "BUYBACK" ? "RESOURCE_SALE" : "DONATION", amount: transaction.totalAmount, sourceType: "ResourceTransaction", sourceId: transaction.id, basePoints });
+  if (points > 0) await tx.resourceTransaction.update({ where: { id: transaction.id }, data: { totalPoints: points } });
+  // Old-register economy: giving resources earns tax-exemption credit, never direct Ryo.
+  // Donations use each resource's per-unit exemption rate; buybacks credit the buyback price.
+  const exemption = transaction.type === "BUYBACK" ? transaction.totalAmount : items.reduce((total, item) => total + scaledTimes(item.quantity, item.exemptionPerUnit), 0n);
+  await grantExemption(tx, { ninjaId: transaction.ninjaId, amount: exemption, sourceType: "ResourceTransaction", sourceId: transaction.id, reason: `${transaction.type === "BUYBACK" ? "Rachat" : "Don"} ${transaction.receiptNumber}` });
+}
+
 /** Aggregates the per-unit base points and every active matching rule into a single ledger entry per (source, eventType) — the unique constraint makes double grants impossible. */
 export async function awardPoints(tx: Tx, input: { ninjaId: string; eventType: PointEventType; amount: bigint; sourceType: string; sourceId: string; basePoints?: number | undefined }) {
   const now = new Date();

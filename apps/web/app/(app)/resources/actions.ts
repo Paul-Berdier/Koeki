@@ -3,33 +3,8 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { awardPoints, grantExemption, isUniqueViolation, nextTransactionReceipt, withReceiptRetry, writeAudit, type Tx } from "@/lib/finance";
+import { activePrice, applyValidatedTransaction, isUniqueViolation, nextTransactionReceipt, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { hasPermission, requireWriteAccess } from "@/lib/session";
-
-const QUANTITY_SCALE = 10_000n;
-const toScaled = (quantity: number) => BigInt(Math.round(quantity * 10_000));
-
-async function activePrice(tx: Tx, resourceId: string) {
-  const price = await tx.resourcePriceHistory.findFirst({ where: { resourceId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, orderBy: { effectiveFrom: "desc" } });
-  return price?.pricePerUnit ?? null;
-}
-
-const scaledTimes = (quantity: number, rate: bigint) => (BigInt(Math.round(quantity * 10_000)) * rate) / 10_000n;
-
-async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }>, actorId: string) {
-  for (const item of items) await tx.inventoryMovement.create({ data: {
-    resourceId: item.resourceId, type: transaction.type === "BUYBACK" ? "BUYBACK_IN" : "DONATION_IN", quantity: new Prisma.Decimal(item.quantity),
-    unitCost: item.unitPrice, transactionId: transaction.id, agentId: actorId, justification: `Reçu ${transaction.receiptNumber}`, idempotencyKey: `${transaction.idempotencyKey}:${item.resourceId}`
-  } });
-  // Old-register scale: a donation earns each resource's own points per donated unit.
-  const basePoints = transaction.type === "DONATION" ? items.reduce((total, item) => total + Number(scaledTimes(item.quantity, BigInt(item.pointsPerUnit))), 0) : 0;
-  const points = await awardPoints(tx, { ninjaId: transaction.ninjaId, eventType: transaction.type === "BUYBACK" ? "RESOURCE_SALE" : "DONATION", amount: transaction.totalAmount, sourceType: "ResourceTransaction", sourceId: transaction.id, basePoints });
-  if (points > 0) await tx.resourceTransaction.update({ where: { id: transaction.id }, data: { totalPoints: points } });
-  // Old-register economy: giving resources earns tax-exemption credit, never direct Ryo.
-  // Donations use each resource's per-unit exemption rate; buybacks credit the buyback price.
-  const exemption = transaction.type === "BUYBACK" ? transaction.totalAmount : items.reduce((total, item) => total + scaledTimes(item.quantity, item.exemptionPerUnit), 0n);
-  await grantExemption(tx, { ninjaId: transaction.ninjaId, amount: exemption, sourceType: "ResourceTransaction", sourceId: transaction.id, reason: `${transaction.type === "BUYBACK" ? "Rachat" : "Don"} ${transaction.receiptNumber}` });
-}
 
 const transactionSchema = z.object({
   type: z.enum(["DONATION", "BUYBACK"]),
@@ -67,7 +42,7 @@ export async function recordResourceTransaction(formData: FormData) {
         const price = await activePrice(tx, line.resourceId);
         if (type === "BUYBACK" && (price === null || price <= 0n)) throw new Error(`VALIDATION:Aucun prix actif pour ${resource.name} — configurez-le avant tout rachat`);
         const unitPrice = price ?? 0n;
-        items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: (unitPrice * toScaled(line.quantity)) / QUANTITY_SCALE, exemptionPerUnit: resource.exemptionPerUnit, pointsPerUnit: resource.pointsPerUnit });
+        items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: scaledTimes(line.quantity, unitPrice), exemptionPerUnit: resource.exemptionPerUnit, pointsPerUnit: resource.pointsPerUnit });
       }
       const totalAmount = items.reduce((total, item) => total + item.lineTotal, 0n);
       const approvalSetting = await tx.appSetting.findUnique({ where: { key: "approvalThreshold" } });
