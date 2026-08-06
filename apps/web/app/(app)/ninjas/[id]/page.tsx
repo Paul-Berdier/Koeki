@@ -38,7 +38,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
 
     <section className="metric-grid" aria-label="Situation fiscale">
       <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : "good"} />
-      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats — déduit automatiquement de la taxe chaque dimanche" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
+      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats — couvre automatiquement les taxes ouvertes dès qu’il est crédité" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
       <MetricCard label="Retard" value={lateYearsLabel(data.lateYears)} detail={data.lateYears >= 2 ? "Dossier prioritaire" : "Sous surveillance normale"} tone={data.lateYears >= 2 ? "danger" : data.lateYears > 0 ? "warn" : "good"} />
       <MetricCard label="Points" value={<PointDisplay points={data.pointsBalance} />} detail="Solde explicable depuis le registre" tone="neutral" />
     </section>

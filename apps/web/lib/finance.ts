@@ -1,5 +1,5 @@
 import { Prisma, type PointEventType, type TaxAssessmentStatus } from "@koeki/database";
-import { calculatePoints } from "@koeki/domain";
+import { calculatePoints, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema } from "@koeki/domain";
 
 export type Tx = Prisma.TransactionClient;
 
@@ -35,7 +35,8 @@ export async function activePrice(tx: Tx, resourceId: string) {
 
 /** Applies the side effects of a VALIDATED resource transaction: stock movements, points
  *  (per-unit scale plus any active rule for donations, rules only for buybacks) and
- *  tax-exemption credit. Shared by agent-recorded flows and ninja self-declarations. */
+ *  tax-exemption credit, which immediately covers any open tax week. Shared by
+ *  agent-recorded flows and ninja self-declarations. */
 export async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }>, actorId: string) {
   for (const item of items) await tx.inventoryMovement.create({ data: {
     resourceId: item.resourceId, type: transaction.type === "BUYBACK" ? "BUYBACK_IN" : "DONATION_IN", quantity: new Prisma.Decimal(item.quantity),
@@ -49,6 +50,43 @@ export async function applyValidatedTransaction(tx: Tx, transaction: { id: strin
   // Donations use each resource's per-unit exemption rate; buybacks credit the buyback price.
   const exemption = transaction.type === "BUYBACK" ? transaction.totalAmount : items.reduce((total, item) => total + scaledTimes(item.quantity, item.exemptionPerUnit), 0n);
   await grantExemption(tx, { ninjaId: transaction.ninjaId, amount: exemption, sourceType: "ResourceTransaction", sourceId: transaction.id, reason: `${transaction.type === "BUYBACK" ? "Rachat" : "Don"} ${transaction.receiptNumber}` });
+  const covered = await autoCoverOpenTaxes(tx, transaction.ninjaId, actorId, transaction.idempotencyKey);
+  return { points, exemption, covered };
+}
+
+/** Spends the ninja's available exemption credit on their open taxes, oldest week first —
+ *  called whenever credit is granted, so a mid-week don covers the already-billed week
+ *  without waiting for Sunday. The first application on an assessment uses the plain
+ *  assessment id as ledger source (the weekly job's idempotency check relies on it);
+ *  top-ups on a partially covered week get a suffixed source so the unique constraint
+ *  never blocks completing it. */
+export async function autoCoverOpenTaxes(tx: Tx, ninjaId: string, grantedById: string, sourceKey: string): Promise<bigint> {
+  let balance = await exemptionBalance(tx, ninjaId);
+  if (balance <= 0n) return 0n;
+  const rpSetting = await tx.appSetting.findUnique({ where: { key: "rpTime" } });
+  const rpParsed = rpSetting ? rpTimeConfigSchema.safeParse(rpSetting.value) : null;
+  const currentRpYear = createRpTimeService(rpParsed?.success ? rpParsed.data : defaultRpTimeConfig).currentRpYear();
+  const open = await tx.taxAssessment.findMany({
+    where: { ninjaId, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID", "OVERDUE"] } },
+    include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } } },
+    orderBy: { dueAt: "asc" }
+  });
+  const sum = (values: bigint[]) => values.reduce((total, value) => total + value, 0n);
+  let used = 0n;
+  for (const assessment of open) {
+    if (balance <= 0n) break;
+    const paid = sum(assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").map((entry) => entry.amount));
+    const remaining = assessment.originalAmount + sum(assessment.penalties.map((entry) => entry.amount)) + sum(assessment.adjustments.map((entry) => entry.amount)) - sum(assessment.exemptions.map((entry) => entry.amount)) - paid;
+    if (remaining <= 0n) continue;
+    const use = balance < remaining ? balance : remaining;
+    const first = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+    await tx.exemptionLedgerEntry.create({ data: { ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: first ? `${assessment.id}:${sourceKey}` : assessment.id, reason: "Exonération automatique (crédit de dons/rachats)" } });
+    await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById } });
+    balance -= use;
+    used += use;
+    await refreshAssessmentStatus(tx, assessment.id, currentRpYear);
+  }
+  return used;
 }
 
 /** Aggregates the per-unit base points and every active matching rule into a single ledger entry per (source, eventType) — the unique constraint makes double grants impossible. */

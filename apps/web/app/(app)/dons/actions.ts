@@ -63,21 +63,26 @@ export async function validateDonation(formData: FormData) {
   const session = await requireWriteAccess("inventory:write");
   const transactionId = formData.get("transactionId");
   if (typeof transactionId !== "string" || !transactionId) redirect("/dons");
+  let covered = 0n;
   try {
     await prisma.$transaction(async (tx) => {
       const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true, pointsPerUnit: true } } } } } });
       if (!transaction || transaction.type !== "DONATION" || transaction.status !== "PENDING_APPROVAL") throw new Error("VALIDATION:Déclaration déjà traitée");
       await tx.resourceTransaction.update({ where: { id: transactionId }, data: { status: "VALIDATED", validatedAt: new Date(), agentId: session.userId } });
-      await applyValidatedTransaction(tx, { id: transaction.id, type: "DONATION", ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey },
+      const applied = await applyValidatedTransaction(tx, { id: transaction.id, type: "DONATION", ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey },
         transaction.items.map((item) => ({ resourceId: item.resourceId, quantity: Number(item.quantity), unitPrice: item.unitPriceSnapshot, exemptionPerUnit: item.resource.exemptionPerUnit, pointsPerUnit: item.resource.pointsPerUnit })), session.userId);
-      await writeAudit(tx, { actorId: session.userId, action: "DONATION_APPROVED", entityType: "ResourceTransaction", entityId: transactionId, reason: `Validation de la déclaration ${transaction.receiptNumber}` });
+      covered = applied.covered;
+      await writeAudit(tx, { actorId: session.userId, action: "DONATION_APPROVED", entityType: "ResourceTransaction", entityId: transactionId, reason: `Validation de la déclaration ${transaction.receiptNumber}${applied.covered > 0n ? ` — ${Number(applied.covered).toLocaleString("fr-FR")} ¥ de taxes couverts par le crédit` : ""}` });
     });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("VALIDATION:")) redirect(`/dons?erreur=${encodeURIComponent(error.message.slice("VALIDATION:".length))}`);
     if (isUniqueViolation(error)) redirect("/dons?erreur=Mouvements%20d%C3%A9j%C3%A0%20appliqu%C3%A9s");
     throw error;
   }
-  redirect("/dons?info=D%C3%A9claration%20valid%C3%A9e%20%E2%80%94%20points%20et%20exon%C3%A9ration%20cr%C3%A9dit%C3%A9s");
+  const message = covered > 0n
+    ? `Déclaration validée — points crédités et ${Number(covered).toLocaleString("fr-FR")} ¥ de taxes couverts automatiquement par le crédit d’exonération`
+    : "Déclaration validée — points et exonération crédités";
+  redirect(`/dons?info=${encodeURIComponent(message)}`);
 }
 
 /** An agent refuses a declared donation: the line is cancelled, nothing is credited. */
