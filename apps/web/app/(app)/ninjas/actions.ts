@@ -223,11 +223,11 @@ export async function recordPayment(formData: FormData) {
       let donationValue = 0n;
       let donationReceipt: string | null = null;
       if (items.length) {
-        const lines: Array<{ resourceId: string; quantity: number; exemptionPerUnit: bigint; unitPrice: bigint }> = [];
+        const lines: Array<{ resourceId: string; quantity: number; exemptionPerUnit: bigint; unitPrice: bigint; pointsPerUnit: number }> = [];
         for (const item of items) {
           const resource = await tx.resource.findUnique({ where: { id: item.resourceId } });
           if (!resource || !resource.isActive) throw new Error("VALIDATION:Objet inconnu ou inactif");
-          lines.push({ resourceId: item.resourceId, quantity: item.quantity, exemptionPerUnit: resource.exemptionPerUnit, unitPrice: resource.exemptionPerUnit });
+          lines.push({ resourceId: item.resourceId, quantity: item.quantity, exemptionPerUnit: resource.exemptionPerUnit, unitPrice: resource.exemptionPerUnit, pointsPerUnit: resource.pointsPerUnit });
           donationValue += scaledTimes(item.quantity, resource.exemptionPerUnit);
         }
         donationReceipt = await nextTransactionReceipt(tx, "DONATION");
@@ -237,7 +237,8 @@ export async function recordPayment(formData: FormData) {
         } });
         await tx.resourceTransactionItem.createMany({ data: lines.map((line) => ({ transactionId: transaction.id, resourceId: line.resourceId, quantity: new Prisma.Decimal(line.quantity), unitPriceSnapshot: line.unitPrice, lineTotal: scaledTimes(line.quantity, line.exemptionPerUnit) })) });
         for (const line of lines) await tx.inventoryMovement.create({ data: { resourceId: line.resourceId, type: "DONATION_IN", quantity: new Prisma.Decimal(line.quantity), unitCost: line.unitPrice, transactionId: transaction.id, agentId: session.userId, justification: `Reçu ${donationReceipt}`, idempotencyKey: `${idempotencyKey}:don:${line.resourceId}` } });
-        await awardPoints(tx, { ninjaId, eventType: "DONATION", amount: donationValue, sourceType: "ResourceTransaction", sourceId: transaction.id });
+        const donationPoints = await awardPoints(tx, { ninjaId, eventType: "DONATION", amount: donationValue, sourceType: "ResourceTransaction", sourceId: transaction.id, basePoints: lines.reduce((total, line) => total + line.quantity * line.pointsPerUnit, 0) });
+        if (donationPoints > 0) await tx.resourceTransaction.update({ where: { id: transaction.id }, data: { totalPoints: donationPoints } });
         await grantExemption(tx, { ninjaId, amount: donationValue, sourceType: "ResourceTransaction", sourceId: transaction.id, reason: `Don ${donationReceipt}` });
       }
 

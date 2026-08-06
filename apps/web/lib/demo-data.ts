@@ -56,10 +56,10 @@ export const demoResources: ResourcesData = {
   metrics: { buybackTotal: 67400n, buybackCount: 23, donationValue: 22400n, donationCount: 9, activeCount: 42, totalCount: 48 },
   categories: [{ code: "MINERALS", label: "Minerais" }, { code: "TEXTILES", label: "Textiles" }, { code: "WOOD", label: "Bois" }],
   resources: [
-    { id: "r1", code: "RES-CUI-01", name: "Minerai de cuivre", category: "Minerais", unit: "kg", price: 180n, stock: 82, badge: "paid", stateLabel: "Disponible", demand: "NONE" },
-    { id: "r2", code: "RES-TIS-03", name: "Tissu renforcé", category: "Textiles", unit: "m", price: 320n, stock: 9, badge: "overdue", stateLabel: "Critique", demand: "NEEDED" },
-    { id: "r3", code: "RES-BOI-02", name: "Bois d’aulne", category: "Bois", unit: "planche", price: 95n, stock: 14, badge: "warning", stateLabel: "Stock bas", demand: "CRITICAL" },
-    { id: "r4", code: "RES-HER-08", name: "Herbe du désert", category: "Herboristerie", unit: "botte", price: 60n, stock: 143, badge: "paid", stateLabel: "Disponible", demand: "NONE" }
+    { id: "r1", code: "RES-CUI-01", name: "Minerai de cuivre", category: "Minerais", points: 10, exemption: 1000n, price: 180n, stock: 82, badge: "paid", stateLabel: "Disponible", demand: "NONE" },
+    { id: "r2", code: "RES-TIS-03", name: "Tissu renforcé", category: "Textiles", points: 10, exemption: 1000n, price: 320n, stock: 9, badge: "overdue", stateLabel: "Critique", demand: "NEEDED" },
+    { id: "r3", code: "RES-BOI-02", name: "Bois d’aulne", category: "Bois", points: 5, exemption: 800n, price: 95n, stock: 14, badge: "warning", stateLabel: "Stock bas", demand: "CRITICAL" },
+    { id: "r4", code: "RES-HER-08", name: "Herbe du désert", category: "Herboristerie", points: 2, exemption: 10n, price: 60n, stock: 143, badge: "paid", stateLabel: "Disponible", demand: "NONE" }
   ],
   pendingApprovals: []
 };
@@ -67,15 +67,15 @@ export const demoResources: ResourcesData = {
 export const demoInventory: InventoryData = {
   metrics: { stockValue: 418200n, movementsToday: 18, inToday: 12, outToday: 6, criticalCount: 3, lowCount: 1 },
   alerts: [
-    { id: "r2", name: "Tissu renforcé", stock: 9, unit: "m", level: "critical", threshold: 12 },
-    { id: "r3", name: "Bois d’aulne", stock: 14, unit: "planche", level: "low", threshold: 20 },
-    { id: "r5", name: "Sable siliceux", stock: 4, unit: "sac", level: "critical", threshold: 8 }
+    { id: "r2", name: "Tissu renforcé", stock: 9, level: "critical", threshold: 12 },
+    { id: "r3", name: "Bois d’aulne", stock: 14, level: "low", threshold: 20 },
+    { id: "r5", name: "Sable siliceux", stock: 4, level: "critical", threshold: 8 }
   ],
   movements: [
-    { id: "m1", at: "13:12", resource: "Minerai de cuivre", type: "Rachat", quantity: 12, unit: "kg", agent: "Sonemi H.", justification: "BUY-2026-000067" },
-    { id: "m2", at: "11:47", resource: "Tissu renforcé", type: "Consommation atelier", quantity: -3, unit: "m", agent: "Kaemon T.", justification: "Fabrication REC-ARM-014" }
+    { id: "m1", at: "13:12", resource: "Minerai de cuivre", type: "Rachat", quantity: 12, agent: "Sonemi H.", justification: "BUY-2026-000067" },
+    { id: "m2", at: "11:47", resource: "Tissu renforcé", type: "Consommation atelier", quantity: -3, agent: "Kaemon T.", justification: "Fabrication REC-ARM-014" }
   ],
-  resources: [{ id: "r1", name: "Minerai de cuivre", stock: 82, unit: "kg" }, { id: "r2", name: "Tissu renforcé", stock: 9, unit: "m" }]
+  resources: [{ id: "r1", name: "Minerai de cuivre", stock: 82 }, { id: "r2", name: "Tissu renforcé", stock: 9 }]
 };
 
 export const demoCrafting: CraftingData = {
@@ -94,10 +94,16 @@ export const demoStatistics: StatisticsData = {
     { grade: "Jonin", amount: 56000n, percent: 68 }, { grade: "Tokubetsu", amount: 8000n, percent: 10 }
   ],
   agents: [
-    { name: "Sonemi Hakumei", initials: "SH", payments: 19, collected: 112800n, transactions: 7, score: 91 },
-    { name: "Kaemon Tori", initials: "KT", payments: 14, collected: 86400n, transactions: 9, score: 88 }
+    { name: "Sonemi Hakumei", initials: "SH", payments: 19, collected: 112800n, donations: 5, buybacks: 2, transactions: 7, score: 91 },
+    { name: "Kaemon Tori", initials: "KT", payments: 14, collected: 86400n, donations: 6, buybacks: 3, transactions: 9, score: 88 }
   ],
-  topResources: [{ name: "Minerai de cuivre", typeLabel: "Rachat", quantity: 64, unit: "kg" }, { name: "Herbe du désert", typeLabel: "Don", quantity: 31, unit: "botte" }],
+  topResources: [{ name: "Minerai de cuivre", typeLabel: "Rachat", quantity: 64 }, { name: "Herbe du désert", typeLabel: "Don", quantity: 31 }],
+  topNinjas: [
+    { name: "Medo Nimto", code: "NIN-001424", points: 625 }, { name: "Toshiro Makaze", code: "NIN-001388", points: 410 },
+    { name: "Aoki Hoki", code: "NIN-000041", points: 260 }
+  ],
+  weekCompliance: { settled: 148, pending: 39, overdue: 23, total: 210, settledRateBps: 7047 },
+  exemptionFlow: { granted: 842000n, spent: 316000n, outstanding: 1928000n },
   pointsDistributed: 12480
 };
 

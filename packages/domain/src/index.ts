@@ -6,3 +6,4 @@ export * from "./points";
 export * from "./crafting";
 export * from "./permissions";
 export * from "./invitation";
+export * from "./statistics";

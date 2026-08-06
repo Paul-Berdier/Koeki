@@ -56,7 +56,7 @@ Pour une production vierge, ouvrir une commande ponctuelle sur `koeki-web` :
 pnpm db:seed:bootstrap
 ```
 
-Ce bootstrap crée uniquement les référentiels : rôles, grades, barème initial, catégories et unités de ressources, réglages (`latePenalty` désactivé, `rpTime`, seuil d’approbation non validé), règles de points inactives et un utilisateur système `systeme@koeki.local` (SUPER_ADMIN, non connectable — il sert d’auteur aux invitations générées par script). Aucun ninja fictif, aucune taxe, aucun stock.
+Ce bootstrap crée uniquement les référentiels : rôles, grades, barème initial, catégories de ressources, réglages (`latePenalty` désactivé, `rpTime`, seuil d’approbation non validé), règles de points inactives et un utilisateur système `systeme@koeki.local` (SUPER_ADMIN, non connectable — il sert d’auteur aux invitations générées par script). Aucun ninja fictif, aucune taxe, aucun stock.
 
 `pnpm db:seed` reste réservé au développement local : il crée les données fictives de démonstration.
 

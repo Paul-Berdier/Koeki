@@ -10,7 +10,7 @@ export default async function NewRecipePage({ searchParams }: { searchParams: Pr
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const [resources, grades] = demoMode ? [[], []] : await Promise.all([
-    prisma.resource.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, include: { unit: true } }),
+    prisma.resource.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }),
     prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })
   ]);
   return <div className="page-wrap">
@@ -37,7 +37,7 @@ export default async function NewRecipePage({ searchParams }: { searchParams: Pr
         <fieldset>
           <legend>Ingrédients consommés (jusqu’à 4)</legend>
           {[1, 2, 3, 4].map((index) => <div className="form-row" key={index}>
-            <label>Ingrédient {index}<select name={`ingredientId_${index}`} defaultValue=""><option value="">—</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name} ({resource.unit.symbol})</option>)}</select></label>
+            <label>Ingrédient {index}<select name={`ingredientId_${index}`} defaultValue=""><option value="">—</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}</option>)}</select></label>
             <label>Quantité<input type="number" name={`ingredientQty_${index}`} min={0} step="0.01" /></label>
           </div>)}
         </fieldset>

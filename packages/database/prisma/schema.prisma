@@ -479,21 +479,13 @@ model ResourceCategory {
   resources Resource[]
 }
 
-model ResourceUnit {
-  id        String     @id @default(cuid())
-  code      String     @unique
-  label     String
-  symbol    String
-  resources Resource[]
-}
-
+// Everything is counted in plain units — no per-resource unit of measure.
 model Resource {
   id                String                    @id @default(cuid())
   code              String                    @unique
   name              String
   description       String?
   categoryId        String
-  unitId            String
   minimumStock      Decimal                   @db.Decimal(20, 4)
   criticalStock     Decimal                   @db.Decimal(20, 4)
   isActive          Boolean                   @default(true)
@@ -501,8 +493,9 @@ model Resource {
   demand            String                    @default("NONE")
   // Tax-exemption credit granted per donated unit.
   exemptionPerUnit  BigInt                    @default(0)
+  // Ranking points granted per donated unit.
+  pointsPerUnit     Int                       @default(0)
   category          ResourceCategory          @relation(fields: [categoryId], references: [id])
-  unit              ResourceUnit              @relation(fields: [unitId], references: [id])
   prices            ResourcePriceHistory[]
   transactionItems  ResourceTransactionItem[]
   movements         InventoryMovement[]

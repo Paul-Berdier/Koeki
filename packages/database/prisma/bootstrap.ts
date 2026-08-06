@@ -11,11 +11,7 @@ const gradeSeed = [
 const categorySeed = [
   ["MINERALS", "Minerais"], ["METALS", "Métaux"], ["WOOD", "Bois"], ["PLANTS", "Plantes"], ["MEDICAL", "Composants médicaux"],
   ["TEXTILES", "Tissus"], ["LEATHER", "Cuirs"], ["CRYSTALS", "Cristaux"], ["POISONS", "Poisons"], ["SCROLLS", "Parchemins"],
-  ["WEAPONS", "Armes"], ["RARE", "Objets rares"], ["FOOD", "Ressources alimentaires"], ["CONSTRUCTION", "Matériaux de construction"], ["OTHER", "Autres"]
-] as const;
-const unitSeed = [
-  ["UNIT", "Unité", "u"], ["G", "Gramme", "g"], ["KG", "Kilogramme", "kg"], ["L", "Litre", "L"], ["M", "Mètre", "m"],
-  ["LOT", "Lot", "lot"], ["CRATE", "Caisse", "caisse"], ["ROLL", "Rouleau", "rouleau"], ["PIECE", "Pièce", "pc"]
+  ["WEAPONS", "Armes"], ["EQUIPMENT", "Équipement"], ["RARE", "Objets rares"], ["FOOD", "Ressources alimentaires"], ["CONSTRUCTION", "Matériaux de construction"], ["OTHER", "Autres"]
 ] as const;
 
 async function main() {
@@ -28,7 +24,6 @@ async function main() {
   const policy = await prisma.taxPolicy.upsert({ where: { name_version: { name: "Barème initial", version: 1 } }, create: { name: "Barème initial", version: 1, effectiveFromRpYear: 1, isActive: true }, update: { isActive: true } });
   for (const grade of grades.values()) await prisma.taxPolicyGradeRate.upsert({ where: { taxPolicyId_gradeId: { taxPolicyId: policy.id, gradeId: grade.id } }, create: { taxPolicyId: policy.id, gradeId: grade.id, amount: grade.amount }, update: {} });
   for (const [code, label] of categorySeed) await prisma.resourceCategory.upsert({ where: { code }, create: { code, label }, update: { label } });
-  for (const [code, label, symbol] of unitSeed) await prisma.resourceUnit.upsert({ where: { code }, create: { code, label, symbol }, update: { label, symbol } });
   await prisma.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value: { latePenaltyPercentBps: null, latePenaltyBasis: "ORIGINAL_TAX", latePenaltyFrequencyRpYears: 1, maxPenaltyApplications: 4, maxAssessmentDebt: "32000", isPenaltyAutomationEnabled: false, isRateValidated: false } }, update: {} });
   // Cadence RP : 1 jour réel = 1 mois RP, 1 semaine réelle = 1 année RP. L'année bascule le
   // dimanche à minuit (Europe/Paris) — c'est aussi l'échéance de paiement (dueDelay = année entière).

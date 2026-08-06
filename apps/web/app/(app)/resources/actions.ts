@@ -16,12 +16,14 @@ async function activePrice(tx: Tx, resourceId: string) {
 
 const scaledTimes = (quantity: number, rate: bigint) => (BigInt(Math.round(quantity * 10_000)) * rate) / 10_000n;
 
-async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint }>, actorId: string) {
+async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }>, actorId: string) {
   for (const item of items) await tx.inventoryMovement.create({ data: {
     resourceId: item.resourceId, type: transaction.type === "BUYBACK" ? "BUYBACK_IN" : "DONATION_IN", quantity: new Prisma.Decimal(item.quantity),
     unitCost: item.unitPrice, transactionId: transaction.id, agentId: actorId, justification: `Reçu ${transaction.receiptNumber}`, idempotencyKey: `${transaction.idempotencyKey}:${item.resourceId}`
   } });
-  const points = await awardPoints(tx, { ninjaId: transaction.ninjaId, eventType: transaction.type === "BUYBACK" ? "RESOURCE_SALE" : "DONATION", amount: transaction.totalAmount, sourceType: "ResourceTransaction", sourceId: transaction.id });
+  // Old-register scale: a donation earns each resource's own points per donated unit.
+  const basePoints = transaction.type === "DONATION" ? items.reduce((total, item) => total + Number(scaledTimes(item.quantity, BigInt(item.pointsPerUnit))), 0) : 0;
+  const points = await awardPoints(tx, { ninjaId: transaction.ninjaId, eventType: transaction.type === "BUYBACK" ? "RESOURCE_SALE" : "DONATION", amount: transaction.totalAmount, sourceType: "ResourceTransaction", sourceId: transaction.id, basePoints });
   if (points > 0) await tx.resourceTransaction.update({ where: { id: transaction.id }, data: { totalPoints: points } });
   // Old-register economy: giving resources earns tax-exemption credit, never direct Ryo.
   // Donations use each resource's per-unit exemption rate; buybacks credit the buyback price.
@@ -58,14 +60,14 @@ export async function recordResourceTransaction(formData: FormData) {
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
-      const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint; exemptionPerUnit: bigint }> = [];
+      const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }> = [];
       for (const line of lines) {
         const resource = await tx.resource.findUnique({ where: { id: line.resourceId } });
         if (!resource || !resource.isActive) throw new Error("VALIDATION:Ressource inconnue ou inactive");
         const price = await activePrice(tx, line.resourceId);
         if (type === "BUYBACK" && (price === null || price <= 0n)) throw new Error(`VALIDATION:Aucun prix actif pour ${resource.name} — configurez-le avant tout rachat`);
         const unitPrice = price ?? 0n;
-        items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: (unitPrice * toScaled(line.quantity)) / QUANTITY_SCALE, exemptionPerUnit: resource.exemptionPerUnit });
+        items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: (unitPrice * toScaled(line.quantity)) / QUANTITY_SCALE, exemptionPerUnit: resource.exemptionPerUnit, pointsPerUnit: resource.pointsPerUnit });
       }
       const totalAmount = items.reduce((total, item) => total + item.lineTotal, 0n);
       const approvalSetting = await tx.appSetting.findUnique({ where: { key: "approvalThreshold" } });
@@ -94,10 +96,10 @@ export async function approveTransaction(formData: FormData) {
   if (typeof transactionId !== "string" || !transactionId) redirect("/resources");
   try {
     await prisma.$transaction(async (tx) => {
-      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true } } } } } });
+      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true, pointsPerUnit: true } } } } } });
       if (!transaction || transaction.status !== "PENDING_APPROVAL") throw new Error("VALIDATION:Transaction déjà traitée");
       await tx.resourceTransaction.update({ where: { id: transactionId }, data: { status: "VALIDATED", validatedAt: new Date() } });
-      await applyValidatedTransaction(tx, { id: transaction.id, type: transaction.type, ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey }, transaction.items.map((item) => ({ resourceId: item.resourceId, quantity: Number(item.quantity), unitPrice: item.unitPriceSnapshot, exemptionPerUnit: item.resource.exemptionPerUnit })), transaction.agentId);
+      await applyValidatedTransaction(tx, { id: transaction.id, type: transaction.type, ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey }, transaction.items.map((item) => ({ resourceId: item.resourceId, quantity: Number(item.quantity), unitPrice: item.unitPriceSnapshot, exemptionPerUnit: item.resource.exemptionPerUnit, pointsPerUnit: item.resource.pointsPerUnit })), transaction.agentId);
       await writeAudit(tx, { actorId: session.userId, action: "BUYBACK_APPROVED", entityType: "ResourceTransaction", entityId: transactionId, reason: `Validation managériale du reçu ${transaction.receiptNumber}` });
     });
   } catch (error) {
@@ -111,11 +113,12 @@ export async function approveTransaction(formData: FormData) {
 const resourceSchema = z.object({
   name: z.string().trim().min(2, "Le nom est obligatoire").max(120),
   categoryId: z.string().min(1, "La catégorie est obligatoire"),
-  unitId: z.string().min(1, "L’unité est obligatoire"),
   description: z.string().trim().max(500).optional().transform((value) => value || null),
   minimumStock: z.coerce.number().min(0).max(1_000_000_000).default(0),
   criticalStock: z.coerce.number().min(0).max(1_000_000_000).default(0),
-  demand: z.enum(["NONE", "NEEDED", "CRITICAL"]).default("NONE")
+  demand: z.enum(["NONE", "NEEDED", "CRITICAL"]).default("NONE"),
+  pointsPerUnit: z.coerce.number().int("Points invalides (entier)").min(0).max(1_000_000).default(0),
+  exemptionPerUnit: z.coerce.number().int("Exonération invalide (entier en Ryō)").min(0).max(100_000_000_000).default(0)
 });
 
 const codeBase = (name: string) => name.normalize("NFD").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
@@ -137,9 +140,9 @@ export async function createResource(formData: FormData) {
     const code = `RES-${base}-${String(count + 1 + attempt).padStart(2, "0")}`;
     try {
       await prisma.$transaction(async (tx) => {
-        const resource = await tx.resource.create({ data: { code, name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock) } });
+        const resource = await tx.resource.create({ data: { code, name: data.name, categoryId: data.categoryId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: BigInt(data.exemptionPerUnit) } });
         if (price !== null && price > 0) await tx.resourcePriceHistory.create({ data: { resourceId: resource.id, pricePerUnit: BigInt(price), effectiveFrom: new Date(), createdById: session.userId } });
-        await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_CREATED", entityType: "Resource", entityId: resource.id, newValues: { code, name: data.name, price } });
+        await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_CREATED", entityType: "Resource", entityId: resource.id, newValues: { code, name: data.name, price, pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: data.exemptionPerUnit } });
       });
       created = true;
     } catch (error) { if (!isUniqueViolation(error)) throw error; }
@@ -158,10 +161,10 @@ export async function updateResource(formData: FormData) {
   const previous = await prisma.resource.findUnique({ where: { id: resourceId } });
   if (!previous) redirect("/resources?erreur=Ressource%20introuvable");
   await prisma.$transaction(async (tx) => {
-    await tx.resource.update({ where: { id: resourceId }, data: { name: data.name, categoryId: data.categoryId, unitId: data.unitId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), isActive: isActive === "on" } });
+    await tx.resource.update({ where: { id: resourceId }, data: { name: data.name, categoryId: data.categoryId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: BigInt(data.exemptionPerUnit), isActive: isActive === "on" } });
     await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_UPDATED", entityType: "Resource", entityId: resourceId,
-      previousValues: { name: previous!.name, minimumStock: Number(previous!.minimumStock), criticalStock: Number(previous!.criticalStock), isActive: previous!.isActive },
-      newValues: { name: data.name, minimumStock: data.minimumStock, criticalStock: data.criticalStock, isActive: isActive === "on" } });
+      previousValues: { name: previous!.name, minimumStock: Number(previous!.minimumStock), criticalStock: Number(previous!.criticalStock), pointsPerUnit: previous!.pointsPerUnit, exemptionPerUnit: Number(previous!.exemptionPerUnit), isActive: previous!.isActive },
+      newValues: { name: data.name, minimumStock: data.minimumStock, criticalStock: data.criticalStock, pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: data.exemptionPerUnit, isActive: isActive === "on" } });
   });
   redirect("/resources");
 }

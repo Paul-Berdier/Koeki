@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
-import { allocatePayment, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo, simulateCraft, type DebtLine } from "@koeki/domain";
+import { allocatePayment, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
 import { demoMode, roleLabels, type SessionInfo } from "./session";
@@ -283,7 +283,7 @@ export interface ResourceFilterParams { q?: string | undefined; categorie?: stri
 
 export async function getResources(canApprove: boolean, params: ResourceFilterParams = {}): Promise<ResourcesData> {
   if (demoMode) return demoResources;
-  const [service, prices, stocks, resources, categories] = await Promise.all([getRpService(), activePriceMap(), stockMap(), prisma.resource.findMany({ include: { category: true, unit: true }, orderBy: { name: "asc" } }), prisma.resourceCategory.findMany({ orderBy: { label: "asc" } })]);
+  const [service, prices, stocks, resources, categories] = await Promise.all([getRpService(), activePriceMap(), stockMap(), prisma.resource.findMany({ include: { category: true }, orderBy: { name: "asc" } }), prisma.resourceCategory.findMany({ orderBy: { label: "asc" } })]);
   const since = service.startOfRpYear(service.currentRpYear());
   const [buybacks, donations, pending] = await Promise.all([
     prisma.resourceTransaction.findMany({ where: { type: "BUYBACK", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
@@ -308,7 +308,8 @@ export async function getResources(canApprove: boolean, params: ResourceFilterPa
       const critical = Number(resource.criticalStock) > 0 && stock <= Number(resource.criticalStock);
       const low = Number(resource.minimumStock) > 0 && stock <= Number(resource.minimumStock);
       return {
-        id: resource.id, code: resource.code, name: resource.name, category: resource.category.label, unit: resource.unit.symbol,
+        id: resource.id, code: resource.code, name: resource.name, category: resource.category.label,
+        points: resource.pointsPerUnit, exemption: resource.exemptionPerUnit,
         price: prices.get(resource.id) ?? 0n, stock,
         badge: (!resource.isActive ? "draft" : critical ? "overdue" : low ? "warning" : "paid") as BadgeStatus,
         stateLabel: !resource.isActive ? "Inactive" : critical ? "Critique" : low ? "Stock bas" : "Disponible",
@@ -321,18 +322,18 @@ export async function getResources(canApprove: boolean, params: ResourceFilterPa
 
 export async function getInventory(): Promise<InventoryData> {
   if (demoMode) return demoInventory;
-  const [prices, stocks, resources, users] = await Promise.all([activePriceMap(), stockMap(), prisma.resource.findMany({ where: { isActive: true }, include: { unit: true }, orderBy: { name: "asc" } }), getUserNames()]);
+  const [prices, stocks, resources, users] = await Promise.all([activePriceMap(), stockMap(), prisma.resource.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }), getUserNames()]);
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
   const [today, latest] = await Promise.all([
     prisma.inventoryMovement.findMany({ where: { occurredAt: { gte: startOfDay } }, select: { quantity: true } }),
-    prisma.inventoryMovement.findMany({ orderBy: { occurredAt: "desc" }, take: 12, include: { resource: { include: { unit: true } } } })
+    prisma.inventoryMovement.findMany({ orderBy: { occurredAt: "desc" }, take: 12, include: { resource: true } })
   ]);
   const alerts = resources.flatMap((resource): InventoryData["alerts"] => {
     const stock = stocks.get(resource.id) ?? 0;
     const critical = Number(resource.criticalStock);
     const minimum = Number(resource.minimumStock);
-    if (critical > 0 && stock <= critical) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "critical", threshold: critical }];
-    if (minimum > 0 && stock <= minimum) return [{ id: resource.id, name: resource.name, stock, unit: resource.unit.symbol, level: "low", threshold: minimum }];
+    if (critical > 0 && stock <= critical) return [{ id: resource.id, name: resource.name, stock, level: "critical", threshold: critical }];
+    if (minimum > 0 && stock <= minimum) return [{ id: resource.id, name: resource.name, stock, level: "low", threshold: minimum }];
     return [];
   }).sort((a, b) => (a.level === b.level ? 0 : a.level === "critical" ? -1 : 1));
   return {
@@ -342,8 +343,8 @@ export async function getInventory(): Promise<InventoryData> {
       criticalCount: alerts.filter((alert) => alert.level === "critical").length, lowCount: alerts.filter((alert) => alert.level === "low").length
     },
     alerts,
-    movements: latest.map((movement) => ({ id: movement.id, at: formatDateTime(movement.occurredAt), resource: movement.resource.name, type: movementTypeLabels[movement.type] ?? movement.type, quantity: Number(movement.quantity), unit: movement.resource.unit.symbol, agent: shortName(users.get(movement.agentId) ?? "Système"), justification: movement.justification })),
-    resources: resources.map((resource) => ({ id: resource.id, name: resource.name, stock: stocks.get(resource.id) ?? 0, unit: resource.unit.symbol }))
+    movements: latest.map((movement) => ({ id: movement.id, at: formatDateTime(movement.occurredAt), resource: movement.resource.name, type: movementTypeLabels[movement.type] ?? movement.type, quantity: Number(movement.quantity), agent: shortName(users.get(movement.agentId) ?? "Système"), justification: movement.justification })),
+    resources: resources.map((resource) => ({ id: resource.id, name: resource.name, stock: stocks.get(resource.id) ?? 0 }))
   };
 }
 
@@ -379,43 +380,34 @@ export async function getStatistics(): Promise<StatisticsData> {
   const since = service.startOfRpYear(rpYear);
   const all = aggregates.flatMap((ninja) => ninja.assessments);
   const currentRows = all.filter((assessment) => assessment.rpYear === rpYear && !EXCLUDED.includes(assessment.status));
-  const expected = sumBig(currentRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions));
-  const collected = sumBig(currentRows.map((row) => row.paid));
   const previousRows = all.filter((assessment) => assessment.rpYear === rpYear - 1 && !EXCLUDED.includes(assessment.status));
-  const previousExpected = sumBig(previousRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions));
-  const previousCollected = sumBig(previousRows.map((row) => row.paid));
+  const cycle = { expected: sumBig(currentRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions)), collected: sumBig(currentRows.map((row) => row.paid)) };
+  const previous = { expected: sumBig(previousRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions)), collected: sumBig(previousRows.map((row) => row.paid)) };
   const debtByGradeMap = new Map<string, bigint>();
   for (const ninja of aggregates) if (ninja.debt > 0n) debtByGradeMap.set(ninja.gradeLabel, (debtByGradeMap.get(ninja.gradeLabel) ?? 0n) + ninja.debt);
-  const maxDebt = [...debtByGradeMap.values()].reduce((max, value) => (value > max ? value : max), 1n);
-  const [payments, transactions, points] = await Promise.all([
+  const [payments, transactions, points, cyclePoints, exemptionEntries] = await Promise.all([
     prisma.taxPayment.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, select: { recordedById: true, amount: true } }),
-    prisma.resourceTransaction.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, include: { items: { include: { resource: { include: { unit: true } } } } } }),
-    prisma.pointLedgerEntry.aggregate({ where: { createdAt: { gte: since }, points: { gt: 0 } }, _sum: { points: true } })
+    prisma.resourceTransaction.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, include: { items: { include: { resource: true } } } }),
+    prisma.pointLedgerEntry.aggregate({ where: { createdAt: { gte: since }, points: { gt: 0 } }, _sum: { points: true } }),
+    prisma.pointLedgerEntry.groupBy({ by: ["ninjaId"], where: { createdAt: { gte: since }, points: { gt: 0 } }, _sum: { points: true } }),
+    prisma.exemptionLedgerEntry.findMany({ select: { amount: true, createdAt: true } })
   ]);
-  const agentStats = new Map<string, { payments: number; collected: bigint; transactions: number }>();
-  for (const payment of payments) { const entry = agentStats.get(payment.recordedById) ?? { payments: 0, collected: 0n, transactions: 0 }; entry.payments++; entry.collected += payment.amount; agentStats.set(payment.recordedById, entry); }
-  for (const transaction of transactions) { const entry = agentStats.get(transaction.agentId) ?? { payments: 0, collected: 0n, transactions: 0 }; entry.transactions++; agentStats.set(transaction.agentId, entry); }
-  const maxVolume = Math.max(1, ...[...agentStats.values()].map((entry) => entry.payments + entry.transactions));
-  const maxCollected = [...agentStats.values()].reduce((max, entry) => (entry.collected > max ? entry.collected : max), 1n);
-  const resourceTotals = new Map<string, { name: string; typeLabel: string; quantity: number; unit: string }>();
-  for (const transaction of transactions) for (const item of transaction.items) {
-    const key = `${item.resourceId}:${transaction.type}`;
-    const entry = resourceTotals.get(key) ?? { name: item.resource.name, typeLabel: transaction.type === "BUYBACK" ? "Rachat" : "Don", quantity: 0, unit: item.resource.unit.symbol };
-    entry.quantity += Number(item.quantity);
-    resourceTotals.set(key, entry);
-  }
+  const agentActivity = new Map<string, AgentActivity>();
+  const activityOf = (userId: string) => { const entry = agentActivity.get(userId) ?? { name: users.get(userId) ?? "Agent Kōeki", payments: 0, collected: 0n, donations: 0, buybacks: 0 }; agentActivity.set(userId, entry); return entry; };
+  for (const payment of payments) { const entry = activityOf(payment.recordedById); entry.payments++; entry.collected += payment.amount; }
+  for (const transaction of transactions) { const entry = activityOf(transaction.agentId); if (transaction.type === "BUYBACK") entry.buybacks++; else entry.donations++; }
+  const ninjaNames = new Map(aggregates.map((ninja) => [ninja.id, { name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code }]));
   return {
-    rpYear, expected, collected, remaining: expected > collected ? expected - collected : 0n,
-    rateBps: expected > 0n ? Number((collected * 10_000n) / expected) : 0,
-    previousDeltaBps: previousExpected > 0n && expected > 0n ? Number((collected * 10_000n) / expected) - Number((previousCollected * 10_000n) / previousExpected) : null,
-    debtByGrade: [...debtByGradeMap.entries()].map(([grade, amount]) => ({ grade, amount, percent: Number((amount * 100n) / maxDebt) })).sort((a, b) => (b.amount > a.amount ? 1 : -1)),
-    agents: [...agentStats.entries()].map(([userId, entry]) => {
-      const name = users.get(userId) ?? "Agent Kōeki";
-      const volumeScore = (entry.payments + entry.transactions) / maxVolume;
-      const amountScore = Number((entry.collected * 100n) / maxCollected) / 100;
-      return { name, initials: name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(), payments: entry.payments, collected: entry.collected, transactions: entry.transactions, score: Math.round(100 * (0.6 * volumeScore + 0.4 * amountScore)) };
-    }).sort((a, b) => b.score - a.score),
-    topResources: [...resourceTotals.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5),
+    rpYear, expected: cycle.expected, collected: cycle.collected, remaining: cycle.expected > cycle.collected ? cycle.expected - cycle.collected : 0n,
+    rateBps: rateBps(cycle.collected, cycle.expected),
+    previousDeltaBps: rateDeltaBps(cycle, previous),
+    debtByGrade: buildAmountBars([...debtByGradeMap.entries()].map(([label, amount]) => ({ label, amount }))).map((bar) => ({ grade: bar.label, amount: bar.amount, percent: bar.percent })),
+    agents: buildAgentScores([...agentActivity.values()]),
+    topResources: buildTopResources(transactions.flatMap((transaction) => transaction.items.map((item) => ({ resourceId: item.resourceId, type: transaction.type, name: item.resource.name, quantity: Number(item.quantity) }))))
+      .map((row) => ({ name: row.name, typeLabel: row.type === "BUYBACK" ? "Rachat" : "Don", quantity: row.quantity })),
+    topNinjas: buildNinjaLeaderboard(cyclePoints.map((entry) => { const ninja = ninjaNames.get(entry.ninjaId); return { name: ninja?.name ?? "Ninja inconnu", code: ninja?.code ?? "—", points: entry._sum.points ?? 0 }; })),
+    weekCompliance: summarizeWeekCompliance(currentRows.map((row) => row.status)),
+    exemptionFlow: summarizeExemptionFlow(exemptionEntries, since),
     pointsDistributed: points._sum.points ?? 0
   };
 }

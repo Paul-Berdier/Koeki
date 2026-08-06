@@ -112,7 +112,7 @@ async function sendReminders() {
 }
 
 async function checkInventory() {
-  const resources = await prisma.resource.findMany({ where: { isActive: true }, include: { unit: true } });
+  const resources = await prisma.resource.findMany({ where: { isActive: true } });
   const grouped = await prisma.inventoryMovement.groupBy({ by: ["resourceId"], _sum: { quantity: true } });
   const stocks = new Map(grouped.map((entry) => [entry.resourceId, Number(entry._sum.quantity ?? 0)]));
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
@@ -128,8 +128,8 @@ async function checkInventory() {
     alerts.push({ resource: resource.code, stock, level });
     const already = await prisma.auditLog.findFirst({ where: { action: "INVENTORY_ALERT", entityType: "Resource", entityId: resource.id, createdAt: { gte: startOfDay } } });
     if (already) continue;
-    await prisma.auditLog.create({ data: { action: "INVENTORY_ALERT", entityType: "Resource", entityId: resource.id, reason: `Seuil ${level === "critical" ? "critique" : "bas"} atteint : ${stock} ${resource.unit.symbol}`, requestId: randomUUID() } });
-    for (const manager of managers) await prisma.notification.create({ data: { userId: manager.id, title: `Stock ${level === "critical" ? "critique" : "bas"} : ${resource.name}`, body: `${resource.name} — ${stock} ${resource.unit.symbol} restants (seuil ${level === "critical" ? "critique" : "bas"} : ${Number(level === "critical" ? resource.criticalStock : resource.minimumStock)}).` } });
+    await prisma.auditLog.create({ data: { action: "INVENTORY_ALERT", entityType: "Resource", entityId: resource.id, reason: `Seuil ${level === "critical" ? "critique" : "bas"} atteint : ${stock} u`, requestId: randomUUID() } });
+    for (const manager of managers) await prisma.notification.create({ data: { userId: manager.id, title: `Stock ${level === "critical" ? "critique" : "bas"} : ${resource.name}`, body: `${resource.name} — ${stock} restants (seuil ${level === "critical" ? "critique" : "bas"} : ${Number(level === "critical" ? resource.criticalStock : resource.minimumStock)}).` } });
   }
   return { command: "inventory:check", checked: resources.length, alerts };
 }

@@ -29,7 +29,7 @@ export interface NinjaDetailData {
 export interface RecoveryRow { id: string; name: string; code: string; debt: bigint; legacyWeeks: number; due: string; agent: string }
 export interface RecoveryData { metrics: { priorityDebt: bigint; priorityCount: number; averageLate: string; totalDebt: bigint; unassigned: number }; rows: RecoveryRow[] }
 
-export interface ResourceRow { id: string; code: string; name: string; category: string; unit: string; price: bigint; stock: number; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }
+export interface ResourceRow { id: string; code: string; name: string; category: string; points: number; exemption: bigint; price: bigint; stock: number; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }
 export interface ResourcesData {
   metrics: { buybackTotal: bigint; buybackCount: number; donationValue: bigint; donationCount: number; activeCount: number; totalCount: number };
   categories: Array<{ code: string; label: string }>;
@@ -39,9 +39,9 @@ export interface ResourcesData {
 
 export interface InventoryData {
   metrics: { stockValue: bigint; movementsToday: number; inToday: number; outToday: number; criticalCount: number; lowCount: number };
-  alerts: Array<{ id: string; name: string; stock: number; unit: string; level: "critical" | "low"; threshold: number }>;
-  movements: Array<{ id: string; at: string; resource: string; type: string; quantity: number; unit: string; agent: string; justification: string }>;
-  resources: Array<{ id: string; name: string; stock: number; unit: string }>;
+  alerts: Array<{ id: string; name: string; stock: number; level: "critical" | "low"; threshold: number }>;
+  movements: Array<{ id: string; at: string; resource: string; type: string; quantity: number; agent: string; justification: string }>;
+  resources: Array<{ id: string; name: string; stock: number }>;
 }
 
 export interface RecipeRow { id: string; code: string; name: string; category: string; minimumGrade: string | null; cost: bigint; craftable: number; duration: string; version: number }
@@ -50,8 +50,11 @@ export interface CraftingData { metrics: { activeCount: number; categoryCount: n
 export interface StatisticsData {
   rpYear: number; expected: bigint; collected: bigint; remaining: bigint; rateBps: number; previousDeltaBps: number | null;
   debtByGrade: Array<{ grade: string; amount: bigint; percent: number }>;
-  agents: Array<{ name: string; initials: string; payments: number; collected: bigint; transactions: number; score: number }>;
-  topResources: Array<{ name: string; typeLabel: string; quantity: number; unit: string }>;
+  agents: Array<{ name: string; initials: string; payments: number; collected: bigint; donations: number; buybacks: number; transactions: number; score: number }>;
+  topResources: Array<{ name: string; typeLabel: string; quantity: number }>;
+  topNinjas: Array<{ name: string; code: string; points: number }>;
+  weekCompliance: { settled: number; pending: number; overdue: number; total: number; settledRateBps: number };
+  exemptionFlow: { granted: bigint; spent: bigint; outstanding: bigint };
   pointsDistributed: number;
 }
 

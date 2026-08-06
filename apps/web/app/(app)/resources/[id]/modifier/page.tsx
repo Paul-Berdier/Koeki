@@ -11,10 +11,9 @@ export default async function EditResourcePage({ params, searchParams }: { param
   const { id } = await params;
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;
-  const [resource, categories, units] = demoMode ? [null, [], []] : await Promise.all([
+  const [resource, categories] = demoMode ? [null, []] : await Promise.all([
     prisma.resource.findUnique({ where: { id } }),
-    prisma.resourceCategory.findMany({ orderBy: { label: "asc" } }),
-    prisma.resourceUnit.findMany({ orderBy: { label: "asc" } })
+    prisma.resourceCategory.findMany({ orderBy: { label: "asc" } })
   ]);
   if (!demoMode && !resource) notFound();
   return <div className="page-wrap">
@@ -27,9 +26,10 @@ export default async function EditResourcePage({ params, searchParams }: { param
       <form action={updateResource} className="form-grid">
         <input type="hidden" name="resourceId" value={resource.id} />
         <label>Nom *<input type="text" name="name" required maxLength={120} defaultValue={resource.name} /></label>
+        <label>Catégorie *<select name="categoryId" required defaultValue={resource.categoryId}>{categories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
         <div className="form-row">
-          <label>Catégorie *<select name="categoryId" required defaultValue={resource.categoryId}>{categories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
-          <label>Unité *<select name="unitId" required defaultValue={resource.unitId}>{units.map((unit) => <option key={unit.id} value={unit.id}>{unit.label} ({unit.symbol})</option>)}</select></label>
+          <label>Points par unité donnée<input type="number" name="pointsPerUnit" min={0} step={1} defaultValue={resource.pointsPerUnit} /></label>
+          <label>Exonération par unité donnée (Ryō)<input type="number" name="exemptionPerUnit" min={0} step={1} defaultValue={Number(resource.exemptionPerUnit)} /></label>
         </div>
         <label>Description<input type="text" name="description" maxLength={500} defaultValue={resource.description ?? ""} /></label>
         <div className="form-row">

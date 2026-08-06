@@ -25,21 +25,20 @@ export async function nextTransactionReceipt(tx: Tx, type: "DONATION" | "BUYBACK
   return `${prefix}-${year}-${String(count + 1).padStart(6, "0")}`;
 }
 
-/** Aggregates every active matching rule into a single ledger entry per (source, eventType) — the unique constraint makes double grants impossible. */
-export async function awardPoints(tx: Tx, input: { ninjaId: string; eventType: PointEventType; amount: bigint; sourceType: string; sourceId: string }) {
+/** Aggregates the per-unit base points and every active matching rule into a single ledger entry per (source, eventType) — the unique constraint makes double grants impossible. */
+export async function awardPoints(tx: Tx, input: { ninjaId: string; eventType: PointEventType; amount: bigint; sourceType: string; sourceId: string; basePoints?: number | undefined }) {
   const now = new Date();
   const rules = await tx.pointRule.findMany({ where: { eventType: input.eventType, isActive: true, startsAt: { lte: now }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] } });
-  let total = 0;
+  let total = input.basePoints ?? 0;
   for (const rule of rules) total += calculatePoints({
     mode: rule.mode, fixedPoints: rule.fixedPoints ?? undefined, amount: input.amount, amountStep: rule.amountStep ?? undefined, pointsPerStep: rule.pointsPerStep ?? undefined,
     percentageBps: rule.mode === "PERCENTAGE" ? rule.multiplierBps ?? 0 : undefined, multiplier: rule.mode === "MULTIPLIER" ? (rule.multiplierBps ?? 10_000) / 10_000 : undefined,
     min: rule.minimum ?? undefined, max: rule.maximum ?? undefined
   });
-  const firstRule = rules[0];
-  if (total === 0 || !firstRule) return 0;
+  if (total === 0) return 0;
   const existing = await tx.pointLedgerEntry.findUnique({ where: { sourceType_sourceId_eventType: { sourceType: input.sourceType, sourceId: input.sourceId, eventType: input.eventType } } });
   if (existing) return 0;
-  await tx.pointLedgerEntry.create({ data: { ninjaId: input.ninjaId, ruleId: firstRule.id, eventType: input.eventType, points: total, sourceType: input.sourceType, sourceId: input.sourceId } });
+  await tx.pointLedgerEntry.create({ data: { ninjaId: input.ninjaId, ruleId: rules[0]?.id ?? null, eventType: input.eventType, points: total, sourceType: input.sourceType, sourceId: input.sourceId } });
   return total;
 }
 

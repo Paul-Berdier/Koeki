@@ -11,7 +11,7 @@ export default async function ResourceTransactionPage({ searchParams }: { search
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const [ninjas, resources] = demoMode ? [[], []] : await Promise.all([
     prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, orderBy: { code: "asc" }, select: { id: true, code: true, firstName: true, lastName: true } }),
-    prisma.resource.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, include: { unit: true } })
+    prisma.resource.findMany({ where: { isActive: true }, orderBy: { name: "asc" } })
   ]);
   return <div className="page-wrap">
     <PageHeader eyebrow="Dons et rachats" title="Nouvelle transaction" description="Les prix et les points sont recalculés côté serveur avant validation — le formulaire n’est jamais la source de vérité."
@@ -28,7 +28,7 @@ export default async function ResourceTransactionPage({ searchParams }: { search
         <fieldset>
           <legend>Ressources (jusqu’à 5 lignes)</legend>
           {[1, 2, 3, 4, 5].map((index) => <div className="form-row" key={index}>
-            <label>Ressource {index}<select name={`resourceId_${index}`} defaultValue=""><option value="">—</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name} ({resource.unit.symbol})</option>)}</select></label>
+            <label>Ressource {index}<select name={`resourceId_${index}`} defaultValue=""><option value="">—</option>{resources.map((resource) => <option key={resource.id} value={resource.id}>{resource.name}{resource.pointsPerUnit > 0 ? ` — ${resource.pointsPerUnit} pt${resource.pointsPerUnit > 1 ? "s" : ""}/u` : ""}</option>)}</select></label>
             <label>Quantité<input type="number" name={`quantity_${index}`} min={0} step={1} placeholder="0" /></label>
           </div>)}
         </fieldset>

@@ -20,13 +20,12 @@ const codeBase = (name: string) => name.normalize("NFD").replace(/[^a-zA-Z]/g, "
 
 async function importCore() {
   if (await prisma.appSetting.findUnique({ where: { key: FLAG } })) { console.log("import-legacy : déjà appliqué — rien à faire"); return; }
-  const [genin, categories, unit, systemUser] = await Promise.all([
+  const [genin, categories, systemUser] = await Promise.all([
     prisma.ninjaGrade.findUnique({ where: { code: "GENIN" } }),
     prisma.resourceCategory.findMany(),
-    prisma.resourceUnit.findUnique({ where: { code: "UNIT" } }),
     prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } })
   ]);
-  if (!genin || !unit || !systemUser || !categories.length) { console.log("import-legacy : référentiels absents — exécutez d’abord le bootstrap"); return; }
+  if (!genin || !systemUser || !categories.length) { console.log("import-legacy : référentiels absents — exécutez d’abord le bootstrap"); return; }
   const categoryByCode = new Map(categories.map((category) => [category.code, category.id]));
   const catalog = loadJson<{ resources: CatalogEntry[]; equipment: CatalogEntry[] }>("catalog.json");
   const ninjas = loadJson<NinjaEntry[]>("ninjas.json");
@@ -61,7 +60,7 @@ async function importCore() {
       usedCodes.add(code);
       const resource = await tx.resource.create({ data: {
         code, name: entry.name, description: entry.description, categoryId: categoryByCode.get(entry.category) ?? categoryByCode.get("OTHER")!,
-        unitId: unit.id, minimumStock: new Prisma.Decimal(0), criticalStock: new Prisma.Decimal(0)
+        minimumStock: new Prisma.Decimal(0), criticalStock: new Prisma.Decimal(0)
       } });
       if (entry.price !== null && entry.price > 0) await tx.resourcePriceHistory.create({ data: { resourceId: resource.id, pricePerUnit: BigInt(entry.price), effectiveFrom: new Date("2026-07-30T00:00:00Z"), createdById: systemUser.id } });
       resourceIdByKey.set(entry.key, resource.id);
@@ -171,12 +170,11 @@ async function fixCatalog() {
   const FLAG_FIX = "legacyCatalogFix2026-08-05";
   if (await prisma.appSetting.findUnique({ where: { key: FLAG_FIX } })) { console.log("import-legacy/catalogue : déjà corrigé"); return; }
   const fix = loadJson<{ equipment: Array<{ name: string; tier: string; planPrice: number; craftPrice: number; demand: string }>; resources: Array<{ name: string; demand: string }> }>("catalog-fix.json");
-  const [scrolls, unit, systemUser] = await Promise.all([
+  const [scrolls, systemUser] = await Promise.all([
     prisma.resourceCategory.findUnique({ where: { code: "SCROLLS" } }),
-    prisma.resourceUnit.findUnique({ where: { code: "UNIT" } }),
     prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } })
   ]);
-  if (!scrolls || !unit || !systemUser) { console.log("import-legacy/catalogue : référentiels absents"); return; }
+  if (!scrolls || !systemUser) { console.log("import-legacy/catalogue : référentiels absents"); return; }
   await prisma.$transaction(async (tx) => {
     const usedCodes = new Set((await tx.resource.findMany({ select: { code: true } })).map((resource) => resource.code));
     const nextCode = (name: string) => { const base = codeBase(name); let code = "", suffix = 1; do { code = `RES-${base}-${String(suffix++).padStart(2, "0")}`; } while (usedCodes.has(code)); usedCodes.add(code); return code; };
@@ -196,7 +194,7 @@ async function fixCatalog() {
       const planName = `Plan ${item.name}`;
       const existingPlan = await tx.resource.findFirst({ where: { name: planName } });
       if (!existingPlan) {
-        const plan = await tx.resource.create({ data: { code: nextCode(planName), name: planName, categoryId: scrolls.id, unitId: unit.id, demand: item.demand, minimumStock: new Prisma.Decimal(0), criticalStock: new Prisma.Decimal(0), description: `Plan ramassable ${item.tier} — permet de fabriquer ${item.name}` } });
+        const plan = await tx.resource.create({ data: { code: nextCode(planName), name: planName, categoryId: scrolls.id, demand: item.demand, minimumStock: new Prisma.Decimal(0), criticalStock: new Prisma.Decimal(0), description: `Plan ramassable ${item.tier} — permet de fabriquer ${item.name}` } });
         if (item.planPrice > 0) await tx.resourcePriceHistory.create({ data: { resourceId: plan.id, pricePerUnit: BigInt(item.planPrice), effectiveFrom: now, createdById: systemUser.id } });
         plansCreated++;
       }
@@ -288,6 +286,95 @@ async function fixTierExemptions() {
   console.log(`import-legacy/barèmes tiers : ${updated} équipements et plans mis à jour`);
 }
 
+/** Second catalog pass from the Excel's "Ressources" sheet: per-unit ranking points
+ *  on every donatable item (tier rates cover equipment pieces AND plans, like the
+ *  exemptions), built equipment moves to the new "Équipement" category (plans stay
+ *  in Parchemins), and Ryō leaves the catalog — it is money, not a resource. */
+async function updateCatalogPointsAndCategories() {
+  const FLAG_POINTS = "legacyCatalogPoints2026-08-07";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_POINTS } })) { console.log("import-legacy/points : déjà appliqué"); return; }
+  const POINT_RATES: Array<[string, number]> = [["Bois", 5], ["Laine", 10], ["Plastique", 5], ["Cuivre", 10], ["Fer", 125], ["Titane", 125], ["Chakra Métal", 500], ["Jade", 125], ["Lavande", 2]];
+  const TIER_POINTS: Array<[string, number]> = [["T1", 5], ["T2", 75], ["T3", 150], ["T4", 500]];
+  const equipment = await prisma.resourceCategory.findUnique({ where: { code: "EQUIPMENT" } });
+  if (!equipment) { console.log("import-legacy/points : catégorie Équipement absente — exécutez d’abord le bootstrap"); return; }
+  await prisma.$transaction(async (tx) => {
+    let pointsApplied = 0;
+    for (const [name, rate] of POINT_RATES) { const result = await tx.resource.updateMany({ where: { name: { equals: name, mode: "insensitive" } }, data: { pointsPerUnit: rate } }); pointsApplied += result.count; }
+    for (const [tier, rate] of TIER_POINTS) { const result = await tx.resource.updateMany({ where: { OR: [{ name: { endsWith: ` ${tier}` } }, { name: tier }] }, data: { pointsPerUnit: rate } }); pointsApplied += result.count; }
+    let moved = 0;
+    for (const [tier] of TIER_POINTS) {
+      const result = await tx.resource.updateMany({ where: { OR: [{ name: { endsWith: ` ${tier}` } }, { name: tier }], NOT: { name: { startsWith: "Plan " } } }, data: { categoryId: equipment.id } });
+      moved += result.count;
+    }
+    const ryo = await tx.resource.updateMany({ where: { name: { in: ["Ryo", "Ryō"], mode: "insensitive" } }, data: { isActive: false, pointsPerUnit: 0, exemptionPerUnit: 0n, demand: "NONE" } });
+    await tx.appSetting.create({ data: { key: FLAG_POINTS, value: { appliedAt: new Date().toISOString(), pointsApplied, moved, ryoDeactivated: ryo.count } } });
+    await tx.auditLog.create({ data: { action: "LEGACY_CATALOG_POINTS", entityType: "Resource", entityId: FLAG_POINTS, requestId: randomUUID(), reason: `Barème de points par unité appliqué à ${pointsApplied} objets, ${moved} équipements construits reclassés en « Équipement », Ryō retiré du catalogue (${ryo.count} désactivé)` } });
+    console.log(`import-legacy/points : ${pointsApplied} barèmes appliqués, ${moved} équipements reclassés, ${ryo.count} Ryō désactivé`);
+  }, { timeout: 300_000, maxWait: 30_000 });
+}
+
+/** Until real grades are collected, every ninja is a Genin confirmé (10 000 ¥/semaine).
+ *  The current RP week is rebilled at the new grade with the same rules as a scale
+ *  change: untouched lines are regenerated, anything already paid/exempted/penalized
+ *  stays, and fresh taxes are auto-covered by available exemption credit. */
+async function setAllGradesGeninConfirmed() {
+  const FLAG_GRADES = "legacyGradesGeninConfirmed2026-08-07";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_GRADES } })) { console.log("import-legacy/grades : déjà appliqué"); return; }
+  const [grade, policy, rpSetting, systemUser] = await Promise.all([
+    prisma.ninjaGrade.findUnique({ where: { code: "GENIN_CONFIRMED" } }),
+    prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
+    prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
+    prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } })
+  ]);
+  if (!grade || !policy || !systemUser) { console.log("import-legacy/grades : référentiels absents — exécutez d’abord le bootstrap"); return; }
+  const rp = rpSetting?.value as { realAnchorAt?: string; rpAnchorYear?: number; realMillisecondsPerRpYear?: number } | undefined;
+  const anchor = Date.parse(rp?.realAnchorAt ?? "2026-01-04T23:00:00.000Z");
+  const duration = rp?.realMillisecondsPerRpYear ?? 604_800_000;
+  const now = new Date();
+  const rpYear = (rp?.rpAnchorYear ?? 20) + Math.floor((now.getTime() - anchor) / duration);
+  const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
+  await prisma.$transaction(async (tx) => {
+    const toChange = await tx.ninjaProfile.findMany({ where: { status: { not: "ARCHIVED" }, currentGradeId: { not: grade.id } }, select: { id: true } });
+    const ids = toChange.map((ninja) => ninja.id);
+    if (ids.length) {
+      await tx.ninjaGradeHistory.updateMany({ where: { ninjaId: { in: ids }, effectiveTo: null }, data: { effectiveTo: now } });
+      await tx.ninjaGradeHistory.createMany({ data: ids.map((ninjaId) => ({ ninjaId, gradeId: grade.id, effectiveFrom: now, reason: "Passage collectif en Genin confirmé — grades réels à attribuer", changedById: systemUser.id })) });
+      await tx.ninjaProfile.updateMany({ where: { id: { in: ids } }, data: { currentGradeId: grade.id } });
+    }
+    // Rebill the current week at the new grade (same guardrails as updateTaxRates).
+    let rebilled = 0, exempted = 0;
+    const year = await tx.taxYear.findUnique({ where: { rpYear } });
+    if (year) {
+      const untouched = await tx.taxAssessment.findMany({ where: {
+        taxYearId: year.id, taxPolicy: { name: { not: "Ancien registre" } },
+        allocations: { none: {} }, exemptions: { none: {} }, penalties: { none: {} }, adjustments: { none: {} }
+      }, select: { id: true } });
+      if (untouched.length) await tx.taxAssessment.deleteMany({ where: { id: { in: untouched.map((entry) => entry.id) } } });
+      const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+      const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({
+        ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
+        originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > now ? "UPCOMING" as const : "DUE" as const
+      })), skipDuplicates: true });
+      rebilled = result.count;
+      const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
+      for (const assessment of fresh) {
+        const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+        if (already) continue;
+        const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
+        if (balance <= 0n) continue;
+        const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+        await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${rpYear}` } });
+        await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
+        if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID" } });
+        exempted++;
+      }
+    }
+    await tx.appSetting.create({ data: { key: FLAG_GRADES, value: { appliedAt: now.toISOString(), regraded: ids.length, rebilled, exempted, rpYear } } });
+    await tx.auditLog.create({ data: { action: "LEGACY_GRADES_GENIN_CONFIRMED", entityType: "NinjaProfile", entityId: FLAG_GRADES, requestId: randomUUID(), reason: `${ids.length} ninjas passés en Genin confirmé (grades réels à attribuer) — semaine RP ${rpYear} refacturée (${rebilled} taxes, ${exempted} couvertes par crédit)` } });
+    console.log(`import-legacy/grades : ${ids.length} ninjas en Genin confirmé, ${rebilled} taxes refacturées, ${exempted} couvertes par crédit`);
+  }, { timeout: 300_000, maxWait: 30_000 });
+}
+
 async function main() {
   await importCore();
   await importTaxHistory();
@@ -296,5 +383,7 @@ async function main() {
   await taxAmnesty();
   await importExemptions();
   await fixTierExemptions();
+  await updateCatalogPointsAndCategories();
+  await setAllGradesGeninConfirmed();
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

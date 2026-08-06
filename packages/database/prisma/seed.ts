@@ -34,10 +34,8 @@ async function main() {
   }
   const mineral = await prisma.resourceCategory.upsert({ where: { code: "MINERALS" }, create: { code: "MINERALS", label: "Minerais" }, update: {} });
   const textile = await prisma.resourceCategory.upsert({ where: { code: "TEXTILES" }, create: { code: "TEXTILES", label: "Textiles" }, update: {} });
-  const kg = await prisma.resourceUnit.upsert({ where: { code: "KG" }, create: { code: "KG", label: "Kilogramme", symbol: "kg" }, update: {} });
-  const meter = await prisma.resourceUnit.upsert({ where: { code: "M" }, create: { code: "M", label: "Mètre", symbol: "m" }, update: {} });
-  const copper = await prisma.resource.upsert({ where: { code: "RES-CUI-01" }, create: { code: "RES-CUI-01", name: "Minerai de cuivre", categoryId: mineral.id, unitId: kg.id, minimumStock: 25, criticalStock: 10 }, update: {} });
-  const fabric = await prisma.resource.upsert({ where: { code: "RES-TIS-03" }, create: { code: "RES-TIS-03", name: "Tissu renforcé", categoryId: textile.id, unitId: meter.id, minimumStock: 20, criticalStock: 12 }, update: {} });
+  const copper = await prisma.resource.upsert({ where: { code: "RES-CUI-01" }, create: { code: "RES-CUI-01", name: "Minerai de cuivre", categoryId: mineral.id, minimumStock: 25, criticalStock: 10 }, update: {} });
+  const fabric = await prisma.resource.upsert({ where: { code: "RES-TIS-03" }, create: { code: "RES-TIS-03", name: "Tissu renforcé", categoryId: textile.id, minimumStock: 20, criticalStock: 12 }, update: {} });
   for (const [resource, price] of [[copper, 180n], [fabric, 320n]] as const) await prisma.resourcePriceHistory.upsert({ where: { resourceId_effectiveFrom: { resourceId: resource.id, effectiveFrom: new Date("2026-01-01T00:00:00Z") } }, create: { resourceId: resource.id, pricePerUnit: price, effectiveFrom: new Date("2026-01-01T00:00:00Z"), createdById: admin.id }, update: {} });
   await prisma.inventoryMovement.upsert({ where: { idempotencyKey: "seed-copper-opening" }, create: { resourceId: copper.id, type: "MANUAL_ADJUSTMENT", quantity: 82, agentId: admin.id, justification: "Stock initial fictif", idempotencyKey: "seed-copper-opening" }, update: {} });
   await prisma.inventoryMovement.upsert({ where: { idempotencyKey: "seed-fabric-opening" }, create: { resourceId: fabric.id, type: "MANUAL_ADJUSTMENT", quantity: 9, agentId: admin.id, justification: "Stock initial fictif", idempotencyKey: "seed-fabric-opening" }, update: {} });
