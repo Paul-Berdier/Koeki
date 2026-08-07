@@ -5,7 +5,7 @@ import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { prisma } from "@koeki/database";
 import { updateEquipment } from "./actions";
 
-const JONIN_PLUS = ["TOKUBETSU_JONIN", "JONIN", "JONIN_COMMANDER", "KAGE", "SANIN"];
+const JONIN_PLUS = ["JONIN", "JONIN_COMMANDER", "KAGE", "SANIN"];
 type Slots = Record<string, { tier?: string | null; type?: string | null }>;
 const equippedCount = (slots: Slots) => Object.values(slots).filter((slot) => slot?.tier && slot.tier !== "Aucun").length;
 
