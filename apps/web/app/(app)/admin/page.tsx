@@ -5,7 +5,7 @@ import { EmptyState, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getAdmin } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
 import { demoMode, hasPermission, requireSession, roleLabels } from "@/lib/session";
-import { billCurrentWeek, createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updatePenaltySettings, updateTaxRates } from "./actions";
+import { billCurrentWeek, createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updatePenaltySettings, updateTaxRates, updateUserRoles } from "./actions";
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
@@ -16,6 +16,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const data = await getAdmin();
   const canUsers = !demoMode && hasPermission(session, "users:manage");
   const canWrite = !demoMode;
+  const isSuper = hasPermission(session, "users:manage");
+  const canRoles = !demoMode && hasPermission(session, "settings:manage");
+  const assignableRoles = data.roles.filter((role) => isSuper || role.code !== "SUPER_ADMIN");
   let lastInvite: { token: string; role: string; expiresAt: string } | null = null;
   const rawInvite = (await cookies()).get("koeki_last_invite")?.value;
   if (rawInvite) { try { lastInvite = JSON.parse(rawInvite); } catch { lastInvite = null; } }
@@ -36,7 +39,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <SectionHeader title="Générer une invitation" description="Jeton à usage unique, seul le hash est stocké" />
         {canWrite ? <form action={createInvitation} className="form-grid">
           <div className="form-row">
-            <label>Rôle<select name="roleId" required defaultValue={data.roles.find((role) => role.code === "ECONOMIC_AGENT")?.id}>{data.roles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>
+            <label>Rôle<select name="roleId" required defaultValue={assignableRoles.find((role) => role.code === "ECONOMIC_AGENT")?.id}>{assignableRoles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}</select></label>
             <label>Expiration<select name="expiresDays" defaultValue="7"><option value="3">3 jours</option><option value="7">7 jours</option><option value="14">14 jours</option><option value="30">30 jours</option></select></label>
           </div>
           <label>Rattacher à un ninja (facultatif)<select name="ninjaProfileId" defaultValue=""><option value="">Aucun</option>{data.freeNinjas.map((ninja) => <option key={ninja.id} value={ninja.id}>{ninja.code} · {ninja.name}</option>)}</select></label>
@@ -45,8 +48,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <SectionHeader title="Invitations récentes" description="Révocables tant qu’elles n’ont pas été utilisées" />
         {data.invitations.length ? <div className="table-scroll"><table><thead><tr><th>Rôle</th><th>Ninja lié</th><th>Créée</th><th>Expire</th><th>État</th><th></th></tr></thead><tbody>{data.invitations.map((invitation) => <tr key={invitation.id}><td><strong>{invitation.role}</strong></td><td>{invitation.ninja ?? "—"}</td><td>{invitation.createdAt}</td><td>{invitation.expiresAt}</td><td><StatusBadge status={invitation.badge}>{invitation.statusLabel}</StatusBadge></td><td>{canWrite && invitation.canRevoke && <form action={revokeInvitation}><input type="hidden" name="invitationId" value={invitation.id} /><button className="button button-ghost" style={{ minHeight: 30 }} type="submit"><Ban size={14} /> Révoquer</button></form>}</td></tr>)}</tbody></table></div>
           : <EmptyState title="Aucune invitation" description="Générez la première invitation pour ouvrir l’accès." />}
-        <SectionHeader title="Comptes" description="Accès révocables immédiatement (sessions invalidées)" />
-        {data.users.length ? <div className="table-scroll"><table><thead><tr><th>Utilisateur</th><th>Rôles</th><th>État</th><th></th></tr></thead><tbody>{data.users.map((user) => <tr key={user.id}><td><strong>{user.name}</strong></td><td>{user.roles}</td><td><StatusBadge status={user.revoked ? "overdue" : "paid"}>{user.revoked ? "Révoqué" : "Actif"}</StatusBadge></td><td>{canUsers && !user.revoked && <form action={revokeUserAccess}><input type="hidden" name="userId" value={user.id} /><button className="button button-ghost" style={{ minHeight: 30 }} type="submit"><Ban size={14} /> Révoquer</button></form>}</td></tr>)}</tbody></table></div>
+        <SectionHeader title="Comptes" description={isSuper ? "Rôles modifiables — effet immédiat, chaque changement est audité" : "Rôles modifiables sauf super-administrateur (réservé aux super-admins) — effet immédiat"} />
+        {data.users.length ? <div className="table-scroll"><table><thead><tr><th>Utilisateur</th><th>Rôles</th><th>État</th><th></th></tr></thead><tbody>{data.users.map((user) => <tr key={user.id}>
+          <td><strong>{user.name}</strong></td>
+          <td>{canRoles && (isSuper || !user.roleCodes.includes("SUPER_ADMIN")) ? <form action={updateUserRoles} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <input type="hidden" name="userId" value={user.id} />
+            {assignableRoles.map((role) => <label key={role.code} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, whiteSpace: "nowrap" }}><input type="checkbox" name={`role_${role.code}`} defaultChecked={user.roleCodes.includes(role.code)} style={{ minHeight: 0, width: 14, height: 14 }} /> {role.label}</label>)}
+            <button className="button button-ghost" type="submit" style={{ minHeight: 28 }}>Appliquer</button>
+          </form> : <span title={user.roleCodes.includes("SUPER_ADMIN") && !isSuper ? "Compte super-administrateur — réservé aux super-admins" : undefined}>{user.roles}</span>}</td>
+          <td><StatusBadge status={user.revoked ? "overdue" : "paid"}>{user.revoked ? "Révoqué" : "Actif"}</StatusBadge></td>
+          <td>{canUsers && !user.revoked && <form action={revokeUserAccess}><input type="hidden" name="userId" value={user.id} /><button className="button button-ghost" style={{ minHeight: 30 }} type="submit"><Ban size={14} /> Révoquer</button></form>}</td>
+        </tr>)}</tbody></table></div>
           : <EmptyState title="Aucun compte" description="Les comptes apparaissent après la première connexion sur invitation." />}
       </section>
 

@@ -147,7 +147,7 @@ export const demoAdmin: AdminData = {
     { id: "inv1", role: "Agent économique", ninja: null, statusLabel: "En attente", badge: "pending", createdAt: "02 août", expiresAt: "09 août", canRevoke: true },
     { id: "inv2", role: "Ninja", ninja: "NIN-000063", statusLabel: "Utilisée", badge: "paid", createdAt: "28 juil.", expiresAt: "04 août", canRevoke: false }
   ],
-  users: [{ id: "u1", name: "Sonemi Hakumei", roles: "Responsable Kōeki", revoked: false }],
+  users: [{ id: "u1", name: "Sonemi Hakumei", roles: "Responsable Kōeki", roleCodes: ["KOEKI_MANAGER"], revoked: false }],
   roles: [
     { id: "role1", code: "SUPER_ADMIN", label: "Super-administrateur" }, { id: "role2", code: "KOEKI_MANAGER", label: "Responsable Kōeki" },
     { id: "role3", code: "ECONOMIC_AGENT", label: "Agent économique" }, { id: "role4", code: "NINJA", label: "Ninja" }, { id: "role5", code: "AUDITOR", label: "Auditeur" }

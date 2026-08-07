@@ -53,6 +53,43 @@ export async function dismissLastInvite() {
   redirect("/admin");
 }
 
+/** Replaces a user's role set. Super-admins can grant everything; managers can grant
+ *  everything except SUPER_ADMIN and cannot touch a super-admin's account. Roles are read
+ *  from the database on every request, so the change applies immediately. */
+export async function updateUserRoles(formData: FormData) {
+  const session = await requireWriteAccess("settings:manage");
+  const isSuper = hasPermission(session, "users:manage");
+  const back = (message: string): never => redirect(`/admin?erreur=${encodeURIComponent(message)}`);
+  const userId = formData.get("userId");
+  if (typeof userId !== "string" || !userId) back("Utilisateur manquant");
+  const [roles, target] = await Promise.all([
+    prisma.role.findMany(),
+    prisma.user.findUnique({ where: { id: userId as string }, include: { roles: { include: { role: true } } } })
+  ]);
+  if (!target) back("Utilisateur introuvable");
+  const requested = roles.filter((role) => formData.get(`role_${role.code}`) === "on");
+  const currentCodes = target!.roles.map((entry) => entry.role.code);
+  if (!isSuper && currentCodes.includes("SUPER_ADMIN")) back("Seul un super-administrateur peut modifier les rôles d’un super-administrateur");
+  if (!isSuper && requested.some((role) => role.code === "SUPER_ADMIN")) back("Seul un super-administrateur peut attribuer le rôle super-administrateur");
+  if (!requested.length) back("Attribuez au moins un rôle — pour couper l’accès, utilisez la révocation");
+  if (currentCodes.includes("SUPER_ADMIN") && !requested.some((role) => role.code === "SUPER_ADMIN")) {
+    const otherSupers = await prisma.userRole.count({ where: { role: { code: "SUPER_ADMIN" }, userId: { not: target!.id }, user: { revokedAt: null } } });
+    if (otherSupers === 0) back("Impossible de retirer le rôle du dernier super-administrateur actif");
+  }
+  const requestedIds = new Set(requested.map((role) => role.id));
+  const currentIds = new Set(target!.roles.map((entry) => entry.roleId));
+  const toAdd = requested.filter((role) => !currentIds.has(role.id));
+  const toRemove = target!.roles.filter((entry) => !requestedIds.has(entry.roleId));
+  if (!toAdd.length && !toRemove.length) redirect(`/admin?info=${encodeURIComponent("Rôles inchangés — rien à faire")}`);
+  await prisma.$transaction(async (tx) => {
+    if (toRemove.length) await tx.userRole.deleteMany({ where: { userId: target!.id, roleId: { in: toRemove.map((entry) => entry.roleId) } } });
+    if (toAdd.length) await tx.userRole.createMany({ data: toAdd.map((role) => ({ userId: target!.id, roleId: role.id, assignedById: session.userId })) });
+    await writeAudit(tx, { actorId: session.userId, action: "USER_ROLES_UPDATED", entityType: "User", entityId: target!.id, reason: `Rôles de ${target!.name ?? target!.email ?? target!.id}`,
+      previousValues: { roles: currentCodes }, newValues: { roles: requested.map((role) => role.code) } });
+  });
+  redirect(`/admin?info=${encodeURIComponent(`Rôles de ${target!.name ?? "l’utilisateur"} mis à jour — effet immédiat`)}`);
+}
+
 export async function revokeInvitation(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
   const invitationId = formData.get("invitationId");
