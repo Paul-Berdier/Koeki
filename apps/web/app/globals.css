@@ -106,7 +106,7 @@ button { color: inherit; }
 .section-header h2 { margin: 0 0 4px; font: 700 19px/1.1 var(--font-display); }
 .section-header p { margin: 0; color: var(--sand-500); font-size: 11px; }
 .text-link { color: var(--gold-400); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
-.recovery-summary { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 20px; padding: 20px 20px 8px; }
+.recovery-summary { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 20px; padding: 20px 20px 8px; grid-auto-flow: column;}
 .recovery-summary span { display: block; color: var(--sand-500); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 .recovery-summary strong, .recovery-summary .money { display: block; margin-top: 6px; font-size: 20px; }
 .bar-chart { height: 198px; display: flex; align-items: flex-end; gap: clamp(12px, 4vw, 38px); padding: 18px 26px 24px; border-bottom: 1px solid var(--border); }

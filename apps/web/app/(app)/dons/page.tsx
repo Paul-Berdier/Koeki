@@ -2,10 +2,11 @@ import Link from "next/link";
 import { UserCircle2 } from "lucide-react";
 import { EmptyState, MetricCard, MoneyDisplay, PageHeader, PointDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
 import { DonationDeclaration } from "@/components/donation-declaration";
+import { DonsFilters } from "@/components/dons-filters";
 import { getRpService } from "@/lib/data";
 import { formatDateTime } from "@/lib/format";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
-import { prisma } from "@koeki/database";
+import { prisma, type Prisma } from "@koeki/database";
 import { declareOwnDonation, rejectDonation, validateDonation } from "./actions";
 
 const formatRyo = (value: number) => new Intl.NumberFormat("fr-FR").format(value);
@@ -24,15 +25,31 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
   const service = await getRpService();
   const rpYear = service.currentRpYear();
   const since = service.startOfRpYear(rpYear);
+  const q = typeof query.q === "string" ? query.q.trim() : "";
+  const statut = typeof query.statut === "string" ? query.statut : "";
+  const isFiltered = Boolean(q || statut);
+  // Every search token must match somewhere: ninja, receipt or a donated object.
+  const tokens = q.split(/\s+/).filter((token) => token && token !== "·");
+  const registerWhere: Prisma.ResourceTransactionWhereInput = {
+    type: "DONATION",
+    status: statut === "valides" ? "VALIDATED" : statut === "attente" ? "PENDING_APPROVAL" : { in: ["VALIDATED", "PENDING_APPROVAL"] },
+    AND: tokens.map((token) => ({ OR: [
+      { ninja: { is: { OR: [{ firstName: { contains: token, mode: "insensitive" } }, { lastName: { contains: token, mode: "insensitive" } }, { code: { contains: token, mode: "insensitive" } }] } } },
+      { receiptNumber: { contains: token, mode: "insensitive" } },
+      { items: { some: { resource: { name: { contains: token, mode: "insensitive" } } } } }
+    ] }))
+  };
   const itemsInclude = { include: { resource: { select: { name: true, pointsPerUnit: true, exemptionPerUnit: true } } } } as const;
-  const [profile, resources, pending, recent, cyclePoints, cycleDons] = await Promise.all([
+  const [profile, resources, pending, recent, cyclePoints, cycleDons, allNinjas] = await Promise.all([
     prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true, code: true, firstName: true, lastName: true, status: true } }),
     prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }),
     prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" }, include: { ninja: { select: { code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
-    prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: { in: ["VALIDATED", "PENDING_APPROVAL"] } }, orderBy: { createdAt: "desc" }, take: 100, include: { ninja: { select: { code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
+    prisma.resourceTransaction.findMany({ where: registerWhere, orderBy: { createdAt: "desc" }, take: 100, include: { ninja: { select: { code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
     prisma.pointLedgerEntry.aggregate({ where: { eventType: "DONATION", points: { gt: 0 }, createdAt: { gte: since } }, _sum: { points: true } }),
-    prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "VALIDATED", validatedAt: { gte: since } }, select: { id: true } })
+    prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "VALIDATED", validatedAt: { gte: since } }, select: { id: true } }),
+    prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { firstName: true, lastName: true } })
   ]);
+  const searchSuggestions = [...allNinjas.map((ninja) => `${ninja.firstName} ${ninja.lastName}`), ...resources.map((resource) => resource.name)];
   const [cycleExemption, grantedBySource] = await Promise.all([
     prisma.exemptionLedgerEntry.aggregate({ where: { sourceType: "ResourceTransaction", amount: { gt: 0 }, sourceId: { in: cycleDons.map((don) => don.id) } }, _sum: { amount: true } }),
     prisma.exemptionLedgerEntry.findMany({ where: { sourceType: "ResourceTransaction", amount: { gt: 0 }, sourceId: { in: recent.filter((don) => don.status === "VALIDATED").map((don) => don.id) } }, select: { sourceId: true, amount: true } })
@@ -90,7 +107,8 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
       </section>}
     </div>
     <section className="panel stack-panel">
-      <SectionHeader title="Registre des dons" description="Les 100 derniers dons — validés et en attente" />
+      <SectionHeader title="Registre des dons" description={isFiltered ? "Résultats filtrés — 100 plus récents" : "Les 100 derniers dons — validés et en attente"} />
+      <DonsFilters suggestions={searchSuggestions} />
       {recent.length ? <div className="table-scroll"><table><thead><tr><th>Date</th><th>Ninja</th><th>Contenu</th><th>Points</th><th>Exonération</th><th>Statut</th><th>Reçu</th></tr></thead><tbody>
         {recent.map((don) => {
           const totals = estimate(don.items);
@@ -106,7 +124,7 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
             <td><code>{don.receiptNumber}</code></td>
           </tr>;
         })}
-      </tbody></table></div> : <EmptyState title="Aucun don" description="Les dons validés et les déclarations apparaîtront ici." />}
+      </tbody></table></div> : <EmptyState title={isFiltered ? "Aucun don ne correspond" : "Aucun don"} description={isFiltered ? "Essayez un autre ninja, objet ou numéro de reçu, ou réinitialisez les filtres." : "Les dons validés et les déclarations apparaîtront ici."} />}
     </section>
   </div>;
 }
