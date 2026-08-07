@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
-import { allocatePayment, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
+import { allocatePayment, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, settlementTotals, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
 import { demoMode, roleLabels, type SessionInfo } from "./session";
@@ -123,9 +123,8 @@ export async function getDashboard(): Promise<DashboardData> {
   const all = aggregates.flatMap((ninja) => ninja.assessments);
   const rate = (year: number) => {
     const rows = all.filter((assessment) => assessment.rpYear === year && !EXCLUDED.includes(assessment.status));
-    const expected = sumBig(rows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions));
-    const collected = sumBig(rows.map((row) => row.paid));
-    return { expected, collected, percent: expected > 0n ? Number((collected * 100n) / expected) : rows.length ? 100 : 0 };
+    const totals = settlementTotals(rows);
+    return { ...totals, percent: totals.expected > 0n ? Number((totals.settled * 100n) / totals.expected) : rows.length ? 100 : 0 };
   };
   const current = rate(rpYear);
   const previous = rate(rpYear - 1);
@@ -145,10 +144,10 @@ export async function getDashboard(): Promise<DashboardData> {
   const stockValue = sumBig(resources.map((resource) => BigInt(Math.max(0, Math.round(stocks.get(resource.id) ?? 0))) * (prices.get(resource.id) ?? 0n)));
   const overdueNinjas = aggregates.filter((ninja) => ninja.badge === "overdue");
   return {
-    rpYear, expected: current.expected, collected: current.collected, debt: sumBig(aggregates.map((ninja) => ninja.debt)),
+    rpYear, expected: current.expected, collected: current.collected, exempted: current.exempted, debt: sumBig(aggregates.map((ninja) => ninja.debt)),
     buybacks: sumBig(buybacks.map((entry) => entry.totalAmount)), buybackCount: buybacks.length, stockValue, criticalCount: criticalStocks.length, overdueNinjas: overdueNinjas.length,
-    recoveryRateBps: current.expected > 0n ? Number((current.collected * 10_000n) / current.expected) : 0,
-    previousDeltaBps: previous.expected > 0n ? (current.expected > 0n ? Number((current.collected * 10_000n) / current.expected) - Number((previous.collected * 10_000n) / previous.expected) : null) : null,
+    recoveryRateBps: current.expected > 0n ? Number((current.settled * 10_000n) / current.expected) : 0,
+    previousDeltaBps: previous.expected > 0n ? (current.expected > 0n ? Number((current.settled * 10_000n) / current.expected) - Number((previous.settled * 10_000n) / previous.expected) : null) : null,
     recoveryByYear: years.map((year) => ({ rpYear: year, percent: rate(year).percent })),
     priorities: {
       penaltyRateMissing: !penaltyConfig?.latePenaltyPercentBps || !penaltyConfig.isRateValidated,
@@ -381,8 +380,8 @@ export async function getStatistics(): Promise<StatisticsData> {
   const all = aggregates.flatMap((ninja) => ninja.assessments);
   const currentRows = all.filter((assessment) => assessment.rpYear === rpYear && !EXCLUDED.includes(assessment.status));
   const previousRows = all.filter((assessment) => assessment.rpYear === rpYear - 1 && !EXCLUDED.includes(assessment.status));
-  const cycle = { expected: sumBig(currentRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions)), collected: sumBig(currentRows.map((row) => row.paid)) };
-  const previous = { expected: sumBig(previousRows.map((row) => row.original + row.penalties + row.adjustments - row.exemptions)), collected: sumBig(previousRows.map((row) => row.paid)) };
+  const cycle = settlementTotals(currentRows);
+  const previous = settlementTotals(previousRows);
   const debtByGradeMap = new Map<string, bigint>();
   for (const ninja of aggregates) if (ninja.debt > 0n) debtByGradeMap.set(ninja.gradeLabel, (debtByGradeMap.get(ninja.gradeLabel) ?? 0n) + ninja.debt);
   const [payments, transactions, points, cyclePoints, exemptionEntries] = await Promise.all([
@@ -398,9 +397,9 @@ export async function getStatistics(): Promise<StatisticsData> {
   for (const transaction of transactions) { const entry = activityOf(transaction.agentId); if (transaction.type === "BUYBACK") entry.buybacks++; else entry.donations++; }
   const ninjaNames = new Map(aggregates.map((ninja) => [ninja.id, { name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code }]));
   return {
-    rpYear, expected: cycle.expected, collected: cycle.collected, remaining: cycle.expected > cycle.collected ? cycle.expected - cycle.collected : 0n,
-    rateBps: rateBps(cycle.collected, cycle.expected),
-    previousDeltaBps: rateDeltaBps(cycle, previous),
+    rpYear, expected: cycle.expected, collected: cycle.collected, exempted: cycle.exempted, remaining: cycle.expected > cycle.settled ? cycle.expected - cycle.settled : 0n,
+    rateBps: rateBps(cycle.settled, cycle.expected),
+    previousDeltaBps: rateDeltaBps({ expected: cycle.expected, collected: cycle.settled }, { expected: previous.expected, collected: previous.settled }),
     debtByGrade: buildAmountBars([...debtByGradeMap.entries()].map(([label, amount]) => ({ label, amount }))).map((bar) => ({ grade: bar.label, amount: bar.amount, percent: bar.percent })),
     agents: buildAgentScores([...agentActivity.values()]),
     topResources: buildTopResources(transactions.flatMap((transaction) => transaction.items.map((item) => ({ resourceId: item.resourceId, type: transaction.type, name: item.resource.name, quantity: Number(item.quantity) }))))

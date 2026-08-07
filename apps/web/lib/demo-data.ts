@@ -16,7 +16,7 @@ const ninjaRows: NinjaRow[] = [
 ];
 
 export const demoDashboard: DashboardData = {
-  rpYear: 48, expected: 401000n, collected: 286500n, debt: 143000n, buybacks: 67400n, buybackCount: 23, stockValue: 418200n, criticalCount: 3, overdueNinjas: 12,
+  rpYear: 48, expected: 401000n, collected: 214500n, exempted: 72000n, debt: 143000n, buybacks: 67400n, buybackCount: 23, stockValue: 418200n, criticalCount: 3, overdueNinjas: 12,
   recoveryRateBps: 7140, previousDeltaBps: 210,
   recoveryByYear: [{ rpYear: 44, percent: 82 }, { rpYear: 45, percent: 76 }, { rpYear: 46, percent: 88 }, { rpYear: 47, percent: 69 }, { rpYear: 48, percent: 71 }],
   priorities: { penaltyRateMissing: true, overdueCount: 12, overdueOldCount: 4, criticalStocks: ["Cuivre", "tissu renforcé", "bois d’aulne"], reportsToReview: 2 },
@@ -88,7 +88,7 @@ export const demoCrafting: CraftingData = {
 };
 
 export const demoStatistics: StatisticsData = {
-  rpYear: 48, expected: 401000n, collected: 286500n, remaining: 114500n, rateBps: 7140, previousDeltaBps: 210,
+  rpYear: 48, expected: 401000n, collected: 214500n, exempted: 72000n, remaining: 114500n, rateBps: 7140, previousDeltaBps: 210,
   debtByGrade: [
     { grade: "Genin confirmé", amount: 18000n, percent: 22 }, { grade: "Chunin", amount: 35000n, percent: 42 }, { grade: "Konin", amount: 27000n, percent: 33 },
     { grade: "Jonin", amount: 56000n, percent: 68 }, { grade: "Tokubetsu", amount: 8000n, percent: 10 }

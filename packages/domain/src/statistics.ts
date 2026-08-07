@@ -4,6 +4,22 @@
 
 export interface CycleTotals { expected: bigint; collected: bigint }
 
+export interface AssessmentTotalsRow { original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint }
+export interface SettlementTotals { expected: bigint; collected: bigint; exempted: bigint; settled: bigint }
+
+/** Cycle accounting rule: expected stays GROSS (original + penalties + adjustments) and a tax
+ *  covered by exemption credit counts as settled alongside ryō payments — the donation economy
+ *  must read as recovery, never as shrinking expectations. */
+export function settlementTotals(rows: AssessmentTotalsRow[]): SettlementTotals {
+  let expected = 0n, collected = 0n, exempted = 0n;
+  for (const row of rows) {
+    expected += row.original + row.penalties + row.adjustments;
+    collected += row.paid;
+    exempted += row.exemptions;
+  }
+  return { expected, collected, exempted, settled: collected + exempted };
+}
+
 /** Share of `part` in `total`, in basis points (floored). A non-positive total yields 0. */
 export const rateBps = (part: bigint, total: bigint): number => (total > 0n ? Number((part * 10_000n) / total) : 0);
 

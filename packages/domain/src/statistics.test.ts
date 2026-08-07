@@ -1,8 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources,
-  initialsOf, rateBps, rateDeltaBps, summarizeExemptionFlow, summarizeWeekCompliance
+  initialsOf, rateBps, rateDeltaBps, settlementTotals, summarizeExemptionFlow, summarizeWeekCompliance
 } from "./statistics";
+
+describe("settlement accounting", () => {
+  it("keeps expected gross and counts exemption-covered taxes as settled", () => {
+    const totals = settlementTotals([
+      { original: 10_000n, penalties: 0n, adjustments: 0n, exemptions: 10_000n, paid: 0n },
+      { original: 10_000n, penalties: 1_000n, adjustments: 0n, exemptions: 0n, paid: 11_000n },
+      { original: 10_000n, penalties: 0n, adjustments: 0n, exemptions: 4_000n, paid: 2_000n }
+    ]);
+    expect(totals.expected).toBe(31_000n);
+    expect(totals.collected).toBe(13_000n);
+    expect(totals.exempted).toBe(14_000n);
+    expect(totals.settled).toBe(27_000n);
+    expect(rateBps(totals.settled, totals.expected)).toBe(8_709);
+  });
+  it("a fully exemption-covered cycle reads as 100 % recovered, not as nothing expected", () => {
+    const totals = settlementTotals([{ original: 10_000n, penalties: 0n, adjustments: 0n, exemptions: 10_000n, paid: 0n }]);
+    expect(totals.expected).toBe(10_000n);
+    expect(rateBps(totals.settled, totals.expected)).toBe(10_000);
+  });
+  it("returns zeros on an empty cycle", () => {
+    expect(settlementTotals([])).toEqual({ expected: 0n, collected: 0n, exempted: 0n, settled: 0n });
+  });
+});
 
 describe("collection rate", () => {
   it("computes basis points with floor rounding", () => {

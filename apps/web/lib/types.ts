@@ -4,7 +4,7 @@ export interface ShellInfo { rpYear: number; rpDayLabel: string; rpProgress: num
 
 export interface ActivityRow { code: string; label: string; subject: string; amount: bigint; direction: "in" | "out"; at: string; statusLabel: string; status: BadgeStatus }
 export interface DashboardData {
-  rpYear: number; expected: bigint; collected: bigint; debt: bigint; buybacks: bigint; buybackCount: number; stockValue: bigint; criticalCount: number; overdueNinjas: number;
+  rpYear: number; expected: bigint; collected: bigint; exempted: bigint; debt: bigint; buybacks: bigint; buybackCount: number; stockValue: bigint; criticalCount: number; overdueNinjas: number;
   recoveryRateBps: number; previousDeltaBps: number | null;
   recoveryByYear: Array<{ rpYear: number; percent: number }>;
   priorities: { penaltyRateMissing: boolean; overdueCount: number; overdueOldCount: number; criticalStocks: string[]; reportsToReview: number };
@@ -48,7 +48,7 @@ export interface RecipeRow { id: string; code: string; name: string; category: s
 export interface CraftingData { metrics: { activeCount: number; categoryCount: number; craftableCount: number; limitedCount: number; executions: number }; recipes: RecipeRow[] }
 
 export interface StatisticsData {
-  rpYear: number; expected: bigint; collected: bigint; remaining: bigint; rateBps: number; previousDeltaBps: number | null;
+  rpYear: number; expected: bigint; collected: bigint; exempted: bigint; remaining: bigint; rateBps: number; previousDeltaBps: number | null;
   debtByGrade: Array<{ grade: string; amount: bigint; percent: number }>;
   agents: Array<{ name: string; initials: string; payments: number; collected: bigint; donations: number; buybacks: number; transactions: number; score: number }>;
   topResources: Array<{ name: string; typeLabel: string; quantity: number }>;

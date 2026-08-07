@@ -19,7 +19,7 @@ export async function recordResourceTransaction(formData: FormData) {
   if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
   const { type, ninjaId, idempotencyKey } = parsed.data!;
   const lines: Array<{ resourceId: string; quantity: number }> = [];
-  for (let index = 1; index <= 5; index++) {
+  for (let index = 1; index <= 8; index++) {
     const resourceId = formData.get(`resourceId_${index}`);
     const quantityRaw = formData.get(`quantity_${index}`);
     if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
@@ -29,7 +29,7 @@ export async function recordResourceTransaction(formData: FormData) {
       lines.push({ resourceId, quantity });
     }
   }
-  if (!lines.length) back("Ajoutez au moins une ressource");
+  if (!lines.length) back("Ajoutez au moins une ressource — tapez son nom puis choisissez une proposition de la liste");
   const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId } });
   if (!ninja) back("Ninja introuvable");
   let receipt = "";

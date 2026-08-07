@@ -137,16 +137,18 @@ async function checkInventory() {
 async function refreshStats() {
   const service = await rpService(), rpYear = service.currentRpYear();
   const assessments = await prisma.taxAssessment.findMany({ where: { taxYear: { rpYear }, status: { notIn: ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED", "DRAFT"] } }, include: { penalties: true, adjustments: true, exemptions: true, allocations: { include: { payment: { select: { status: true } } } } } });
-  let expected = 0n, collected = 0n;
+  // Expected stays gross; taxes covered by exemption credit count as settled alongside ryō payments.
+  let expected = 0n, collected = 0n, exempted = 0n;
   for (const assessment of assessments) {
-    expected += assessment.originalAmount + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n) + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n) - assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
+    expected += assessment.originalAmount + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n) + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
     collected += assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
+    exempted += assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
   }
   const [payments, transactions] = await Promise.all([
     prisma.taxPayment.count({ where: { status: "VALIDATED" } }),
     prisma.resourceTransaction.count({ where: { status: "VALIDATED" } })
   ]);
-  const value = { refreshedAt: new Date().toISOString(), rpYear, expected: String(expected), collected: String(collected), recoveryRateBps: expected > 0n ? Number((collected * 10_000n) / expected) : 0, payments, transactions };
+  const value = { refreshedAt: new Date().toISOString(), rpYear, expected: String(expected), collected: String(collected), exempted: String(exempted), recoveryRateBps: expected > 0n ? Number(((collected + exempted) * 10_000n) / expected) : 0, payments, transactions };
   await prisma.appSetting.upsert({ where: { key: "statsSnapshot" }, create: { key: "statsSnapshot", value }, update: { value, version: { increment: 1 } } });
   return { command: "stats:refresh", ...value };
 }
