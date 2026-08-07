@@ -375,6 +375,245 @@ async function setAllGradesGeninConfirmed() {
   }, { timeout: 300_000, maxWait: 30_000 });
 }
 
+interface KvNinja { id: number; firstName: string; lastName: string; points: number; exo: number; grade: string | null; taxes: Array<{ week: string; paid: boolean }> }
+interface KvDonation { id: string; ninjaId: number; date: string; points: number; by: string; items: Array<{ quantity: number; name: string }> }
+interface KvRecipe { id: string; name: string; tier: string; materials: Array<{ key: string; qty: number }> }
+interface KvPayload { ninjas: KvNinja[]; donations: KvDonation[]; recipes: KvRecipe[]; resourcePoints: Record<string, number>; removedExternalIds: number[] }
+
+const KV_RESOURCE_NAMES: Record<string, string> = { bois: "Bois", laine: "Laine", plastique: "Plastique", cuivre: "Cuivre", fer: "Fer", titane: "Titane", chakra: "Chakra Métal", jade: "Jade", t1: "T1", t2: "T2", t3: "T3", t4: "T4", ryo: "Ryo", lavande: "Lavande" };
+const normalizeName = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+/** Cutover on the bot's KV export of 2026-08-07 — the bot is the source of truth up to that
+ *  moment. Unknown grades become "Non renseigné" (0 tax), known grades use the highest of the
+ *  explicit grade and the gradeStatus flags, balances are reconciled to the export, the wrongly
+ *  billed current week is refunded and regenerated, advance-paid weeks are honoured, the new
+ *  point scale and the closed buyback prices are applied, and the 31 real recipes come in. */
+async function mergeKvExport20260807() {
+  const FLAG_KV = "kvMerge2026-08-07";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_KV } })) { console.log("import-legacy/kv : déjà appliqué"); return; }
+  const kv = loadJson<KvPayload>("kv-2026-08-07.json");
+  const [gradeRows, policy, legacyPolicy, rpSetting, systemUser] = await Promise.all([
+    prisma.ninjaGrade.findMany(),
+    prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
+    prisma.taxPolicy.findUnique({ where: { name_version: { name: "Ancien registre", version: 1 } } }),
+    prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
+    prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } })
+  ]);
+  if (!policy || !systemUser) { console.log("import-legacy/kv : référentiels absents — exécutez d’abord le bootstrap"); return; }
+  const rp = rpSetting?.value as { realAnchorAt?: string; rpAnchorYear?: number; realMillisecondsPerRpYear?: number } | undefined;
+  const anchor = Date.parse(rp?.realAnchorAt ?? "2026-01-04T23:00:00.000Z");
+  const duration = rp?.realMillisecondsPerRpYear ?? 604_800_000;
+  const anchorYear = rp?.rpAnchorYear ?? 20;
+  const now = new Date();
+  const currentRpYear = anchorYear + Math.floor((now.getTime() - anchor) / duration);
+  const rpYearOfWeek = (week: string) => anchorYear + Math.round((Date.parse(`${week}T22:00:00.000Z`) - duration - anchor) / duration);
+  await prisma.$transaction(async (tx) => {
+    // Referentials: the "Non renseigné" grade is billed at zero until real grades are set.
+    const unknown = await tx.ninjaGrade.upsert({ where: { code: "UNKNOWN" }, create: { code: "UNKNOWN", label: "Non renseigné", sortOrder: 0 }, update: { label: "Non renseigné" } });
+    await tx.taxPolicyGradeRate.upsert({ where: { taxPolicyId_gradeId: { taxPolicyId: policy.id, gradeId: unknown.id } }, create: { taxPolicyId: policy.id, gradeId: unknown.id, amount: 0n }, update: { amount: 0n } });
+    const gradeByCode = new Map(gradeRows.map((grade) => [grade.code, grade]));
+    gradeByCode.set("UNKNOWN", unknown);
+    const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
+    rates.set(unknown.id, 0n);
+
+    // Ninjas: regrade everyone from the export (unknown -> Non renseigné), create the new ones.
+    const codeOf = (id: number) => `NIN-${String(id).padStart(6, "0")}`;
+    const profiles = await tx.ninjaProfile.findMany({ select: { id: true, code: true, currentGradeId: true, notes: true } });
+    const profileByCode = new Map(profiles.map((profile) => [profile.code, profile]));
+    let regraded = 0, created = 0;
+    for (const ninja of kv.ninjas) {
+      const target = gradeByCode.get(ninja.grade ?? "UNKNOWN") ?? unknown;
+      const existing = profileByCode.get(codeOf(ninja.id));
+      if (existing) {
+        if (existing.currentGradeId !== target.id) {
+          await tx.ninjaGradeHistory.updateMany({ where: { ninjaId: existing.id, effectiveTo: null }, data: { effectiveTo: now } });
+          await tx.ninjaGradeHistory.create({ data: { ninjaId: existing.id, gradeId: target.id, effectiveFrom: now, reason: ninja.grade ? "Fusion du registre du 07/08/2026 — grade réel" : "Fusion du registre du 07/08/2026 — grade non renseigné (taxe 0)", changedById: systemUser.id } });
+          await tx.ninjaProfile.update({ where: { id: existing.id }, data: { currentGradeId: target.id } });
+          regraded++;
+        }
+      } else {
+        const profile = await tx.ninjaProfile.create({ data: { code: codeOf(ninja.id), firstName: ninja.firstName, lastName: ninja.lastName, currentGradeId: target.id, notes: "Importé du registre du bot (07/08/2026)" } });
+        await tx.ninjaGradeHistory.create({ data: { ninjaId: profile.id, gradeId: target.id, effectiveFrom: now, reason: "Import du registre du 07/08/2026", changedById: systemUser.id } });
+        profileByCode.set(profile.code, { id: profile.id, code: profile.code, currentGradeId: target.id, notes: null });
+        created++;
+      }
+    }
+    for (const removedId of kv.removedExternalIds) {
+      const gone = profileByCode.get(codeOf(removedId));
+      if (gone) await tx.ninjaProfile.update({ where: { id: gone.id }, data: { status: "ARCHIVED", notes: `${gone.notes ? `${gone.notes}\n` : ""}Supprimé du registre du bot avant le 07/08/2026 — archivé` } });
+    }
+
+    // Current week: refund the automatic credit spent on the wrong 10 000 ¥ bills, then rebill
+    // untouched lines at each ninja's (possibly zero) new rate.
+    let refunded = 0n, rebilled = 0;
+    const year = await tx.taxYear.findUnique({ where: { rpYear: currentRpYear } });
+    if (year) {
+      const candidates = await tx.taxAssessment.findMany({ where: {
+        taxYearId: year.id, taxPolicy: { name: { not: "Ancien registre" } },
+        allocations: { none: {} }, penalties: { none: {} }, adjustments: { none: {} }
+      }, include: { exemptions: true } });
+      for (const assessment of candidates) {
+        const exempted = assessment.exemptions.reduce((sum, entry) => sum + entry.amount, 0n);
+        if (exempted > 0n) {
+          await tx.taxExemption.deleteMany({ where: { assessmentId: assessment.id } });
+          await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: exempted, sourceType: "TaxAssessmentRefund", sourceId: assessment.id, reason: "Refacturation du 07/08/2026 — crédit restitué" } });
+          refunded += exempted;
+        }
+      }
+      if (candidates.length) await tx.taxAssessment.deleteMany({ where: { id: { in: candidates.map((entry) => entry.id) } } });
+      const active = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+      const result = await tx.taxAssessment.createMany({ data: active.map((ninja) => ({
+        ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
+        originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > now ? "UPCOMING" as const : "DUE" as const
+      })), skipDuplicates: true });
+      rebilled = result.count;
+    }
+
+    // Tax history: regularised weeks flip to paid, unknown past weeks and advance-paid future
+    // weeks land as zero-amount history rows; the already-billed current week is settled with a
+    // "paid in advance" exemption line.
+    const history = legacyPolicy ?? await tx.taxPolicy.create({ data: { name: "Ancien registre", version: 1, effectiveFromRpYear: 0, isActive: false } });
+    const currentWeekKey = year ? year.dueAt.toISOString().slice(0, 10) : null;
+    const kvNinjaIds = kv.ninjas.map((ninja) => profileByCode.get(codeOf(ninja.id))?.id).filter((id): id is string => Boolean(id));
+    const appAssessments = await tx.taxAssessment.findMany({ where: { ninjaId: { in: kvNinjaIds } }, select: { id: true, ninjaId: true, status: true, originalAmount: true, taxYear: { select: { rpYear: true } } } });
+    const assessmentByKey = new Map(appAssessments.map((entry) => [`${entry.ninjaId}:${entry.taxYear.rpYear}`, entry]));
+    const yearByRp = new Map((await tx.taxYear.findMany({ select: { id: true, rpYear: true } })).map((entry) => [entry.rpYear, entry.id]));
+    let regularised = 0, advanceRows = 0, advanceSettled = 0;
+    for (const ninja of kv.ninjas) {
+      const profile = profileByCode.get(codeOf(ninja.id));
+      if (!profile) continue;
+      for (const record of ninja.taxes) {
+        const weekRpYear = rpYearOfWeek(record.week);
+        if (currentWeekKey && record.week === currentWeekKey) {
+          if (!record.paid) continue;
+          const assessment = await tx.taxAssessment.findUnique({ where: { ninjaId_taxYearId: { ninjaId: profile.id, taxYearId: year!.id } }, include: { exemptions: true, penalties: true, adjustments: true, allocations: { select: { amount: true, payment: { select: { status: true } } } } } });
+          if (!assessment) continue;
+          const paid = assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").reduce((sum, entry) => sum + entry.amount, 0n);
+          const remaining = assessment.originalAmount + assessment.penalties.reduce((sum, entry) => sum + entry.amount, 0n) + assessment.adjustments.reduce((sum, entry) => sum + entry.amount, 0n) - assessment.exemptions.reduce((sum, entry) => sum + entry.amount, 0n) - paid;
+          if (remaining > 0n) {
+            await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: remaining, reason: "Payée d’avance à l’ancien registre (07/08/2026)", grantedById: systemUser.id } });
+            await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
+            advanceSettled++;
+          }
+          continue;
+        }
+        const existing = assessmentByKey.get(`${profile.id}:${weekRpYear}`);
+        if (existing) {
+          if (record.paid && existing.status === "OVERDUE") { await tx.taxAssessment.update({ where: { id: existing.id }, data: { status: "PAID", version: { increment: 1 } } }); regularised++; }
+          continue;
+        }
+        const dueAt = new Date(`${record.week}T22:00:00.000Z`);
+        let yearId = yearByRp.get(weekRpYear);
+        if (!yearId) {
+          const createdYear = await tx.taxYear.create({ data: { rpYear: weekRpYear, taxPolicyId: history.id, startsAt: new Date(dueAt.getTime() - duration), endsAt: new Date(dueAt.getTime() - 1), dueAt } });
+          yearId = createdYear.id;
+          yearByRp.set(weekRpYear, yearId);
+        }
+        await tx.taxAssessment.create({ data: {
+          ninjaId: profile.id, taxYearId: yearId, taxPolicyId: history.id, gradeCodeSnapshot: "ANCIEN", gradeLabelSnapshot: record.week > (currentWeekKey ?? "") ? "Payée d’avance (ancien registre)" : "Ancien registre",
+          originalAmount: 0n, dueAt, status: record.paid ? "PAID" : dueAt < now ? "OVERDUE" : "UPCOMING"
+        } });
+        advanceRows++;
+        assessmentByKey.set(`${profile.id}:${weekRpYear}`, { id: "", ninjaId: profile.id, status: "PAID", originalAmount: 0n, taxYear: { rpYear: weekRpYear } });
+      }
+    }
+
+    // Balances: the export is the truth — realign every point and exemption balance with a
+    // single explicable adjustment entry per ninja.
+    let pointAdjustments = 0, exoAdjustments = 0;
+    for (const ninja of kv.ninjas) {
+      const profile = profileByCode.get(codeOf(ninja.id));
+      if (!profile) continue;
+      const pointsNow = (await tx.pointLedgerEntry.aggregate({ where: { ninjaId: profile.id }, _sum: { points: true } }))._sum.points ?? 0;
+      const pointsDelta = ninja.points - pointsNow;
+      if (pointsDelta !== 0) { await tx.pointLedgerEntry.create({ data: { ninjaId: profile.id, eventType: "MANUAL_ADJUSTMENT", points: pointsDelta, sourceType: "Import", sourceId: `${FLAG_KV}:points:${ninja.id}`, reason: "Recalage sur le registre du 07/08/2026" } }); pointAdjustments++; }
+      const exoNow = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: profile.id }, _sum: { amount: true } }))._sum.amount ?? 0n;
+      const exoDelta = BigInt(ninja.exo) - exoNow;
+      if (exoDelta !== 0n) { await tx.exemptionLedgerEntry.create({ data: { ninjaId: profile.id, amount: exoDelta, sourceType: "Import", sourceId: `${FLAG_KV}:exo:${ninja.id}`, reason: "Recalage sur le registre du 07/08/2026" } }); exoAdjustments++; }
+    }
+
+    // Current week again: with correct balances, spend available credit on whoever still owes.
+    let covered = 0;
+    if (year) {
+      const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
+      for (const assessment of fresh) {
+        const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+        if (already) continue;
+        const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
+        if (balance <= 0n) continue;
+        const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+        await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${currentRpYear}` } });
+        await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
+        if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
+        covered++;
+      }
+    }
+
+    // The 49 donations recorded at the bot since 03/08 — receipts only, balances already carry them.
+    const resources = await tx.resource.findMany({ select: { id: true, name: true } });
+    const resourceByNorm = new Map(resources.map((resource) => [normalizeName(resource.name), resource]));
+    let donsImported = 0, donIndex = 0;
+    for (const don of kv.donations) {
+      donIndex++;
+      const profile = profileByCode.get(codeOf(don.ninjaId));
+      if (!profile) continue;
+      const items = don.items.map((item) => ({ quantity: item.quantity, resource: resourceByNorm.get(normalizeName(item.name)) })).filter((item): item is { quantity: number; resource: { id: string; name: string } } => Boolean(item.resource));
+      const when = new Date(don.date);
+      await tx.resourceTransaction.create({ data: {
+        id: `kv-don-${don.id}`, receiptNumber: `DON-BOT-${String(donIndex).padStart(6, "0")}`, type: "DONATION", status: "VALIDATED",
+        ninjaId: profile.id, agentId: systemUser.id, totalAmount: 0n, totalPoints: don.points, idempotencyKey: `kv-don-${don.id}`, validatedAt: when, createdAt: when,
+        ...(items.length ? { items: { createMany: { data: items.map((item) => ({ resourceId: item.resource.id, quantity: new Prisma.Decimal(item.quantity), unitPriceSnapshot: 0n, lineTotal: 0n })) } } } : {})
+      } });
+      donsImported++;
+    }
+
+    // New point scale of 03/08 (tier rates cover the generic rows, equipment pieces and plans).
+    const points = kv.resourcePoints;
+    let scaleApplied = 0;
+    for (const [key, value] of Object.entries(points)) {
+      const name = KV_RESOURCE_NAMES[key];
+      if (!name || ["t1", "t2", "t3", "t4"].includes(key)) continue;
+      const result = await tx.resource.updateMany({ where: { name: { equals: name, mode: "insensitive" } }, data: { pointsPerUnit: value } });
+      scaleApplied += result.count;
+    }
+    for (const tier of ["T1", "T2", "T3", "T4"] as const) {
+      const result = await tx.resource.updateMany({ where: { OR: [{ name: { endsWith: ` ${tier}` } }, { name: tier }] }, data: { pointsPerUnit: points[tier.toLowerCase()] ?? 0 } });
+      scaleApplied += result.count;
+    }
+
+    // Buyback closed on 06/08: every active price ends now — no buyback until prices are set again.
+    const closedPrices = await tx.resourcePriceHistory.updateMany({ where: { effectiveTo: null }, data: { effectiveTo: now } });
+
+    // The 31 real workshop recipes, output linked to the matching equipment piece when it exists.
+    const usedCodes = new Set((await tx.craftRecipe.findMany({ select: { code: true } })).map((recipe) => recipe.code));
+    const existingNames = new Set((await tx.craftRecipe.findMany({ select: { name: true } })).map((recipe) => normalizeName(recipe.name)));
+    const nextCode = (name: string) => { const base = codeBase(name); let code = "", suffix = 1; do { code = `REC-${base}-${String(suffix++).padStart(2, "0")}`; } while (usedCodes.has(code)); usedCodes.add(code); return code; };
+    const RECIPE_ALIASES: Record<string, string> = { gants: "gant", arumure: "armure" };
+    const DIFFICULTY: Record<string, string> = { T1: "Novice", T2: "Confirmé", T3: "Expert", T4: "Maître", Autre: "Novice" };
+    let recipesImported = 0;
+    for (const recipe of kv.recipes) {
+      const cleaned = normalizeName(recipe.name).split(" ").map((word) => RECIPE_ALIASES[word] ?? word).join(" ");
+      const output = recipe.tier === "Autre" ? undefined : resourceByNorm.get(`${cleaned} ${recipe.tier.toLowerCase()}`);
+      const name = output ? output.name : recipe.tier === "Autre" ? recipe.name : `${recipe.name} ${recipe.tier}`;
+      if (existingNames.has(normalizeName(name))) continue;
+      existingNames.add(normalizeName(name));
+      const ingredients = recipe.materials.map((material) => ({ resource: resourceByNorm.get(normalizeName(KV_RESOURCE_NAMES[material.key] ?? material.key)), quantity: material.qty })).filter((item): item is { resource: { id: string; name: string }; quantity: number } => Boolean(item.resource));
+      if (!ingredients.length) continue;
+      await tx.craftRecipe.create({ data: {
+        code: nextCode(name), version: 1, name, category: recipe.tier, description: "Importée du registre du bot (07/08/2026)", difficulty: DIFFICULTY[recipe.tier] ?? "Novice",
+        durationRpMinutes: 60, cost: 0n, status: "ACTIVE",
+        ingredients: { createMany: { data: ingredients.map((item) => ({ resourceId: item.resource.id, quantity: new Prisma.Decimal(item.quantity) })) } },
+        ...(output ? { outputs: { create: { resourceId: output.id, quantity: new Prisma.Decimal(1) } } } : {})
+      } });
+      recipesImported++;
+    }
+
+    await tx.appSetting.create({ data: { key: FLAG_KV, value: { appliedAt: now.toISOString(), regraded, created, refunded: String(refunded), rebilled, regularised, advanceRows, advanceSettled, pointAdjustments, exoAdjustments, covered, donsImported, scaleApplied, closedPrices: closedPrices.count, recipesImported } } });
+    await tx.auditLog.create({ data: { action: "KV_MERGE_2026_08_07", entityType: "NinjaProfile", entityId: FLAG_KV, requestId: randomUUID(), reason: `Fusion du registre du bot (07/08/2026) : ${regraded} regradés (+${created} créés), semaine refacturée (${rebilled} taxes, ${Number(refunded).toLocaleString("fr-FR")} ¥ de crédit restitués), ${regularised} semaines régularisées, ${advanceRows} semaines d’historique/avance, ${advanceSettled} semaines courantes payées d’avance, ${pointAdjustments} recalages de points, ${exoAdjustments} recalages d’exonération, ${covered} taxes couvertes par crédit, ${donsImported} dons, barème de points sur ${scaleApplied} objets, ${closedPrices.count} prix de rachat fermés, ${recipesImported} recettes` } });
+    console.log(`import-legacy/kv : fusion appliquée — ${regraded} regradés, ${created} créés, ${donsImported} dons, ${recipesImported} recettes, ${advanceRows} semaines importées`);
+  }, { timeout: 600_000, maxWait: 30_000 });
+}
+
 async function main() {
   await importCore();
   await importTaxHistory();
@@ -385,5 +624,6 @@ async function main() {
   await fixTierExemptions();
   await updateCatalogPointsAndCategories();
   await setAllGradesGeninConfirmed();
+  await mergeKvExport20260807();
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
