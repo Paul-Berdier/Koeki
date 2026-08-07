@@ -41,7 +41,7 @@
    "lastName": "Kimawara",
    "points": 1345,
    "exo": 3500,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -253,7 +253,7 @@
    "lastName": "Nori",
    "points": 285,
    "exo": 10400,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-06-28",
@@ -283,7 +283,7 @@
    "lastName": "Fuyoshima",
    "points": 665,
    "exo": 32300,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -723,7 +723,7 @@
    "lastName": "Hoki",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-26",
@@ -1241,7 +1241,7 @@
    "lastName": "seigan",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": [
     {
      "week": "2026-07-26",
@@ -1289,7 +1289,7 @@
    "lastName": "Shibata",
    "points": 18265,
    "exo": 19800,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -1641,7 +1641,7 @@
    "lastName": "Hime",
    "points": 1085,
    "exo": 23400,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -1757,7 +1757,7 @@
    "lastName": "Zaray",
    "points": 1570,
    "exo": 21700,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-06-28",
@@ -1855,7 +1855,7 @@
    "lastName": "Daizawat",
    "points": 740,
    "exo": 10300,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -2079,7 +2079,7 @@
    "lastName": "sazan",
    "points": 50,
    "exo": 400,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": [
     {
      "week": "2026-07-26",
@@ -2285,7 +2285,7 @@
    "lastName": "Hikamatsu",
    "points": 1050,
    "exo": 4700,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-05",
@@ -2837,7 +2837,7 @@
    "lastName": "Kido",
    "points": 585,
    "exo": 13800,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": [
     {
      "week": "2026-07-26",
@@ -4201,7 +4201,7 @@
    "lastName": "Kokuyami",
    "points": 580,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -4249,7 +4249,7 @@
    "lastName": "Kurogane",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -4339,7 +4339,7 @@
    "lastName": "Kurosawa",
    "points": 1075,
    "exo": 21200,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -5306,7 +5306,7 @@
    "lastName": "Yamai",
    "points": 1000,
    "exo": 20600,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -5476,7 +5476,7 @@
    "lastName": "Akari",
    "points": 2075,
    "exo": 19400,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-05",
@@ -5536,7 +5536,7 @@
    "lastName": "Kiyoshi",
    "points": 1315,
    "exo": 11400,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -6154,7 +6154,7 @@
    "lastName": "Kuroha",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": [
     {
      "week": "2026-07-26",
@@ -6202,7 +6202,7 @@
    "lastName": "Sairo",
    "points": 30,
    "exo": 1800,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -6262,7 +6262,7 @@
    "lastName": "Kenzaki",
    "points": 10,
    "exo": 800,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -6434,7 +6434,7 @@
    "lastName": "Tensho",
    "points": 944,
    "exo": 18270,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -6700,7 +6700,7 @@
    "lastName": "Omachi",
    "points": 1320,
    "exo": 6900,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -6798,7 +6798,7 @@
    "lastName": "Kirasame",
    "points": 5,
    "exo": 800,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": [
     {
      "week": "2026-07-26",
@@ -6896,7 +6896,7 @@
    "lastName": "Zetsubo",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-19",
@@ -6966,7 +6966,7 @@
    "lastName": "Fuyutsuki",
    "points": 1996,
    "exo": 10280,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -7484,7 +7484,7 @@
    "lastName": "Sabara",
    "points": 260,
    "exo": 2000,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": []
   },
   {
@@ -8001,7 +8001,7 @@
    "lastName": "Saketsu",
    "points": 625,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -8199,7 +8199,7 @@
    "lastName": "Fuyutsuki",
    "points": 760,
    "exo": 12500,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -8671,7 +8671,7 @@
    "lastName": "Saketsu",
    "points": 40,
    "exo": 1600,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-05",
@@ -9199,7 +9199,7 @@
    "lastName": "Sora",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-19",
@@ -9239,7 +9239,7 @@
    "lastName": "Katashiwa",
    "points": 20,
    "exo": 1000,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-07-12",
@@ -9261,7 +9261,7 @@
    "lastName": "Shinjo",
    "points": 435,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "CHUNIN",
    "taxes": [
     {
      "week": "2026-06-21",
@@ -10822,7 +10822,7 @@
    "lastName": "arashi",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": []
   },
   {
@@ -10876,7 +10876,7 @@
    "lastName": "Kimetsu",
    "points": 215,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": []
   },
   {
@@ -10912,7 +10912,7 @@
    "lastName": "Sano",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "KONIN",
    "taxes": []
   },
   {
@@ -10930,7 +10930,7 @@
    "lastName": "Ryuga",
    "points": 0,
    "exo": 0,
-   "grade": "TOKUBETSU_JONIN",
+   "grade": "GENIN_CONFIRMED",
    "taxes": []
   },
   {

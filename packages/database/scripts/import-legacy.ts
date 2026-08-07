@@ -614,6 +614,104 @@ async function mergeKvExport20260807() {
   }, { timeout: 600_000, maxWait: 30_000 });
 }
 
+/** Correction on the KV merge: the bot's explicit grade field is authoritative — the
+ *  gradeStatus flags (always all-or-nothing) are a bot-side marker, not a grade. Any ninja
+ *  whose grade differs from the (now explicit) export is regraded, and the current week is
+ *  rebilled with ledger-accurate refunds: only exemption lines actually funded by credit are
+ *  refunded; "paid in advance" settlements are reapplied from the export afterwards. */
+async function fixExplicitGrades20260807() {
+  const FLAG_FIX = "kvGradesExplicit2026-08-07";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_FIX } })) { console.log("import-legacy/grades-kv : déjà appliqué"); return; }
+  const kv = loadJson<KvPayload>("kv-2026-08-07.json");
+  const [gradeRows, policy, rpSetting, systemUser] = await Promise.all([
+    prisma.ninjaGrade.findMany(),
+    prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
+    prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
+    prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } })
+  ]);
+  if (!policy || !systemUser) { console.log("import-legacy/grades-kv : référentiels absents"); return; }
+  const gradeByCode = new Map(gradeRows.map((grade) => [grade.code, grade]));
+  const unknown = gradeByCode.get("UNKNOWN");
+  if (!unknown) { console.log("import-legacy/grades-kv : fusion KV absente — rien à corriger"); return; }
+  const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
+  const rp = rpSetting?.value as { realAnchorAt?: string; rpAnchorYear?: number; realMillisecondsPerRpYear?: number } | undefined;
+  const anchor = Date.parse(rp?.realAnchorAt ?? "2026-01-04T23:00:00.000Z");
+  const duration = rp?.realMillisecondsPerRpYear ?? 604_800_000;
+  const now = new Date();
+  const currentRpYear = (rp?.rpAnchorYear ?? 20) + Math.floor((now.getTime() - anchor) / duration);
+  await prisma.$transaction(async (tx) => {
+    const codeOf = (id: number) => `NIN-${String(id).padStart(6, "0")}`;
+    const profiles = await tx.ninjaProfile.findMany({ select: { id: true, code: true, currentGradeId: true } });
+    const profileByCode = new Map(profiles.map((profile) => [profile.code, profile]));
+    let regraded = 0;
+    for (const ninja of kv.ninjas) {
+      const profile = profileByCode.get(codeOf(ninja.id));
+      if (!profile) continue;
+      const target = gradeByCode.get(ninja.grade ?? "UNKNOWN") ?? unknown;
+      if (profile.currentGradeId === target.id) continue;
+      await tx.ninjaGradeHistory.updateMany({ where: { ninjaId: profile.id, effectiveTo: null }, data: { effectiveTo: now } });
+      await tx.ninjaGradeHistory.create({ data: { ninjaId: profile.id, gradeId: target.id, effectiveFrom: now, reason: "Correction du 07/08/2026 — le grade affiché par le bot fait foi (drapeaux gradeStatus ignorés)", changedById: systemUser.id } });
+      await tx.ninjaProfile.update({ where: { id: profile.id }, data: { currentGradeId: target.id } });
+      regraded++;
+    }
+    let refunded = 0n, rebilled = 0, advanceSettled = 0, covered = 0;
+    if (regraded > 0) {
+      const year = await tx.taxYear.findUnique({ where: { rpYear: currentRpYear } });
+      if (year) {
+        // Refund only what was actually funded by exemption credit, then rebill untouched lines.
+        const candidates = await tx.taxAssessment.findMany({ where: {
+          taxYearId: year.id, taxPolicy: { name: { not: "Ancien registre" } },
+          allocations: { none: {} }, penalties: { none: {} }, adjustments: { none: {} }
+        }, select: { id: true, ninjaId: true } });
+        for (const assessment of candidates) {
+          const debits = await tx.exemptionLedgerEntry.findMany({ where: { sourceType: "TaxAssessment", OR: [{ sourceId: assessment.id }, { sourceId: { startsWith: `${assessment.id}:` } }] } });
+          const funded = debits.reduce((sum, entry) => sum - entry.amount, 0n);
+          if (funded > 0n) {
+            await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: funded, sourceType: "TaxAssessmentRefund", sourceId: assessment.id, reason: "Refacturation grades explicites du 07/08/2026 — crédit restitué" } });
+            refunded += funded;
+          }
+          await tx.taxExemption.deleteMany({ where: { assessmentId: assessment.id } });
+        }
+        if (candidates.length) await tx.taxAssessment.deleteMany({ where: { id: { in: candidates.map((entry) => entry.id) } } });
+        const active = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+        const result = await tx.taxAssessment.createMany({ data: active.map((ninja) => ({
+          ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
+          originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > now ? "UPCOMING" as const : "DUE" as const
+        })), skipDuplicates: true });
+        rebilled = result.count;
+        // Advance payments made at the bot settle the fresh lines again.
+        const currentWeekKey = year.dueAt.toISOString().slice(0, 10);
+        for (const ninja of kv.ninjas) {
+          if (!ninja.taxes.some((record) => record.week === currentWeekKey && record.paid)) continue;
+          const profile = profileByCode.get(codeOf(ninja.id));
+          if (!profile) continue;
+          const assessment = await tx.taxAssessment.findUnique({ where: { ninjaId_taxYearId: { ninjaId: profile.id, taxYearId: year.id } } });
+          if (!assessment || assessment.originalAmount <= 0n || assessment.status === "PAID") continue;
+          await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: assessment.originalAmount, reason: "Payée d’avance à l’ancien registre (07/08/2026)", grantedById: systemUser.id } });
+          await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
+          advanceSettled++;
+        }
+        // Whoever still owes is covered by their available credit, oldest rule as usual.
+        const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
+        for (const assessment of fresh) {
+          const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+          if (already) continue;
+          const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
+          if (balance <= 0n) continue;
+          const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+          await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${currentRpYear}` } });
+          await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
+          if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
+          covered++;
+        }
+      }
+    }
+    await tx.appSetting.create({ data: { key: FLAG_FIX, value: { appliedAt: now.toISOString(), regraded, refunded: String(refunded), rebilled, advanceSettled, covered } } });
+    await tx.auditLog.create({ data: { action: "KV_GRADES_EXPLICIT", entityType: "NinjaProfile", entityId: FLAG_FIX, requestId: randomUUID(), reason: `Grades explicites du bot appliqués : ${regraded} corrigés (drapeaux gradeStatus ignorés)${regraded ? ` — semaine refacturée (${rebilled} taxes, ${Number(refunded).toLocaleString("fr-FR")} ¥ restitués, ${advanceSettled} payées d’avance, ${covered} couvertes par crédit)` : ""}` } });
+    console.log(`import-legacy/grades-kv : ${regraded} grades corrigés, ${rebilled} taxes refacturées, ${covered} couvertes`);
+  }, { timeout: 600_000, maxWait: 30_000 });
+}
+
 async function main() {
   await importCore();
   await importTaxHistory();
@@ -625,5 +723,6 @@ async function main() {
   await updateCatalogPointsAndCategories();
   await setAllGradesGeninConfirmed();
   await mergeKvExport20260807();
+  await fixExplicitGrades20260807();
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());
