@@ -16,7 +16,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
   if (demoMode) return <div className="page-wrap">
-    <PageHeader eyebrow="Forces de Suna" title="Équipement des Jonin" description="Panoplies des ninjas de grade Tokubetsu Jonin et plus." />
+    <PageHeader eyebrow="Forces de Suna" title="Équipement des Jonin" description="Panoplies des ninjas de grade Jonin et plus." />
     <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p>
   </div>;
   const canEdit = hasPermission(session, "inventory:write");
@@ -32,7 +32,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
   const equipped = rows.filter((row) => equippedCount(row.slots) > 0);
   const complete = rows.filter((row) => equippedCount(row.slots) === EQUIPMENT_SLOTS.length);
   return <div className="page-wrap">
-    <PageHeader eyebrow="Forces de Suna" title="Équipement des Jonin" description="Qui est équipé, et de quoi — panoplies par slot des ninjas de grade Tokubetsu Jonin et plus, reprises du registre du bot et tenues à jour ici." />
+    <PageHeader eyebrow="Forces de Suna" title="Équipement des Jonin" description="Qui est équipé, et de quoi — panoplies par slot des ninjas de grade Jonin et plus, reprises du registre du bot et tenues à jour ici." />
     {info && <p className="notice" role="status">{info}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
     <section className="metric-grid" aria-label="État d’équipement">
@@ -54,7 +54,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
               return <td key={slot}>{tier ? <StatusBadge status={tier === "T4" ? "paid" : tier === "T3" ? "due" : "pending"}>{tier}{value?.type ? ` ${value.type}` : ""}</StatusBadge> : <span className="muted">—</span>}</td>;
             })}
           </tr>)}
-        </tbody></table></div> : <EmptyState title="Aucun Jonin actif" description="Les ninjas de grade Tokubetsu Jonin et plus apparaîtront ici." />}
+        </tbody></table></div> : <EmptyState title="Aucun Jonin actif" description="Les ninjas de grade Jonin et plus apparaîtront ici." />}
       </section>
       {canEdit && <section className="panel">
         <SectionHeader title="Mettre à jour une panoplie" description="Sélectionnez un ninja — ses slots actuels se préremplissent" />

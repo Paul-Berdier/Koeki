@@ -18,7 +18,7 @@ export async function recordResourceTransaction(formData: FormData) {
   const back = (message: string): never => redirect(`/resources/transaction?erreur=${encodeURIComponent(message)}`);
   if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
   const { type, ninjaId, idempotencyKey } = parsed.data!;
-  const lines: Array<{ resourceId: string; quantity: number }> = [];
+  const lines: Array<{ resourceId: string; quantity: number; negotiated: bigint | null }> = [];
   for (let index = 1; index <= 8; index++) {
     const resourceId = formData.get(`resourceId_${index}`);
     const quantityRaw = formData.get(`quantity_${index}`);
@@ -26,7 +26,15 @@ export async function recordResourceTransaction(formData: FormData) {
       const quantity = Number(quantityRaw.replace(",", "."));
       if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité invalide sur la ligne ${index} (entre 0,01 et 1 000 000)`);
       if (lines.some((line) => line.resourceId === resourceId)) back("Une même ressource apparaît deux fois");
-      lines.push({ resourceId, quantity });
+      // Buyback price is negotiable downwards: the agent may enter a unit price below the catalog maximum.
+      let negotiated: bigint | null = null;
+      const priceRaw = formData.get(`unitPrice_${index}`);
+      if (type === "BUYBACK" && typeof priceRaw === "string" && priceRaw !== "") {
+        const price = Number(priceRaw);
+        if (!Number.isInteger(price) || price < 1 || price > 100_000_000) back(`Prix négocié invalide sur la ligne ${index} (entier en Ryō, minimum 1)`);
+        negotiated = BigInt(price);
+      }
+      lines.push({ resourceId, quantity, negotiated });
     }
   }
   if (!lines.length) back("Ajoutez au moins une ressource — tapez son nom puis choisissez une proposition de la liste");
@@ -41,7 +49,8 @@ export async function recordResourceTransaction(formData: FormData) {
         if (!resource || !resource.isActive) throw new Error("VALIDATION:Ressource inconnue ou inactive");
         const price = await activePrice(tx, line.resourceId);
         if (type === "BUYBACK" && (price === null || price <= 0n)) throw new Error(`VALIDATION:Aucun prix actif pour ${resource.name} — configurez-le avant tout rachat`);
-        const unitPrice = price ?? 0n;
+        if (type === "BUYBACK" && line.negotiated !== null && price !== null && line.negotiated > price) throw new Error(`VALIDATION:Prix négocié au-dessus du catalogue pour ${resource.name} (maximum ${Number(price).toLocaleString("fr-FR")} ¥/u)`);
+        const unitPrice = type === "BUYBACK" && line.negotiated !== null ? line.negotiated : price ?? 0n;
         items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: scaledTimes(line.quantity, unitPrice), exemptionPerUnit: resource.exemptionPerUnit, pointsPerUnit: resource.pointsPerUnit });
       }
       const totalAmount = items.reduce((total, item) => total + item.lineTotal, 0n);

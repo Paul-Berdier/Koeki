@@ -37,7 +37,7 @@ export default async function ResourceTransactionPage({ searchParams }: { search
       actions={<Link className="button button-ghost" href="/resources"><ArrowLeft size={17} /> Catalogue</Link>} />
     {error && <p className="notice error" role="alert">{error}</p>}
     {demoMode ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : <section className="panel" style={{ maxWidth: 760 }}>
-      <SectionHeader title="Opération" description="Un don crédite points et exonération immédiatement ; un rachat paie le prix actif en Ryō" />
+      <SectionHeader title="Opération" description="Un don crédite points et exonération immédiatement ; un rachat se négocie ligne par ligne — le prix catalogue est le maximum" />
       <form action={recordResourceTransaction} className="form-grid">
         <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
         <TransactionItems ninjas={ninjaOptions} resources={resourceOptions} />
