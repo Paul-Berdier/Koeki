@@ -18,6 +18,7 @@ const navigation = [
   { href: "/dons", label: "Dons", icon: HeartHandshake },
   { href: "/inventory", label: "Inventaire", icon: Boxes },
   { href: "/crafting", label: "Artisanat", icon: BookOpenText },
+  { href: "/equipement", label: "Équipement Jonin", icon: ShieldCheck },
   { href: "/events", label: "Événements", icon: Trophy },
   { href: "/statistics", label: "Statistiques", icon: BarChart3 },
   { href: "/reports", label: "Rapports", icon: FileText },

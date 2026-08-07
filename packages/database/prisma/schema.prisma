@@ -267,9 +267,22 @@ model NinjaProfile {
   resourceTransactions ResourceTransaction[]
   eventsWon            Event[]
   exemptionEntries     ExemptionLedgerEntry[]
+  equipment            NinjaEquipment?
 
   @@index([lastName, firstName])
   @@index([currentGradeId, status])
+}
+
+// Jonin+ loadout: one row per ninja, slots as JSON — { haut: { tier, type }, bas, bottes,
+// boucles, bague, collier, gants } with tier "Aucun"|"T1".."T4" and type Armure|Jutsu|Ténacité|null.
+model NinjaEquipment {
+  id          String       @id @default(cuid())
+  ninjaId     String       @unique
+  slots       Json
+  updatedById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  ninja       NinjaProfile @relation(fields: [ninjaId], references: [id], onDelete: Cascade)
 }
 
 model NinjaGradeHistory {

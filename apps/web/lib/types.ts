@@ -44,8 +44,8 @@ export interface InventoryData {
   resources: Array<{ id: string; name: string; stock: number }>;
 }
 
-export interface RecipeRow { id: string; code: string; name: string; category: string; minimumGrade: string | null; cost: bigint; craftable: number; duration: string; version: number }
-export interface CraftingData { metrics: { activeCount: number; categoryCount: number; craftableCount: number; limitedCount: number; executions: number }; recipes: RecipeRow[] }
+export interface RecipeRow { id: string; code: string; name: string; category: string; minimumGrade: string | null; cost: bigint; craftable: number; ingredients: Array<{ name: string; quantity: number }>; output: string | null; duration: string; version: number }
+export interface CraftingData { metrics: { activeCount: number; categoryCount: number; craftableCount: number; limitedCount: number; executions: number }; categories: string[]; names: string[]; recipes: RecipeRow[] }
 
 export interface StatisticsData {
   rpYear: number; expected: bigint; collected: bigint; exempted: bigint; remaining: bigint; rateBps: number; previousDeltaBps: number | null;

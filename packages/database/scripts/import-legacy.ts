@@ -712,6 +712,56 @@ async function fixExplicitGrades20260807() {
   }, { timeout: 600_000, maxWait: 30_000 });
 }
 
+/** The KV merge closed every buyback price ("rachat fermé" at the bot); the catalog must
+ *  still SHOW the unit prices of the old register's "Rachat ressource" and "Rachat
+ *  équipement" sheets. Reopen the latest known price of every active resource that lost it. */
+async function restoreCatalogPrices20260807() {
+  const FLAG_PRICES = "kvPricesRestore2026-08-07";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_PRICES } })) { console.log("import-legacy/prix : déjà appliqué"); return; }
+  const systemUser = await prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } });
+  if (!systemUser) { console.log("import-legacy/prix : utilisateur système absent"); return; }
+  const now = new Date();
+  let restored = 0;
+  await prisma.$transaction(async (tx) => {
+    const resources = await tx.resource.findMany({ where: { isActive: true }, select: { id: true, prices: { orderBy: { effectiveFrom: "desc" }, take: 1 } } });
+    for (const resource of resources) {
+      const latest = resource.prices[0];
+      if (!latest || latest.pricePerUnit <= 0n) continue;
+      if (latest.effectiveTo === null || latest.effectiveTo > now) continue;
+      await tx.resourcePriceHistory.create({ data: { resourceId: resource.id, pricePerUnit: latest.pricePerUnit, effectiveFrom: now, createdById: systemUser.id } });
+      restored++;
+    }
+    await tx.appSetting.create({ data: { key: FLAG_PRICES, value: { appliedAt: now.toISOString(), restored } } });
+    await tx.auditLog.create({ data: { action: "KV_PRICES_RESTORED", entityType: "Resource", entityId: FLAG_PRICES, requestId: randomUUID(), reason: `${restored} prix unitaires de l’ancien registre rouverts au catalogue (Rachat ressource / Rachat équipement)` } });
+    console.log(`import-legacy/prix : ${restored} prix rouverts`);
+  }, { timeout: 300_000, maxWait: 30_000 });
+}
+
+interface KvEquipment { name: string; slots: Record<string, { tier: string | null; type: string | null }> }
+
+/** The 13 Jonin loadouts tracked at the bot (slots haut/bas/bottes/boucles/bague/collier/gants). */
+async function importJoninEquipment20260807() {
+  const FLAG_EQUIP = "kvEquipJonin2026-08-07";
+  if (await prisma.appSetting.findUnique({ where: { key: FLAG_EQUIP } })) { console.log("import-legacy/équipement : déjà appliqué"); return; }
+  const kv = loadJson<KvPayload & { equipment?: KvEquipment[] }>("kv-2026-08-07.json");
+  if (!kv.equipment?.length) { console.log("import-legacy/équipement : aucune panoplie dans l’export"); return; }
+  const profiles = await prisma.ninjaProfile.findMany({ select: { id: true, firstName: true, lastName: true } });
+  const profileByName = new Map(profiles.map((profile) => [normalizeName(`${profile.firstName} ${profile.lastName}`), profile.id]));
+  let imported = 0;
+  const unmatched: string[] = [];
+  await prisma.$transaction(async (tx) => {
+    for (const entry of kv.equipment!) {
+      const ninjaId = profileByName.get(normalizeName(entry.name));
+      if (!ninjaId) { unmatched.push(entry.name); continue; }
+      await tx.ninjaEquipment.upsert({ where: { ninjaId }, create: { ninjaId, slots: entry.slots }, update: { slots: entry.slots } });
+      imported++;
+    }
+    await tx.appSetting.create({ data: { key: FLAG_EQUIP, value: { appliedAt: new Date().toISOString(), imported, unmatched } } });
+    await tx.auditLog.create({ data: { action: "KV_EQUIP_JONIN_IMPORT", entityType: "NinjaEquipment", entityId: FLAG_EQUIP, requestId: randomUUID(), reason: `${imported} panoplies Jonin importées du bot${unmatched.length ? ` — introuvables : ${unmatched.join(", ")}` : ""}` } });
+    console.log(`import-legacy/équipement : ${imported} panoplies importées${unmatched.length ? `, introuvables : ${unmatched.join(", ")}` : ""}`);
+  }, { timeout: 300_000, maxWait: 30_000 });
+}
+
 async function main() {
   await importCore();
   await importTaxHistory();
@@ -724,5 +774,7 @@ async function main() {
   await setAllGradesGeninConfirmed();
   await mergeKvExport20260807();
   await fixExplicitGrades20260807();
+  await restoreCatalogPrices20260807();
+  await importJoninEquipment20260807();
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

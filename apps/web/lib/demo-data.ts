@@ -80,10 +80,12 @@ export const demoInventory: InventoryData = {
 
 export const demoCrafting: CraftingData = {
   metrics: { activeCount: 31, categoryCount: 7, craftableCount: 19, limitedCount: 3, executions: 12 },
+  categories: ["Armurerie", "Médecine", "Outillage"],
+  names: ["Plaque d’avant-bras renforcée", "Trousse d’outils de terrain", "Kit de soin du désert"],
   recipes: [
-    { id: "c1", code: "REC-ARM-014", name: "Plaque d’avant-bras renforcée", category: "Armurerie", minimumGrade: "Chunin", cost: 6800n, craftable: 7, duration: "3 h RP", version: 3 },
-    { id: "c2", code: "REC-OUT-006", name: "Trousse d’outils de terrain", category: "Outillage", minimumGrade: "Genin confirmé", cost: 2400n, craftable: 18, duration: "90 min RP", version: 3 },
-    { id: "c3", code: "REC-MED-021", name: "Kit de soin du désert", category: "Médecine", minimumGrade: "Chunin", cost: 3100n, craftable: 4, duration: "2 h RP", version: 3 }
+    { id: "c1", code: "REC-ARM-014", name: "Plaque d’avant-bras renforcée", category: "Armurerie", minimumGrade: "Chunin", cost: 6800n, craftable: 7, ingredients: [{ name: "Fer", quantity: 2 }, { name: "Cuir tanné", quantity: 1 }], output: "Plaque d’avant-bras", duration: "3 h RP", version: 3 },
+    { id: "c2", code: "REC-OUT-006", name: "Trousse d’outils de terrain", category: "Outillage", minimumGrade: "Genin confirmé", cost: 2400n, craftable: 18, ingredients: [{ name: "Bois", quantity: 4 }, { name: "Cuivre", quantity: 2 }], output: null, duration: "90 min RP", version: 3 },
+    { id: "c3", code: "REC-MED-021", name: "Kit de soin du désert", category: "Médecine", minimumGrade: "Chunin", cost: 3100n, craftable: 4, ingredients: [{ name: "Lavande", quantity: 6 }, { name: "Plastique", quantity: 2 }], output: null, duration: "2 h RP", version: 3 }
   ]
 };
 

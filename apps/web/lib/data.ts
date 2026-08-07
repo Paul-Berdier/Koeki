@@ -347,11 +347,13 @@ export async function getInventory(): Promise<InventoryData> {
   };
 }
 
-export async function getCrafting(): Promise<CraftingData> {
+export interface CraftingFilterParams { q?: string | undefined; categorie?: string | undefined }
+
+export async function getCrafting(params: CraftingFilterParams = {}): Promise<CraftingData> {
   if (demoMode) return demoCrafting;
   const [stocks, recipes, executions] = await Promise.all([
     stockMap(),
-    prisma.craftRecipe.findMany({ where: { status: "ACTIVE" }, include: { ingredients: true } }),
+    prisma.craftRecipe.findMany({ where: { status: "ACTIVE" }, include: { ingredients: { include: { resource: { select: { name: true } } } }, outputs: { include: { resource: { select: { name: true } } } } }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     prisma.craftExecution.count()
   ]);
   const rows = recipes.map((recipe) => {
@@ -360,15 +362,23 @@ export async function getCrafting(): Promise<CraftingData> {
     return {
       id: recipe.id, code: recipe.code, name: recipe.name, category: recipe.category, minimumGrade: recipe.minimumGradeCode, cost: recipe.cost,
       craftable: recipe.ingredients.length ? simulation.maximum : 0,
+      ingredients: recipe.ingredients.map((ingredient) => ({ name: ingredient.resource.name, quantity: Number(ingredient.quantity) })),
+      output: recipe.outputs[0]?.resource.name ?? null,
       duration: hours > 0 ? `${hours} h${recipe.durationRpMinutes % 60 ? ` ${recipe.durationRpMinutes % 60}` : ""} RP` : `${recipe.durationRpMinutes} min RP`, version: recipe.version
     };
   });
+  const query = params.q?.trim().toLowerCase();
+  const filtered = rows.filter((row) =>
+    (!query || row.name.toLowerCase().includes(query) || row.code.toLowerCase().includes(query) || row.ingredients.some((ingredient) => ingredient.name.toLowerCase().includes(query)))
+    && (!params.categorie || row.category === params.categorie));
   return {
     metrics: {
       activeCount: recipes.length, categoryCount: new Set(recipes.map((recipe) => recipe.category)).size,
       craftableCount: rows.filter((row) => row.craftable > 0).length, limitedCount: rows.filter((row) => row.craftable === 0).length, executions
     },
-    recipes: rows
+    categories: [...new Set(recipes.map((recipe) => recipe.category))].sort((a, b) => a.localeCompare(b)),
+    names: recipes.map((recipe) => recipe.name),
+    recipes: filtered
   };
 }
 

@@ -12565,5 +12565,436 @@
  },
  "removedExternalIds": [
   829
+ ],
+ "equipment": [
+  {
+   "name": "Azuna Sabaku",
+   "slots": {
+    "haut": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "T3",
+     "type": "Jutsu"
+    },
+    "bottes": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "boucles": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "bague": {
+     "tier": "T3",
+     "type": null
+    },
+    "collier": {
+     "tier": "T3",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Areto Roran",
+   "slots": {
+    "haut": {
+     "tier": "T3",
+     "type": "Jutsu"
+    },
+    "bas": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T3",
+     "type": "Jutsu"
+    },
+    "boucles": {
+     "tier": "T3",
+     "type": null
+    },
+    "bague": {
+     "tier": "T2",
+     "type": null
+    },
+    "collier": {
+     "tier": "T3",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Araki Hoki",
+   "slots": {
+    "haut": {
+     "tier": "T3",
+     "type": "Jutsu"
+    },
+    "bas": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "boucles": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "bague": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "collier": {
+     "tier": "T3",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Kazetsu Roran",
+   "slots": {
+    "haut": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T3",
+     "type": "Ténacité"
+    },
+    "boucles": {
+     "tier": "T3",
+     "type": null
+    },
+    "bague": {
+     "tier": "T3",
+     "type": null
+    },
+    "collier": {
+     "tier": "T2",
+     "type": null
+    },
+    "gants": {
+     "tier": "T2",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Shiro Sajin",
+   "slots": {
+    "haut": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "T3",
+     "type": "Jutsu"
+    },
+    "bottes": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "boucles": {
+     "tier": "T3",
+     "type": null
+    },
+    "bague": {
+     "tier": "T3",
+     "type": null
+    },
+    "collier": {
+     "tier": "T2",
+     "type": null
+    },
+    "gants": {
+     "tier": "T2",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Shinraishi Ara",
+   "slots": {
+    "haut": {
+     "tier": "Aucun",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "T2",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T3",
+     "type": "Ténacité"
+    },
+    "boucles": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "bague": {
+     "tier": "T2",
+     "type": null
+    },
+    "collier": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Naojin Minami",
+   "slots": {
+    "haut": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "T4",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T3",
+     "type": "Jutsu"
+    },
+    "boucles": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "bague": {
+     "tier": "T3",
+     "type": null
+    },
+    "collier": {
+     "tier": "T3",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Keisuke Sano",
+   "slots": {
+    "haut": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "T3",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T4",
+     "type": "Armure"
+    },
+    "boucles": {
+     "tier": "T3",
+     "type": null
+    },
+    "bague": {
+     "tier": "T2",
+     "type": null
+    },
+    "collier": {
+     "tier": "T3",
+     "type": null
+    },
+    "gants": {
+     "tier": "T3",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Seiren Chiikatsume",
+   "slots": {
+    "haut": {
+     "tier": "T4",
+     "type": "Jutsu"
+    },
+    "bas": {
+     "tier": "T4",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T4",
+     "type": "Ténacité"
+    },
+    "boucles": {
+     "tier": "T4",
+     "type": null
+    },
+    "bague": {
+     "tier": "T3",
+     "type": null
+    },
+    "collier": {
+     "tier": "T3",
+     "type": null
+    },
+    "gants": {
+     "tier": "T3",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Seisura Sabaku",
+   "slots": {
+    "haut": {
+     "tier": "T4",
+     "type": "Jutsu"
+    },
+    "bas": {
+     "tier": "T4",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T4",
+     "type": "Armure"
+    },
+    "boucles": {
+     "tier": "T3",
+     "type": null
+    },
+    "bague": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "collier": {
+     "tier": "T4",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Sôki Tsukihana",
+   "slots": {
+    "haut": {
+     "tier": "Aucun",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "Aucun",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "Aucun",
+     "type": "Ténacité"
+    },
+    "boucles": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "bague": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "collier": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Kenma Hakumei",
+   "slots": {
+    "haut": {
+     "tier": "T4",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "T4",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "T4",
+     "type": "Ténacité"
+    },
+    "boucles": {
+     "tier": "T4",
+     "type": null
+    },
+    "bague": {
+     "tier": "T4",
+     "type": null
+    },
+    "collier": {
+     "tier": "T4",
+     "type": null
+    },
+    "gants": {
+     "tier": "T4",
+     "type": null
+    }
+   }
+  },
+  {
+   "name": "Gao",
+   "slots": {
+    "haut": {
+     "tier": "Aucun",
+     "type": "Armure"
+    },
+    "bas": {
+     "tier": "Aucun",
+     "type": "Armure"
+    },
+    "bottes": {
+     "tier": "Aucun",
+     "type": "Ténacité"
+    },
+    "boucles": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "bague": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "collier": {
+     "tier": "Aucun",
+     "type": null
+    },
+    "gants": {
+     "tier": "Aucun",
+     "type": null
+    }
+   }
+  }
  ]
 }
