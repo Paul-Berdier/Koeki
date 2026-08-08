@@ -86,7 +86,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
             <div><span>État</span>{data.statusLabel}</div>
             <div><span>Clan</span>{data.clan ?? "—"}</div>
             <div><span>Pseudonyme</span>{data.alias ?? "—"}</div>
-            <div style={{ gridColumn: "1/-1" }}><span>Compte lié</span>{data.linkedUserName ?? "Aucun compte Discord associé"}</div>
+            <div style={{ gridColumn: "1/-1" }}><span>Compte lié</span>{data.hasLinkedUser ? "Compte Discord associé" : "Aucun compte Discord associé"}</div>
             {data.notes && <div style={{ gridColumn: "1/-1" }}><span>Notes internes</span><div className="notes-block">{data.notes}</div></div>}
           </div>
         </section>

@@ -18,7 +18,7 @@ export interface AssessmentRow { id: string; rpYear: number; period: string; gra
 export interface NinjaDetailData {
   id: string; code: string; name: string; alias: string | null; clan: string | null; statusLabel: string;
   grade: { code: string; label: string }; grades: Array<{ id: string; code: string; label: string }>;
-  linkedUserName: string | null; notes: string | null;
+  hasLinkedUser: boolean; notes: string | null;
   totalDebt: bigint; lateYears: number; nextDue: string; pointsBalance: number; exemptionBalance: bigint;
   assessments: AssessmentRow[];
   pointEntries: Array<{ id: string; at: string; label: string; points: number; reason: string | null }>;

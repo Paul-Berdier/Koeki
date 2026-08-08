@@ -64,9 +64,10 @@ export async function updateUserRoles(formData: FormData) {
   if (typeof userId !== "string" || !userId) back("Utilisateur manquant");
   const [roles, target] = await Promise.all([
     prisma.role.findMany(),
-    prisma.user.findUnique({ where: { id: userId as string }, include: { roles: { include: { role: true } } } })
+    prisma.user.findUnique({ where: { id: userId as string }, include: { roles: { include: { role: true } }, ninjaProfile: { select: { firstName: true, lastName: true } } } })
   ]);
   if (!target) back("Utilisateur introuvable");
+  const displayName = target!.ninjaProfile ? `${target!.ninjaProfile.firstName} ${target!.ninjaProfile.lastName}`.trim() : target!.name ?? target!.email ?? target!.id;
   const requested = roles.filter((role) => formData.get(`role_${role.code}`) === "on");
   const currentCodes = target!.roles.map((entry) => entry.role.code);
   if (!isSuper && currentCodes.includes("SUPER_ADMIN")) back("Seul un super-administrateur peut modifier les rôles d’un super-administrateur");
@@ -84,10 +85,10 @@ export async function updateUserRoles(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     if (toRemove.length) await tx.userRole.deleteMany({ where: { userId: target!.id, roleId: { in: toRemove.map((entry) => entry.roleId) } } });
     if (toAdd.length) await tx.userRole.createMany({ data: toAdd.map((role) => ({ userId: target!.id, roleId: role.id, assignedById: session.userId })) });
-    await writeAudit(tx, { actorId: session.userId, action: "USER_ROLES_UPDATED", entityType: "User", entityId: target!.id, reason: `Rôles de ${target!.name ?? target!.email ?? target!.id}`,
+    await writeAudit(tx, { actorId: session.userId, action: "USER_ROLES_UPDATED", entityType: "User", entityId: target!.id, reason: `Rôles de ${displayName}`,
       previousValues: { roles: currentCodes }, newValues: { roles: requested.map((role) => role.code) } });
   });
-  redirect(`/admin?info=${encodeURIComponent(`Rôles de ${target!.name ?? "l’utilisateur"} mis à jour — effet immédiat`)}`);
+  redirect(`/admin?info=${encodeURIComponent(`Rôles de ${displayName} mis à jour — effet immédiat`)}`);
 }
 
 export async function revokeInvitation(formData: FormData) {

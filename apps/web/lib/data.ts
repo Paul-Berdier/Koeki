@@ -24,7 +24,12 @@ export const getRpService = cache(async () => {
   return createRpTimeService(parsed?.success ? parsed.data : defaultRpTimeConfig);
 });
 
-const getUserNames = cache(async () => new Map((await prisma.user.findMany({ select: { id: true, name: true } })).map((user) => [user.id, user.name ?? "Agent Kōeki"])));
+// Privacy: never surface Discord account names — a linked ninja identity always wins,
+// unlinked accounts fall back to their account name (link a fiche to hide it).
+const getUserNames = cache(async () => {
+  const users = await prisma.user.findMany({ select: { id: true, name: true, ninjaProfile: { select: { firstName: true, lastName: true } } } });
+  return new Map(users.map((user) => [user.id, user.ninjaProfile ? `${user.ninjaProfile.firstName} ${user.ninjaProfile.lastName}`.trim() : user.name ?? "Agent Kōeki"]));
+});
 const shortName = (name: string) => { const [first, second] = name.trim().split(/\s+/); return first && second ? `${first} ${second.charAt(0)}.` : name; };
 
 interface AssessmentAggregate { id: string; rpYear: number; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; dueAt: Date; status: TaxAssessmentStatus }
@@ -99,14 +104,14 @@ const stockMap = cache(async () => {
 
 export async function getShellInfo(session: SessionInfo | null): Promise<ShellInfo> {
   if (demoMode) return demoShell;
-  const [service, aggregates] = await Promise.all([getRpService(), loadNinjaAggregates()]);
+  const [service, aggregates, users] = await Promise.all([getRpService(), loadNinjaAggregates(), getUserNames()]);
   const now = new Date();
   const year = service.currentRpYear(now);
   const firstRole = session?.roles[0];
   return {
     rpYear: year, rpDayLabel: `Mois RP ${Math.min(7, Math.floor(service.progress(now) * 7) + 1)} sur 7`, rpProgress: service.progress(now),
     overdueCount: aggregates.filter((ninja) => ninja.badge === "overdue").length,
-    userName: session?.name ?? "Session inconnue", userRoleLabel: firstRole ? roleLabels[firstRole] : "Sans rôle"
+    userName: (session ? users.get(session.userId) : null) ?? session?.name ?? "Session inconnue", userRoleLabel: firstRole ? roleLabels[firstRole] : "Sans rôle"
   };
 }
 
@@ -220,7 +225,7 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
     prisma.pointLedgerEntry.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.taxPayment.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.resourceTransaction.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
-    ninjaUserName(id),
+    ninjaHasLinkedUser(id),
     prisma.exemptionLedgerEntry.aggregate({ where: { ninjaId: id }, _sum: { amount: true } })
   ]);
   const debtLines = buildDebtLines(ninja.assessments);
@@ -234,7 +239,7 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
   return {
     id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, clan: ninja.clan, statusLabel: ninja.status === "ACTIVE" ? "Actif" : ninja.status,
     grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
-    linkedUserName: linked, notes: options.canSeeNotes ? ninja.notes : null,
+    hasLinkedUser: linked, notes: options.canSeeNotes ? ninja.notes : null,
     totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points, exemptionBalance: exemption._sum.amount ?? 0n,
     assessments: [...ninja.assessments]
       // Current week first, then history newest-first, then weeks paid in advance last:
@@ -253,9 +258,10 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
   };
 }
 
-async function ninjaUserName(ninjaId: string) {
-  const profile = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId }, include: { user: { select: { name: true } } } });
-  return profile?.user?.name ?? null;
+// Whether a Discord account is linked — the account name itself is never exposed.
+async function ninjaHasLinkedUser(ninjaId: string) {
+  const profile = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId }, select: { userId: true } });
+  return Boolean(profile?.userId);
 }
 
 export async function getRecovery(): Promise<RecoveryData> {
@@ -451,10 +457,13 @@ export async function getEvents(): Promise<EventsData> {
 
 export async function getReports(session: SessionInfo, canReview: boolean): Promise<ReportsData> {
   if (demoMode) return demoReports;
-  const reports = await prisma.agentReport.findMany({
-    where: canReview || session.roles.includes("AUDITOR") ? {} : { authorId: session.userId },
-    include: { author: { select: { name: true } } }, orderBy: { periodStart: "desc" }, take: 30
-  });
+  const [reports, users] = await Promise.all([
+    prisma.agentReport.findMany({
+      where: canReview || session.roles.includes("AUDITOR") ? {} : { authorId: session.userId },
+      orderBy: { periodStart: "desc" }, take: 30
+    }),
+    getUserNames()
+  ]);
   const statusLabelMap: Record<string, { label: string; badge: BadgeStatus }> = {
     DRAFT: { label: "Brouillon", badge: "draft" }, SUBMITTED: { label: "Soumis", badge: "pending" }, REVIEWED: { label: "Examiné", badge: "warning" },
     RETURNED: { label: "Renvoyé", badge: "overdue" }, APPROVED: { label: "Approuvé", badge: "paid" }
@@ -470,7 +479,7 @@ export async function getReports(session: SessionInfo, canReview: boolean): Prom
     reports: reports.map((report) => {
       const state = statusLabelMap[report.status] ?? { label: report.status, badge: "draft" as BadgeStatus };
       return {
-        id: report.id, period: `${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`, agent: report.author.name ?? "Agent Kōeki",
+        id: report.id, period: `${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`, agent: users.get(report.authorId) ?? "Agent Kōeki",
         payments: report.paymentCount, donationBuybacks: `${report.donationCount + report.buybackCount}`, processed: report.collectedAmount + report.processedValue,
         statusLabel: state.label, badge: state.badge, canReview: canReview && report.status === "SUBMITTED"
       };
@@ -500,14 +509,15 @@ export async function getAudit(page: number, filters: AuditFilterParams = {}): P
   if (filters.q?.trim()) { const query = filters.q.trim(); conditions.push({ OR: [{ action: { contains: query, mode: "insensitive" } }, { entityId: { contains: query, mode: "insensitive" } }, { reason: { contains: query, mode: "insensitive" } }] }); }
   if (filters.acteur) conditions.push({ actorId: filters.acteur });
   const where: Prisma.AuditLogWhereInput = conditions.length ? { AND: conditions } : {};
-  const [total, rows, actors] = await Promise.all([
+  const [total, rows, actors, users] = await Promise.all([
     prisma.auditLog.count({ where }),
-    prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: (Math.max(1, page) - 1) * pageSize, take: pageSize, include: { actor: { select: { name: true } } } }),
-    prisma.user.findMany({ where: { auditLogs: { some: {} } }, select: { id: true, name: true }, orderBy: { name: "asc" } })
+    prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: (Math.max(1, page) - 1) * pageSize, take: pageSize }),
+    prisma.user.findMany({ where: { auditLogs: { some: {} } }, select: { id: true }, orderBy: { name: "asc" } }),
+    getUserNames()
   ]);
   return {
-    rows: rows.map((row) => ({ id: row.id, at: formatDateTime(row.createdAt), actor: row.actor?.name ?? "Système", action: row.action, entity: `${row.entityType}·${row.entityId.slice(0, 10)}`, summary: row.reason ?? "—" })),
-    actors: actors.map((actor) => ({ id: actor.id, name: actor.name ?? "Sans nom" })),
+    rows: rows.map((row) => ({ id: row.id, at: formatDateTime(row.createdAt), actor: (row.actorId ? users.get(row.actorId) : null) ?? "Système", action: row.action, entity: `${row.entityType}·${row.entityId.slice(0, 10)}`, summary: row.reason ?? "—" })),
+    actors: actors.map((actor) => ({ id: actor.id, name: users.get(actor.id) ?? "Sans nom" })).sort((a, b) => a.name.localeCompare(b.name)),
     total, page: Math.max(1, page), pageCount: Math.max(1, Math.ceil(total / pageSize))
   };
 }
@@ -523,7 +533,7 @@ export async function getAdmin(): Promise<AdminData> {
     prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
     prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
     prisma.invitation.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { role: true, ninjaProfile: { select: { code: true } } } }),
-    prisma.user.findMany({ include: { roles: { include: { role: true } } }, orderBy: { createdAt: "asc" } }),
+    prisma.user.findMany({ include: { roles: { include: { role: true } }, ninjaProfile: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.role.findMany(),
     prisma.ninjaProfile.findMany({ where: { userId: null, status: "ACTIVE" }, orderBy: { code: "asc" }, select: { id: true, code: true, firstName: true, lastName: true } }),
     prisma.ninjaProfile.count({ where: { status: "ACTIVE" } }),
@@ -550,7 +560,7 @@ export async function getAdmin(): Promise<AdminData> {
     policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,
     rpTimeLabel: rpLabel,
     invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: invitation.status === "PENDING" }; }),
-    users: users.map((user) => ({ id: user.id, name: user.name ?? user.email ?? user.id, roles: user.roles.map((entry) => roleLabels[entry.role.code as keyof typeof roleLabels] ?? entry.role.label).join(", ") || "Sans rôle", roleCodes: user.roles.map((entry) => entry.role.code), revoked: user.revokedAt !== null })),
+    users: users.map((user) => ({ id: user.id, name: user.ninjaProfile ? `${user.ninjaProfile.firstName} ${user.ninjaProfile.lastName}`.trim() : user.name ?? user.email ?? user.id, roles: user.roles.map((entry) => roleLabels[entry.role.code as keyof typeof roleLabels] ?? entry.role.label).join(", ") || "Sans rôle", roleCodes: user.roles.map((entry) => entry.role.code), revoked: user.revokedAt !== null })),
     roles: [...roles].sort((a, b) => roleOrder.indexOf(a.code) - roleOrder.indexOf(b.code)).map((role) => ({ id: role.id, code: role.code, label: roleLabels[role.code as keyof typeof roleLabels] ?? role.label })),
     freeNinjas: freeNinjas.map((ninja) => ({ id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}` }))
   };
