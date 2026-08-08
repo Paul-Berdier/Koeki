@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { EmptyState, MetricCard, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
-import { EQUIPMENT_SLOTS, EquipmentEditor } from "@/components/equipment-editor";
+import { EquipmentEditor } from "@/components/equipment-editor";
+import { EQUIPMENT_SLOTS } from "@/lib/equipment";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { prisma } from "@koeki/database";
 import { updateEquipment } from "./actions";

@@ -2,10 +2,8 @@
 
 import { useState } from "react";
 import { Save } from "lucide-react";
+import { EQUIPMENT_SLOTS } from "@/lib/equipment";
 
-export const EQUIPMENT_SLOTS = [
-  ["haut", "Haut"], ["bas", "Bas"], ["bottes", "Bottes"], ["boucles", "Boucles"], ["bague", "Bague"], ["collier", "Collier"], ["gants", "Gants"]
-] as const;
 const TIERS = ["Aucun", "T1", "T2", "T3", "T4"];
 const TYPES = ["", "Armure", "Jutsu", "Ténacité"];
 
