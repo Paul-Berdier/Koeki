@@ -51,8 +51,12 @@ export async function createOwnProfile(formData: FormData) {
   if (!session) throw new Error("UNAUTHENTICATED");
   const existing = await prisma.ninjaProfile.findUnique({ where: { userId: session.userId } });
   if (existing) redirect(`/ninjas/${existing.id}`);
+  if (formData.get("confirmNew") !== "on") redirect(`/profil?erreur=${encodeURIComponent("Confirmez d’abord que votre personnage n’existe pas dans le registre")}`);
   const parsed = createNinjaSchema.omit({ notes: true }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/profil?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
+  // Creation is the exception: an unclaimed register entry with the same name must be claimed, not duplicated.
+  const duplicate = await prisma.ninjaProfile.findFirst({ where: { status: "ACTIVE", userId: null, firstName: { equals: parsed.data.firstName.trim(), mode: "insensitive" }, lastName: { equals: parsed.data.lastName.trim(), mode: "insensitive" } } });
+  if (duplicate) redirect(`/profil?erreur=${encodeURIComponent(`Une fiche « ${duplicate.firstName} ${duplicate.lastName} » (${duplicate.code}) existe déjà dans le registre — réclamez-la au lieu d’en créer une nouvelle`)}`);
   const grade = await prisma.ninjaGrade.findUnique({ where: { id: parsed.data.gradeId } });
   if (!grade) redirect("/profil?erreur=Grade%20inconnu");
   let ninjaId: string | null = null;

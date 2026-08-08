@@ -30,6 +30,8 @@ export function middleware(request: NextRequest) {
   // Next.js reads the request CSP and adds this nonce to its generated scripts.
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
   requestHeaders.set("x-nonce", nonce);
+  // Lets server layouts know the current path (used to force profile linking on first login).
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
