@@ -181,6 +181,7 @@ export async function getNinjas(params: { q?: string | undefined; grade?: string
   const debt = sumBig(aggregates.map((ninja) => ninja.debt));
   return {
     summaryLine: `${aggregates.length} dossier${aggregates.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
+    stats: { total: aggregates.length, upToDate, overdue, debt },
     grades: grades.map((grade) => ({ code: grade.code, label: grade.label })),
     ninjas: rows.slice((page - 1) * pageSize, page * pageSize).map((ninja): NinjaRow => ({
       id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, grade: ninja.gradeLabel, points: ninja.points,
