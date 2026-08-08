@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, KeyRound, Pencil } from "lucide-react";
 import { EmptyState, GradeBadge, MetricCard, MoneyDisplay, NinjaAvatar, PageHeader, PointDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
+import { DetailTabs } from "@/components/detail-tabs";
 import { SettlementItems } from "@/components/settlement-items";
 import { getNinjaDetail } from "@/lib/data";
 import { lateYearsLabel } from "@/lib/format";
@@ -29,20 +30,8 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
   const settleable = data.assessments.filter((row) => row.remaining > 0n || row.badge === "overdue" || row.badge === "due" || row.badge === "warning");
-  return <div className="page-wrap">
-    <PageHeader eyebrow={`Dossier ${data.code}`} title={data.name} description={`${data.grade.label}${data.alias ? ` · « ${data.alias} »` : ""} · ${data.statusLabel}`}
-      actions={<>{(canWrite || isOwner) && <Link className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</Link>}<Link className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
-    {receipt && <p className="notice" role="status">Paiement validé — reçu <code>{receipt}</code> enregistré et audité.</p>}
-    {info && <p className="notice" role="status">{info}</p>}
-    {error && <p className="notice error" role="alert">{error}</p>}
 
-    <section className="metric-grid" aria-label="Situation fiscale">
-      <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : "good"} />
-      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats — couvre automatiquement les taxes ouvertes dès qu’il est crédité" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
-      <MetricCard label="Retard" value={lateYearsLabel(data.lateYears)} detail={data.lateYears >= 2 ? "Dossier prioritaire" : "Sous surveillance normale"} tone={data.lateYears >= 2 ? "danger" : data.lateYears > 0 ? "warn" : "good"} />
-      <MetricCard label="Points" value={<PointDisplay points={data.pointsBalance} />} detail="Solde explicable depuis le registre" tone="neutral" />
-    </section>
-
+  const overviewTab = <>
     {canPay && <section className="panel stack-panel">
       <SectionHeader title="Encaisser un règlement" description="Cochez les semaines réglées, puis ce que le joueur donne : des Ryō, des objets, ou les deux" />
       {settleable.length ? <form action={recordPayment} className="form-grid">
@@ -62,65 +51,85 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
         <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Régler les semaines cochées</button></div>
       </form> : <p className="notice" style={{ margin: 18 }}>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>}
     </section>}
+    <div className="duo-grid">
+      <section className="panel">
+        <SectionHeader title="Identité" description="Registre administratif" />
+        <div className="identity-list">
+          <div className="person-cell" style={{ gridColumn: "1/-1" }}><NinjaAvatar name={data.name} /><span><strong>{data.name}</strong><small>{data.code}</small></span></div>
+          <div><span>Grade</span><GradeBadge>{data.grade.label}</GradeBadge></div>
+          <div><span>État</span>{data.statusLabel}</div>
+          <div><span>Clan</span>{data.clan ?? "—"}</div>
+          <div><span>Pseudonyme</span>{data.alias ?? "—"}</div>
+          <div style={{ gridColumn: "1/-1" }}><span>Compte lié</span>{data.hasLinkedUser ? "Compte Discord associé" : "Aucun compte Discord associé"}</div>
+          {data.notes && <div style={{ gridColumn: "1/-1" }}><span>Notes internes</span><div className="notes-block">{data.notes}</div></div>}
+        </div>
+      </section>
+      <section className="panel">
+        <SectionHeader title="Points" description="Dernières écritures du registre" />
+        {data.pointEntries.length ? <div className="mini-list">{data.pointEntries.map((entry) => <div key={entry.id}><span>{entry.label}{entry.reason && <small>{entry.reason}</small>}<small>{entry.at}</small></span><strong className={entry.points < 0 ? "negative" : "positive"}>{entry.points > 0 ? "+" : ""}{entry.points} pts</strong></div>)}</div>
+          : <EmptyState title="Aucun point" description="Les points gagnés apparaîtront ici." />}
+      </section>
+    </div>
+  </>;
 
-    <section className="panel stack-panel">
-      <SectionHeader title="Historique fiscal" description="Une ligne par semaine RP, instantanés immuables" />
-          {data.assessments.length ? <div className="table-scroll"><table><thead><tr><th>Année</th><th>Grade</th><th>Montant</th><th>Majorations</th><th>Corrections</th><th>Payé</th><th>Reste</th><th>Statut</th></tr></thead><tbody>{data.assessments.map((row) => <tr key={row.id}><td><strong>RP {row.rpYear}</strong><br /><small style={{ color: "var(--sand-500)", whiteSpace: "nowrap" }}>{row.period}</small></td><td>{row.gradeLabel}</td><td><MoneyDisplay amount={row.original} /></td><td className={row.penalties > 0n ? "negative" : "muted"}>{row.penalties > 0n ? <MoneyDisplay amount={row.penalties} /> : "—"}</td><td className="muted">{row.adjustments !== 0n || row.exemptions !== 0n ? <MoneyDisplay amount={row.adjustments - row.exemptions} /> : "—"}</td><td className="positive"><MoneyDisplay amount={row.paid} /></td><td className={row.remaining > 0n || row.badge === "overdue" ? "negative" : "muted"}>{row.remaining > 0n ? <MoneyDisplay amount={row.remaining} /> : row.badge === "overdue" ? "Impayée (ancien registre)" : "Soldé"}</td><td><StatusBadge status={row.badge}>{row.statusLabel}</StatusBadge></td></tr>)}</tbody></table></div>
-        : <EmptyState title="Aucune taxe" description="Aucune semaine fiscale n’a encore été générée pour ce dossier." />}
+  const taxesTab = <section className="panel stack-panel">
+    <SectionHeader title="Historique fiscal" description="Une ligne par semaine RP — montant, majorations, corrections, payé, reste" />
+    {data.assessments.length ? <div className="table-scroll"><table><thead><tr><th>Année</th><th>Grade</th><th className="num">Montant</th><th className="num">Majorations</th><th className="num">Corrections</th><th className="num">Payé</th><th className="num">Reste</th><th>Statut</th></tr></thead><tbody>{data.assessments.map((row) => <tr key={row.id}><td><strong>RP {row.rpYear}</strong><br /><small style={{ color: "var(--sand-500)", whiteSpace: "nowrap" }}>{row.period}</small></td><td>{row.gradeLabel}</td><td className="num"><MoneyDisplay amount={row.original} /></td><td className={`num ${row.penalties > 0n ? "negative" : "muted"}`}>{row.penalties > 0n ? <MoneyDisplay amount={row.penalties} /> : "—"}</td><td className="num muted">{row.adjustments !== 0n || row.exemptions !== 0n ? <MoneyDisplay amount={row.adjustments - row.exemptions} /> : "—"}</td><td className="num positive"><MoneyDisplay amount={row.paid} /></td><td className={`num ${row.remaining > 0n || row.badge === "overdue" ? "negative" : "muted"}`}>{row.remaining > 0n ? <MoneyDisplay amount={row.remaining} /> : row.badge === "overdue" ? "Impayée (ancien registre)" : "Soldé"}</td><td><StatusBadge status={row.badge}>{row.statusLabel}</StatusBadge></td></tr>)}</tbody></table></div>
+      : <EmptyState title="Aucune taxe" description="Aucune semaine fiscale n’a encore été générée pour ce dossier." />}
+  </section>;
+
+  const operationsTab = <section className="panel stack-panel">
+    <SectionHeader title="Historique économique" description="Paiements, dons et rachats liés au dossier" />
+    {data.operations.length ? <div className="table-scroll"><table><thead><tr><th>Reçu</th><th>Opération</th><th className="num">Montant</th><th>État</th><th>Date</th></tr></thead><tbody>{data.operations.map((operation) => <tr key={operation.id}><td><code>{operation.receipt}</code></td><td>{operation.label}</td><td className="num"><MoneyDisplay amount={operation.amount} /></td><td><StatusBadge status={operation.badge}>{operation.statusLabel}</StatusBadge></td><td>{operation.at}</td></tr>)}</tbody></table></div>
+      : <EmptyState title="Aucune opération" description="Les reçus apparaîtront ici dès la première écriture." />}
+  </section>;
+
+  const adminTab = <div className="duo-grid">
+    <section className="panel">
+      <SectionHeader title="Changer le grade" description="Historisé, motif obligatoire, non rétroactif" />
+      <form action={changeGrade} className="form-grid">
+        <input type="hidden" name="ninjaId" value={data.id} />
+        <div className="form-row">
+          <label>Nouveau grade<select name="gradeId" defaultValue={data.grades.find((grade) => grade.code === data.grade.code)?.id}>{data.grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
+          <label>Motif<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Promotion validée par le conseil…" /></label>
+        </div>
+        <div className="form-actions"><button className="button button-ghost" type="submit">Appliquer le changement</button></div>
+      </form>
+    </section>
+    {settleable.length > 0 && <section className="panel">
+      <SectionHeader title="Remettre une semaine" description="Annule la semaine sans encaissement — motif obligatoire, audité" />
+      <form action={waiveAssessment} className="form-grid">
+        <input type="hidden" name="ninjaId" value={data.id} />
+        <div className="form-row">
+          <label>Semaine concernée<select name="assessmentId" required>{settleable.map((row) => <option key={row.id} value={row.id}>RP {row.rpYear} — {row.remaining > 0n ? `reste ${new Intl.NumberFormat("fr-FR").format(Number(row.remaining))} ¥` : "impayée (ancien registre)"}</option>)}</select></label>
+          <label>Motif *<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Geste commercial, erreur…" /></label>
+        </div>
+        <div className="form-actions"><button className="button button-ghost" type="submit">Remettre cette semaine</button></div>
+      </form>
+    </section>}
+  </div>;
+
+  const tabs = [
+    { id: "apercu", label: "Aperçu", content: overviewTab },
+    { id: "taxes", label: "Semaines fiscales", count: data.assessments.length, content: taxesTab },
+    { id: "operations", label: "Opérations", count: data.operations.length, content: operationsTab },
+    ...(canWrite ? [{ id: "gestion", label: "Gestion", content: adminTab }] : [])
+  ];
+
+  return <div className="page-wrap">
+    <PageHeader eyebrow={`Dossier ${data.code}`} title={data.name} description={`${data.grade.label}${data.alias ? ` · « ${data.alias} »` : ""} · ${data.statusLabel}`}
+      actions={<>{(canWrite || isOwner) && <Link className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</Link>}<Link className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
+    {receipt && <p className="notice" role="status">Paiement validé — reçu <code>{receipt}</code> enregistré et audité.</p>}
+    {info && <p className="notice" role="status">{info}</p>}
+    {error && <p className="notice error" role="alert">{error}</p>}
+
+    <section className="metric-grid" aria-label="Situation fiscale">
+      <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : "good"} />
+      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats — couvre automatiquement les taxes ouvertes dès qu’il est crédité" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
+      <MetricCard label="Retard" value={lateYearsLabel(data.lateYears)} detail={data.lateYears >= 2 ? "Dossier prioritaire" : "Sous surveillance normale"} tone={data.lateYears >= 2 ? "danger" : data.lateYears > 0 ? "warn" : "good"} />
+      <MetricCard label="Points" value={<PointDisplay points={data.pointsBalance} />} detail="Solde explicable depuis le registre" tone="neutral" />
     </section>
 
-    <div className="detail-grid">
-      <div>
-        <section className="panel">
-          <SectionHeader title="Historique économique" description="Paiements, dons et rachats liés au dossier" />
-          {data.operations.length ? <div className="table-scroll"><table><thead><tr><th>Reçu</th><th>Opération</th><th>Montant</th><th>État</th><th>Date</th></tr></thead><tbody>{data.operations.map((operation) => <tr key={operation.id}><td><code>{operation.receipt}</code></td><td>{operation.label}</td><td><MoneyDisplay amount={operation.amount} /></td><td><StatusBadge status={operation.badge}>{operation.statusLabel}</StatusBadge></td><td>{operation.at}</td></tr>)}</tbody></table></div>
-            : <EmptyState title="Aucune opération" description="Les reçus apparaîtront ici dès la première écriture." />}
-        </section>
-      </div>
-      <div>
-        <section className="panel">
-          <SectionHeader title="Identité" description="Registre administratif" />
-          <div className="identity-list">
-            <div className="person-cell" style={{ gridColumn: "1/-1" }}><NinjaAvatar name={data.name} /><span><strong>{data.name}</strong><small>{data.code}</small></span></div>
-            <div><span>Grade</span><GradeBadge>{data.grade.label}</GradeBadge></div>
-            <div><span>État</span>{data.statusLabel}</div>
-            <div><span>Clan</span>{data.clan ?? "—"}</div>
-            <div><span>Pseudonyme</span>{data.alias ?? "—"}</div>
-            <div style={{ gridColumn: "1/-1" }}><span>Compte lié</span>{data.hasLinkedUser ? "Compte Discord associé" : "Aucun compte Discord associé"}</div>
-            {data.notes && <div style={{ gridColumn: "1/-1" }}><span>Notes internes</span><div className="notes-block">{data.notes}</div></div>}
-          </div>
-        </section>
-        <section className="panel">
-          <SectionHeader title="Points" description="Dernières écritures du registre" />
-          {data.pointEntries.length ? <div className="mini-list">{data.pointEntries.map((entry) => <div key={entry.id}><span>{entry.label}{entry.reason && <small>{entry.reason}</small>}<small>{entry.at}</small></span><strong className={entry.points < 0 ? "negative" : "positive"}>{entry.points > 0 ? "+" : ""}{entry.points} pts</strong></div>)}</div>
-            : <EmptyState title="Aucun point" description="Les points gagnés apparaîtront ici." />}
-        </section>
-      </div>
-    </div>
-
-    {canWrite && <div className="duo-grid">
-      <section className="panel">
-        <SectionHeader title="Changer le grade" description="Historisé, motif obligatoire, non rétroactif" />
-        <form action={changeGrade} className="form-grid">
-          <input type="hidden" name="ninjaId" value={data.id} />
-          <div className="form-row">
-            <label>Nouveau grade<select name="gradeId" defaultValue={data.grades.find((grade) => grade.code === data.grade.code)?.id}>{data.grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
-            <label>Motif<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Promotion validée par le conseil…" /></label>
-          </div>
-          <div className="form-actions"><button className="button button-ghost" type="submit">Appliquer le changement</button></div>
-        </form>
-      </section>
-      {settleable.length > 0 && <section className="panel">
-        <SectionHeader title="Remettre une semaine" description="Annule la semaine sans encaissement — motif obligatoire, audité" />
-        <form action={waiveAssessment} className="form-grid">
-          <input type="hidden" name="ninjaId" value={data.id} />
-          <div className="form-row">
-            <label>Semaine concernée<select name="assessmentId" required>{settleable.map((row) => <option key={row.id} value={row.id}>RP {row.rpYear} — {row.remaining > 0n ? `reste ${new Intl.NumberFormat("fr-FR").format(Number(row.remaining))} ¥` : "impayée (ancien registre)"}</option>)}</select></label>
-            <label>Motif *<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Geste commercial, erreur…" /></label>
-          </div>
-          <div className="form-actions"><button className="button button-ghost" type="submit">Remettre cette semaine</button></div>
-        </form>
-      </section>}
-    </div>}
+    <DetailTabs tabs={tabs} />
   </div>;
 }

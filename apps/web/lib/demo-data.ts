@@ -30,6 +30,7 @@ export const demoDashboard: DashboardData = {
 
 export const demoNinjas: NinjasData = {
   summaryLine: "7 dossiers fictifs · 3 à jour · 3 en retard · 138 000 Ryō dus",
+  stats: { total: 7, upToDate: 3, overdue: 3, debt: 138000n },
   grades: [{ code: "CHUNIN", label: "Chunin" }, { code: "JONIN", label: "Jonin" }, { code: "KONIN", label: "Konin" }],
   ninjas: ninjaRows, total: 7, page: 1, pageCount: 1
 };

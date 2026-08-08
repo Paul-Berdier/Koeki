@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertTriangle, ArrowRight, Boxes, CircleCheck, Clock3, Plus, ReceiptText } from "lucide-react";
-import { EmptyState, MetricCard, MoneyDisplay, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
+import { EmptyState, MetricCard, MoneyDisplay, PageHeader, SectionHeader, StatusBadge, ZoneTitle } from "@koeki/ui";
 import { getDashboard } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
 import { demoMode, requireSession } from "@/lib/session";
@@ -15,14 +15,20 @@ export default async function DashboardPage() {
   const rate = formatPercentBps(data.recoveryRateBps);
   return <div className="page-wrap">
     <PageHeader eyebrow={`Situation du village · année RP ${data.rpYear}`} title="Salle des comptes" description="Une lecture immédiate des finances, des échéances et des opérations à traiter."
+      metrics={[
+        { label: "Taux de recouvrement", value: rate },
+        { label: "Dette ouverte", value: <MoneyDisplay amount={data.debt} /> },
+        { label: "Ninjas en retard", value: String(data.overdueNinjas) }
+      ]}
       actions={<><Link className="button button-ghost" href="/reports"><ReceiptText size={17} /> Rapprocher la journée</Link><Link className="button button-primary" href="/ninjas"><Plus size={17} /> Enregistrer</Link></>} />
     {!ownProfile && <p className="notice" role="status">Bienvenue à la Kōeki ! Vous n’avez pas encore de fiche ninja : <Link href="/profil" className="text-link">enregistrez votre identité de shinobi</Link> pour lier vos taxes, points et opérations à votre compte.</p>}
 
-    <section className="metric-grid" aria-label="Indicateurs principaux">
-      <MetricCard label="Recettes fiscales" value={<MoneyDisplay amount={data.collected} />} detail={`${rate} des taxes réglées (Ryō + dons)`} tone="good" />
+    <ZoneTitle title="Revenus de Suna" detail={`Année RP ${data.rpYear} — Ryō encaissés et taxes couvertes par les dons`} />
+    <section className="metric-grid" aria-label="Revenus fiscaux">
+      <MetricCard label="Taxes attendues" value={<MoneyDisplay amount={data.expected} />} detail="Montant brut appelé ce cycle" />
+      <MetricCard label="Encaissées (Ryō)" value={<MoneyDisplay amount={data.collected} />} detail={`${rate} des taxes réglées, dons compris`} tone="good" />
+      <MetricCard label="Couvert par dons" value={<MoneyDisplay amount={data.exempted} />} detail="Crédit d’exonération consommé" tone="good" />
       <MetricCard label="Dette à recouvrer" value={<MoneyDisplay amount={data.debt} />} detail={`${data.overdueNinjas} ninja${data.overdueNinjas > 1 ? "s" : ""} nécessitent un suivi`} tone={data.debt > 0n ? "danger" : "good"} />
-      <MetricCard label="Rachats ce cycle" value={<MoneyDisplay amount={data.buybacks} />} detail={`${data.buybackCount} transaction${data.buybackCount > 1 ? "s" : ""} validées`} />
-      <MetricCard label="Valeur des stocks" value={<MoneyDisplay amount={data.stockValue} />} detail={`${data.criticalCount} ressource${data.criticalCount > 1 ? "s" : ""} sous le seuil`} tone={data.criticalCount > 0 ? "warn" : "neutral"} />
     </section>
 
     <div className="dashboard-grid">
@@ -48,9 +54,18 @@ export default async function DashboardPage() {
       </section>
     </div>
 
+    <ZoneTitle title="Économie et stocks" detail="Comptoir des ressources du village" />
+    <section className="metric-grid" aria-label="Économie des ressources">
+      <MetricCard label="Rachats ce cycle" value={<MoneyDisplay amount={data.buybacks} />} detail={`${data.buybackCount} transaction${data.buybackCount > 1 ? "s" : ""} validées`} />
+      <MetricCard label="Valeur des stocks" value={<MoneyDisplay amount={data.stockValue} />} detail="Au dernier prix connu du catalogue" />
+      <MetricCard label="Stocks critiques" value={String(data.priorities.criticalStocks.length)} detail={data.priorities.criticalStocks.slice(0, 3).join(", ") || "Aucun seuil franchi"} tone={data.priorities.criticalStocks.length ? "warn" : "good"} />
+      <MetricCard label="Rapports à valider" value={String(data.priorities.reportsToReview)} detail="Journées soumises par les agents" tone={data.priorities.reportsToReview ? "warn" : "neutral"} />
+    </section>
+
+    <ZoneTitle title="Dernières opérations" detail="Écritures du service économique" />
     <section className="panel activity-panel">
-      <SectionHeader title="Dernières opérations" description="Écritures enregistrées par le service économique" action={<Link href="/audit" className="text-link">Voir le registre <ArrowRight size={15} /></Link>} />
-      {data.activity.length ? <div className="table-scroll"><table><thead><tr><th>Référence</th><th>Opération</th><th>Ninja</th><th>Montant</th><th>État</th><th>Horodatage</th></tr></thead><tbody>{data.activity.map((item) => <tr key={item.code}><td><code>{item.code}</code></td><td>{item.label}</td><td><strong>{item.subject}</strong></td><td className={item.direction === "out" ? "negative" : "positive"}><MoneyDisplay amount={item.amount} /></td><td><StatusBadge status={item.status}>{item.statusLabel}</StatusBadge></td><td>{item.at}</td></tr>)}</tbody></table></div>
+      <SectionHeader title="Registre du jour" description="Paiements, dons et rachats les plus récents" action={<Link href="/audit" className="text-link">Voir le registre d’audit <ArrowRight size={15} /></Link>} />
+      {data.activity.length ? <div className="table-scroll"><table><thead><tr><th>Référence</th><th>Opération</th><th>Ninja</th><th className="num">Montant</th><th>État</th><th>Horodatage</th></tr></thead><tbody>{data.activity.map((item) => <tr key={item.code}><td><code>{item.code}</code></td><td>{item.label}</td><td><strong>{item.subject}</strong></td><td className={`num ${item.direction === "out" ? "negative" : "positive"}`}><MoneyDisplay amount={item.amount} /></td><td><StatusBadge status={item.status}>{item.statusLabel}</StatusBadge></td><td>{item.at}</td></tr>)}</tbody></table></div>
         : <EmptyState title="Aucune opération" description="Les paiements, dons et rachats enregistrés apparaîtront ici." />}
     </section>
   </div>;
