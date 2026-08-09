@@ -1,28 +1,85 @@
 "use client";
 
 import { useState } from "react";
-import { Save } from "lucide-react";
-import { EQUIPMENT_SLOTS } from "@/lib/equipment";
+import { useFormStatus } from "react-dom";
+import { Save, X } from "lucide-react";
+import { EQUIPMENT_SLOTS, type EquipmentRow } from "@/lib/equipment";
 
 const TIERS = ["Aucun", "T1", "T2", "T3", "T4"];
-const TYPES = ["", "Armure", "Jutsu", "Ténacité"];
+const TYPES = ["Armure", "Jutsu", "Ténacité"];
 
-export interface JoninRow { id: string; label: string; slots: Record<string, { tier?: string | null; type?: string | null }> }
+interface SlotFormValue {
+  tier: string;
+  type: string;
+}
 
-export function EquipmentEditor({ jonins, action }: { jonins: JoninRow[]; action: (formData: FormData) => void }) {
-  const [ninjaId, setNinjaId] = useState("");
-  const selected = jonins.find((ninja) => ninja.id === ninjaId) ?? null;
-  return <form action={action} className="form-grid" key={ninjaId}>
-    <label>Ninja<select name="ninjaId" required value={ninjaId} onChange={(event) => setNinjaId(event.target.value)}>
-      <option value="">Sélectionner…</option>{jonins.map((ninja) => <option key={ninja.id} value={ninja.id}>{ninja.label}</option>)}
-    </select></label>
-    {selected && EQUIPMENT_SLOTS.map(([slot, label]) => {
-      const current = selected.slots[slot] ?? {};
-      return <div className="form-row" key={slot}>
-        <label>{label} — tier<select name={`slot_${slot}_tier`} defaultValue={current.tier ?? "Aucun"}>{TIERS.map((tier) => <option key={tier} value={tier}>{tier}</option>)}</select></label>
-        <label>{label} — type<select name={`slot_${slot}_type`} defaultValue={current.type ?? ""}><option value="">—</option>{TYPES.filter(Boolean).map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-      </div>;
-    })}
-    {selected && <div className="form-actions"><button className="button button-primary" type="submit"><Save size={16} /> Enregistrer la panoplie</button></div>}
+function SaveButton() {
+  const { pending } = useFormStatus();
+  return <button className="button button-primary" type="submit" disabled={pending}>
+    <Save size={16} aria-hidden="true" />
+    {pending ? "Enregistrement…" : "Enregistrer"}
+  </button>;
+}
+
+export function EquipmentEditor({ ninja, action, onCancel }: {
+  ninja: EquipmentRow;
+  action: (formData: FormData) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, SlotFormValue>>(() =>
+    Object.fromEntries(EQUIPMENT_SLOTS.map(([slot]) => {
+      const current = ninja.slots[slot];
+      return [slot, { tier: current?.tier ?? "Aucun", type: current?.type ?? "" }];
+    }))
+  );
+
+  return <form action={action} className="equipment-editor">
+    <input type="hidden" name="ninjaId" value={ninja.id} />
+    <div className="equipment-editor-heading">
+      <div>
+        <span>Modification en cours</span>
+        <h3>{ninja.name}</h3>
+        <p>{ninja.grade} · {ninja.code}</p>
+      </div>
+      <button className="equipment-close" type="button" onClick={onCancel} aria-label="Fermer l’éditeur">
+        <X size={18} aria-hidden="true" />
+      </button>
+    </div>
+
+    <div className="equipment-editor-grid">
+      {EQUIPMENT_SLOTS.map(([slot, label]) => {
+        const current = values[slot] ?? { tier: "Aucun", type: "" };
+        const isEmpty = current.tier === "Aucun";
+        return <fieldset className="equipment-editor-slot" key={slot}>
+          <legend>{label}</legend>
+          <label>
+            <span>Tier</span>
+            <select name={`slot_${slot}_tier`} value={current.tier} onChange={(event) => {
+              const tier = event.target.value;
+              setValues((previous) => ({ ...previous, [slot]: { tier, type: tier === "Aucun" ? "" : current.type } }));
+            }}>
+              {TIERS.map((tier) => <option key={tier} value={tier}>{tier}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Orientation</span>
+            {isEmpty
+              ? <><input type="hidden" name={`slot_${slot}_type`} value="" /><select value="" disabled aria-label={`${label} · orientation`}><option>—</option></select></>
+              : <select name={`slot_${slot}_type`} value={current.type} aria-label={`${label} · orientation`} onChange={(event) => {
+                const type = event.target.value;
+                setValues((previous) => ({ ...previous, [slot]: { ...current, type } }));
+              }}>
+                <option value="">—</option>
+                {TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>}
+          </label>
+        </fieldset>;
+      })}
+    </div>
+
+    <div className="equipment-editor-actions">
+      <button className="button button-ghost" type="button" onClick={onCancel}>Annuler</button>
+      <SaveButton />
+    </div>
   </form>;
 }

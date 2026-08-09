@@ -1,66 +1,56 @@
 import { redirect } from "next/navigation";
-import { EmptyState, MetricCard, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
-import { EquipmentEditor } from "@/components/equipment-editor";
-import { EQUIPMENT_SLOTS } from "@/lib/equipment";
+import { PageHeader } from "@koeki/ui";
+import { EquipmentBoard } from "@/components/equipment-board";
+import { DEMO_EQUIPMENT_ROWS, EQUIPMENT_SLOTS, type EquipmentRow } from "@/lib/equipment";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { prisma } from "@koeki/database";
 import { updateEquipment } from "./actions";
 
 const JONIN_PLUS = ["JONIN", "JONIN_COMMANDER", "KAGE", "SANIN"];
-type Slots = Record<string, { tier?: string | null; type?: string | null }>;
-const equippedCount = (slots: Slots) => Object.values(slots).filter((slot) => slot?.tier && slot.tier !== "Aucun").length;
+
+const equippedCount = (row: EquipmentRow) => EQUIPMENT_SLOTS.filter(([slot]) => {
+  const tier = row.slots[slot]?.tier;
+  return tier && tier !== "Aucun";
+}).length;
 
 export default async function EquipmentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
   if (!hasPermission(session, "inventory:write") && !hasPermission(session, "audit:read")) redirect("/access-denied");
+
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
-  if (demoMode) return <div className="page-wrap">
-    <PageHeader eyebrow="Forces de Suna" title="Équipement des Jonin" description="Panoplies des ninjas de grade Jonin et plus." />
-    <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p>
-  </div>;
-  const canEdit = hasPermission(session, "inventory:write");
-  const jonins = await prisma.ninjaProfile.findMany({
+  const canEdit = !demoMode && hasPermission(session, "inventory:write");
+
+  const rows: EquipmentRow[] = demoMode ? DEMO_EQUIPMENT_ROWS : (await prisma.ninjaProfile.findMany({
     where: { status: "ACTIVE", currentGrade: { code: { in: JONIN_PLUS } } },
     include: { currentGrade: true, equipment: true },
     orderBy: [{ currentGrade: { sortOrder: "desc" } }, { lastName: "asc" }, { firstName: "asc" }]
-  });
-  const rows = jonins.map((ninja) => ({
-    id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, grade: ninja.currentGrade.label,
-    slots: (ninja.equipment?.slots ?? {}) as Slots
+  })).map((ninja) => ({
+    id: ninja.id,
+    code: ninja.code,
+    name: `${ninja.firstName} ${ninja.lastName}`,
+    grade: ninja.currentGrade.label,
+    slots: (ninja.equipment?.slots ?? {}) as EquipmentRow["slots"]
   }));
-  const equipped = rows.filter((row) => equippedCount(row.slots) > 0);
-  const complete = rows.filter((row) => equippedCount(row.slots) === EQUIPMENT_SLOTS.length);
-  return <div className="page-wrap">
-    <PageHeader eyebrow="Forces de Suna" title="Équipement des Jonin" description="Qui est équipé, et de quoi — panoplies par slot des ninjas de grade Jonin et plus, reprises du registre du bot et tenues à jour ici." />
+
+  const complete = rows.filter((row) => equippedCount(row) === EQUIPMENT_SLOTS.length).length;
+  const empty = rows.filter((row) => equippedCount(row) === 0).length;
+
+  return <div className="page-wrap equipment-page">
+    <PageHeader
+      eyebrow="Forces de Suna"
+      title="Équipement des Jōnin"
+      description="Consultez les panoplies, repérez les slots manquants et mettez un ninja à jour sans quitter la liste."
+      metrics={[
+        { label: "Ninjas suivis", value: rows.length },
+        { label: "Panoplies complètes", value: complete },
+        { label: "À renseigner", value: empty }
+      ]}
+    />
+    {demoMode && <p className="notice" role="status">Mode démonstration : les modifications sont désactivées.</p>}
     {info && <p className="notice" role="status">{info}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
-    <section className="metric-grid" aria-label="État d’équipement">
-      <MetricCard label="Jonin et plus" value={String(rows.length)} detail="Ninjas actifs concernés" />
-      <MetricCard label="Équipés" value={String(equipped.length)} detail="Au moins un slot renseigné" tone={equipped.length ? "good" : "neutral"} />
-      <MetricCard label="Panoplies complètes" value={String(complete.length)} detail={`${EQUIPMENT_SLOTS.length} slots sur ${EQUIPMENT_SLOTS.length}`} tone={complete.length ? "good" : "neutral"} />
-      <MetricCard label="Sans équipement" value={String(rows.length - equipped.length)} detail={rows.length - equipped.length ? "À équiper ou à renseigner" : "Tout le monde est suivi"} tone={rows.length - equipped.length ? "warn" : "good"} />
-    </section>
-    <div className="detail-grid" style={{ alignItems: "start" }}>
-      <section className="panel stack-panel">
-        <SectionHeader title="Panoplies" description="Tier et orientation (Armure / Jutsu / Ténacité) par slot" />
-        {rows.length ? <div className="table-scroll"><table><thead><tr><th>Ninja</th><th>Grade</th>{EQUIPMENT_SLOTS.map(([, label]) => <th key={label}>{label}</th>)}</tr></thead><tbody>
-          {rows.map((row) => <tr key={row.id}>
-            <td><strong>{row.name}</strong> <small style={{ color: "var(--sand-500)" }}>{row.code}</small></td>
-            <td>{row.grade}</td>
-            {EQUIPMENT_SLOTS.map(([slot]) => {
-              const value = row.slots[slot];
-              const tier = value?.tier && value.tier !== "Aucun" ? value.tier : null;
-              return <td key={slot}>{tier ? <StatusBadge status={tier === "T4" ? "paid" : tier === "T3" ? "due" : "pending"}>{tier}{value?.type ? ` ${value.type}` : ""}</StatusBadge> : <span className="muted">—</span>}</td>;
-            })}
-          </tr>)}
-        </tbody></table></div> : <EmptyState title="Aucun Jonin actif" description="Les ninjas de grade Jonin et plus apparaîtront ici." />}
-      </section>
-      {canEdit && <section className="panel">
-        <SectionHeader title="Mettre à jour une panoplie" description="Sélectionnez un ninja — ses slots actuels se préremplissent" />
-        <EquipmentEditor jonins={rows.map((row) => ({ id: row.id, label: `${row.name} · ${row.grade}`, slots: row.slots }))} action={updateEquipment} />
-      </section>}
-    </div>
+    <EquipmentBoard rows={rows} canEdit={canEdit} action={updateEquipment} />
   </div>;
 }

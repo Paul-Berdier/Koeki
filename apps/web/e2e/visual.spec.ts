@@ -20,3 +20,23 @@ test("ninjas use cards and a drawer menu on mobile", async ({ page }, testInfo) 
   expect(overflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "test-results/ninjas-mobile.png", fullPage: true });
 });
+
+test("equipment board stays readable without horizontal scrolling", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop-only assertion");
+  await page.goto("/equipement");
+  await expect(page.getByRole("heading", { name: "Équipement des Jōnin" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".equipment-row")).toHaveCount(6);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: "test-results/equipment-desktop.png", fullPage: true });
+});
+
+test("equipment board becomes a compact card list on mobile", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "Mobile-only assertion");
+  await page.goto("/equipement");
+  await expect(page.getByRole("heading", { name: "Équipement des Jōnin" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".equipment-slot").first()).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: "test-results/equipment-mobile.png", fullPage: true });
+});

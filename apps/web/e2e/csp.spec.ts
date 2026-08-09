@@ -32,3 +32,17 @@ test("generated scripts use the response CSP nonce", async ({ page }) => {
   );
   expect([...violations, ...cspViolations]).toEqual([]);
 });
+
+test("equipment filters find the right ninja quickly", async ({ page }) => {
+  await page.goto("/equipement");
+  await expect(page.locator(".equipment-row")).toHaveCount(6);
+
+  await page.getByRole("button", { name: /Sans équipement/ }).click();
+  await expect(page.locator(".equipment-row")).toHaveCount(1);
+  await expect(page.getByText("Aoki Hoki", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Tous/ }).click();
+  await page.getByPlaceholder("Rechercher un ninja…").fill("Toshiro");
+  await expect(page.locator(".equipment-row")).toHaveCount(1);
+  await expect(page.getByText("Toshiro Makaze", { exact: true })).toBeVisible();
+});
