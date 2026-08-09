@@ -1,0 +1,1 @@
+ALTER TABLE "NinjaProfile" ADD COLUMN "diedAt" TIMESTAMP(3);

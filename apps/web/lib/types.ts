@@ -12,11 +12,11 @@ export interface DashboardData {
 }
 
 export interface NinjaRow { id: string; code: string; name: string; alias: string | null; grade: string; points: number; debt: bigint; badge: BadgeStatus; statusLabel: string; agent: string; due: string }
-export interface NinjasData { summaryLine: string; stats: { total: number; upToDate: number; overdue: number; debt: bigint }; grades: Array<{ code: string; label: string }>; ninjas: NinjaRow[]; total: number; page: number; pageCount: number }
+export interface NinjasData { summaryLine: string; stats: { total: number; upToDate: number; overdue: number; deceased: number; debt: bigint }; grades: Array<{ code: string; label: string }>; ninjas: NinjaRow[]; total: number; page: number; pageCount: number }
 
 export interface AssessmentRow { id: string; rpYear: number; period: string; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; statusLabel: string; badge: BadgeStatus; dueAt: string }
 export interface NinjaDetailData {
-  id: string; code: string; name: string; alias: string | null; clan: string | null; statusLabel: string;
+  id: string; code: string; name: string; alias: string | null; clan: string | null; lifecycleStatus: string; statusLabel: string; diedAt: string | null;
   grade: { code: string; label: string }; grades: Array<{ id: string; code: string; label: string }>;
   hasLinkedUser: boolean; notes: string | null;
   totalDebt: bigint; lateYears: number; nextDue: string; pointsBalance: number; exemptionBalance: bigint;

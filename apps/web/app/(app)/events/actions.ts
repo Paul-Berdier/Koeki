@@ -48,6 +48,7 @@ export async function finishEvent(formData: FormData) {
     if (!event || (event.status !== "OPEN" && event.status !== "PLANNED")) throw new Error("VALIDATION:Événement introuvable ou déjà clôturé");
     const winner = winnerId ? await tx.ninjaProfile.findUnique({ where: { id: winnerId } }) : null;
     if (winnerId && !winner) throw new Error("VALIDATION:Vainqueur introuvable");
+    if (winner && winner.status !== "ACTIVE") throw new Error("VALIDATION:Le vainqueur sélectionné n’est plus actif");
     await tx.event.update({ where: { id: eventId }, data: { status: "FINISHED", winnerId, participantCount: participants || event.participantCount, endsAt: event.endsAt ?? new Date() } });
     if (winner && event.rewardPoints > 0) {
       const existing = await tx.pointLedgerEntry.findUnique({ where: { sourceType_sourceId_eventType: { sourceType: "Event", sourceId: event.id, eventType: "SPECIAL_EVENT" } } });

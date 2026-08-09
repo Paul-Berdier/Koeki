@@ -31,10 +31,15 @@ const getUserNames = cache(async () => {
   return new Map(users.map((user) => [user.id, user.ninjaProfile ? `${user.ninjaProfile.firstName} ${user.ninjaProfile.lastName}`.trim() : user.name ?? "Agent Kōeki"]));
 });
 const shortName = (name: string) => { const [first, second] = name.trim().split(/\s+/); return first && second ? `${first} ${second.charAt(0)}.` : name; };
+const ninjaLifecycle = (status: string): { label: string; badge: BadgeStatus } | null =>
+  status === "DECEASED" ? { label: "Décédé", badge: "draft" }
+  : status === "INACTIVE" ? { label: "Inactif", badge: "pending" }
+  : status === "ACTIVE" ? null
+  : { label: status, badge: "draft" };
 
 interface AssessmentAggregate { id: string; rpYear: number; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; dueAt: Date; status: TaxAssessmentStatus }
 interface NinjaAggregate {
-  id: string; code: string; firstName: string; lastName: string; alias: string | null; clan: string | null; status: string;
+  id: string; code: string; firstName: string; lastName: string; alias: string | null; clan: string | null; status: string; diedAt: Date | null;
   gradeCode: string; gradeLabel: string; referenceAgentId: string | null; userId: string | null; notes: string | null;
   points: number; debt: bigint; lateYears: number; legacyLate: number; badge: BadgeStatus; statusLabel: string; due: string; nextDueAt: Date | null; assessments: AssessmentAggregate[];
 }
@@ -70,7 +75,12 @@ const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
   const now = new Date();
   const currentRpYear = service.currentRpYear(now);
   return ninjas.map((ninja) => {
-    const assessments = ninja.assessments.map((assessment) => computeAssessment(assessment, currentRpYear, now)).sort((a, b) => b.rpYear - a.rpYear);
+    const assessments = ninja.assessments.map((assessment) => computeAssessment(assessment, currentRpYear, now))
+      // Une échéance postérieure au décès reste dans l'historique, mais ne constitue plus une dette.
+      .map((assessment) => ninja.diedAt && assessment.dueAt > ninja.diedAt && assessment.paid === 0n && !EXCLUDED.includes(assessment.status)
+        ? { ...assessment, remaining: 0n, status: "CANCELLED" as TaxAssessmentStatus }
+        : assessment)
+      .sort((a, b) => b.rpYear - a.rpYear);
     const open = assessments.filter((assessment) => assessment.remaining > 0n);
     const debt = sumBig(open.map((assessment) => assessment.remaining));
     const overdue = open.filter((assessment) => assessment.dueAt < now);
@@ -79,11 +89,14 @@ const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
     const soon = upcoming && upcoming.dueAt.getTime() - now.getTime() < 2 * 86_400_000;
     // Zero-amount weeks kept OVERDUE come from the old register's fresh-start rule ("en tort").
     const legacyLate = assessments.filter((assessment) => assessment.status === "OVERDUE" && assessment.remaining === 0n).length;
-    const badge: BadgeStatus = overdue.length ? "overdue" : soon ? "warning" : open.length ? "due" : legacyLate ? "warning" : "paid";
-    const statusLabel = overdue.length ? "En retard" : soon ? "Échéance proche" : open.length ? "À payer" : legacyLate ? "Reprise à régulariser" : "À jour";
-    const due = overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : legacyLate ? `${legacyLate} sem. ancien registre` : "—";
+    const fiscalBadge: BadgeStatus = overdue.length ? "overdue" : soon ? "warning" : open.length ? "due" : legacyLate ? "warning" : "paid";
+    const fiscalStatusLabel = overdue.length ? "En retard" : soon ? "Échéance proche" : open.length ? "À payer" : legacyLate ? "Reprise à régulariser" : "À jour";
+    const lifecycle = ninjaLifecycle(ninja.status);
+    const badge = lifecycle?.badge ?? fiscalBadge;
+    const statusLabel = lifecycle?.label ?? fiscalStatusLabel;
+    const due = lifecycle ? "—" : overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : legacyLate ? `${legacyLate} sem. ancien registre` : "—";
     return {
-      id: ninja.id, code: ninja.code, firstName: ninja.firstName, lastName: ninja.lastName, alias: ninja.alias, clan: ninja.clan, status: ninja.status,
+      id: ninja.id, code: ninja.code, firstName: ninja.firstName, lastName: ninja.lastName, alias: ninja.alias, clan: ninja.clan, status: ninja.status, diedAt: ninja.diedAt,
       gradeCode: ninja.currentGrade.code, gradeLabel: ninja.currentGrade.label, referenceAgentId: ninja.referenceAgentId, userId: ninja.userId, notes: ninja.notes,
       points: ninja.pointEntries.reduce((total, entry) => total + entry.points, 0), debt, lateYears, legacyLate, badge, statusLabel, due, nextDueAt: upcoming?.dueAt ?? null, assessments
     };
@@ -110,7 +123,7 @@ export async function getShellInfo(session: SessionInfo | null): Promise<ShellIn
   const firstRole = session?.roles[0];
   return {
     rpYear: year, rpDayLabel: `Mois RP ${Math.min(7, Math.floor(service.progress(now) * 7) + 1)} sur 7`, rpProgress: service.progress(now),
-    overdueCount: aggregates.filter((ninja) => ninja.badge === "overdue").length,
+    overdueCount: aggregates.filter((ninja) => ninja.status === "ACTIVE" && ninja.badge === "overdue").length,
     userName: (session ? users.get(session.userId) : null) ?? session?.name ?? "Session inconnue", userRoleLabel: firstRole ? roleLabels[firstRole] : "Sans rôle"
   };
 }
@@ -125,7 +138,8 @@ export async function getDashboard(): Promise<DashboardData> {
   ]);
   const now = new Date();
   const rpYear = service.currentRpYear(now);
-  const all = aggregates.flatMap((ninja) => ninja.assessments);
+  const activeAggregates = aggregates.filter((ninja) => ninja.status === "ACTIVE");
+  const all = activeAggregates.flatMap((ninja) => ninja.assessments);
   const rate = (year: number) => {
     const rows = all.filter((assessment) => assessment.rpYear === year && !EXCLUDED.includes(assessment.status));
     const totals = settlementTotals(rows);
@@ -147,9 +161,9 @@ export async function getDashboard(): Promise<DashboardData> {
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 6)
     .map(({ createdAt, ...row }) => ({ ...row, at: relativeTime(createdAt, now) }));
   const stockValue = sumBig(resources.map((resource) => BigInt(Math.max(0, Math.round(stocks.get(resource.id) ?? 0))) * (prices.get(resource.id) ?? 0n)));
-  const overdueNinjas = aggregates.filter((ninja) => ninja.badge === "overdue");
+  const overdueNinjas = activeAggregates.filter((ninja) => ninja.badge === "overdue");
   return {
-    rpYear, expected: current.expected, collected: current.collected, exempted: current.exempted, debt: sumBig(aggregates.map((ninja) => ninja.debt)),
+    rpYear, expected: current.expected, collected: current.collected, exempted: current.exempted, debt: sumBig(activeAggregates.map((ninja) => ninja.debt)),
     buybacks: sumBig(buybacks.map((entry) => entry.totalAmount)), buybackCount: buybacks.length, stockValue, criticalCount: criticalStocks.length, overdueNinjas: overdueNinjas.length,
     recoveryRateBps: current.expected > 0n ? Number((current.settled * 10_000n) / current.expected) : 0,
     previousDeltaBps: previous.expected > 0n ? (current.expected > 0n ? Number((current.settled * 10_000n) / current.expected) - Number((previous.settled * 10_000n) / previous.expected) : null) : null,
@@ -170,15 +184,19 @@ export async function getNinjas(params: { q?: string | undefined; grade?: string
   let rows = aggregates;
   if (query) rows = rows.filter((ninja) => [`${ninja.firstName} ${ninja.lastName}`, ninja.code, ninja.alias ?? ""].some((value) => value.toLowerCase().includes(query)));
   if (params.grade) rows = rows.filter((ninja) => ninja.gradeCode === params.grade);
-  if (params.statut) rows = rows.filter((ninja) => ninja.badge === params.statut);
+  if (params.statut === "deceased") rows = rows.filter((ninja) => ninja.status === "DECEASED");
+  else if (params.statut === "inactive") rows = rows.filter((ninja) => ninja.status === "INACTIVE");
+  else if (params.statut) rows = rows.filter((ninja) => ninja.status === "ACTIVE" && ninja.badge === params.statut);
   rows = [...rows].sort((a, b) => (b.debt > a.debt ? 1 : b.debt < a.debt ? -1 : a.lastName.localeCompare(b.lastName)));
   const total = rows.length;
-  const upToDate = aggregates.filter((ninja) => ninja.badge === "paid").length;
-  const overdue = aggregates.filter((ninja) => ninja.badge === "overdue").length;
-  const debt = sumBig(aggregates.map((ninja) => ninja.debt));
+  const activeAggregates = aggregates.filter((ninja) => ninja.status === "ACTIVE");
+  const upToDate = activeAggregates.filter((ninja) => ninja.badge === "paid").length;
+  const overdue = activeAggregates.filter((ninja) => ninja.badge === "overdue").length;
+  const deceased = aggregates.filter((ninja) => ninja.status === "DECEASED").length;
+  const debt = sumBig(activeAggregates.map((ninja) => ninja.debt));
   return {
-    summaryLine: `${aggregates.length} dossier${aggregates.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
-    stats: { total: aggregates.length, upToDate, overdue, debt },
+    summaryLine: `${aggregates.length} dossier${aggregates.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${deceased} décédé${deceased > 1 ? "s" : ""} · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
+    stats: { total: aggregates.length, upToDate, overdue, deceased, debt },
     grades: grades.map((grade) => ({ code: grade.code, label: grade.label })),
     ninjas: rows.map((ninja): NinjaRow => ({
       id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, grade: ninja.gradeLabel, points: ninja.points,
@@ -234,8 +252,10 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
     ...payments.map((payment) => ({ id: payment.id, receipt: payment.receiptNumber, label: "Paiement de taxe", amount: payment.amount, createdAt: payment.createdAt, statusLabel: payment.status === "VALIDATED" ? "Validée" : payment.status === "REVERSED" ? "Contre-passée" : "En attente", badge: (payment.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus })),
     ...transactions.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, label: transaction.type === "BUYBACK" ? "Rachat de ressources" : "Don", amount: transaction.totalAmount, createdAt: transaction.createdAt, statusLabel: transaction.status === "VALIDATED" ? "Validée" : "À valider", badge: (transaction.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus }))
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 12).map(({ createdAt, ...row }) => ({ ...row, at: formatDate(createdAt) }));
+  const lifecycle = ninjaLifecycle(ninja.status);
   return {
-    id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, clan: ninja.clan, statusLabel: ninja.status === "ACTIVE" ? "Actif" : ninja.status,
+    id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, clan: ninja.clan,
+    lifecycleStatus: ninja.status, statusLabel: lifecycle?.label ?? "Actif", diedAt: ninja.diedAt ? formatDate(ninja.diedAt) : null,
     grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
     hasLinkedUser: linked, notes: options.canSeeNotes ? ninja.notes : null,
     totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points, exemptionBalance: exemption._sum.amount ?? 0n,
@@ -265,8 +285,9 @@ async function ninjaHasLinkedUser(ninjaId: string) {
 export async function getRecovery(): Promise<RecoveryData> {
   if (demoMode) return demoRecovery;
   const [aggregates, users] = await Promise.all([loadNinjaAggregates(), getUserNames()]);
-  const overdue = aggregates.filter((ninja) => ninja.badge === "overdue").sort((a, b) => b.lateYears - a.lateYears || (b.debt > a.debt ? 1 : -1));
-  const legacyOnly = aggregates.filter((ninja) => ninja.badge !== "overdue" && ninja.legacyLate > 0).sort((a, b) => b.legacyLate - a.legacyLate);
+  const active = aggregates.filter((ninja) => ninja.status === "ACTIVE");
+  const overdue = active.filter((ninja) => ninja.badge === "overdue").sort((a, b) => b.lateYears - a.lateYears || (b.debt > a.debt ? 1 : -1));
+  const legacyOnly = active.filter((ninja) => ninja.badge !== "overdue" && ninja.legacyLate > 0).sort((a, b) => b.legacyLate - a.legacyLate);
   const critical = overdue.filter((ninja) => ninja.lateYears >= 2);
   const averageLate = overdue.length ? (overdue.reduce((total, ninja) => total + ninja.lateYears, 0) / overdue.length).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : "0";
   const agentName = (ninja: NinjaAggregate) => (ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "À attribuer");
@@ -391,13 +412,14 @@ export async function getStatistics(): Promise<StatisticsData> {
   const [service, aggregates, users] = await Promise.all([getRpService(), loadNinjaAggregates(), getUserNames()]);
   const rpYear = service.currentRpYear();
   const since = service.startOfRpYear(rpYear);
-  const all = aggregates.flatMap((ninja) => ninja.assessments);
+  const activeAggregates = aggregates.filter((ninja) => ninja.status === "ACTIVE");
+  const all = activeAggregates.flatMap((ninja) => ninja.assessments);
   const currentRows = all.filter((assessment) => assessment.rpYear === rpYear && !EXCLUDED.includes(assessment.status));
   const previousRows = all.filter((assessment) => assessment.rpYear === rpYear - 1 && !EXCLUDED.includes(assessment.status));
   const cycle = settlementTotals(currentRows);
   const previous = settlementTotals(previousRows);
   const debtByGradeMap = new Map<string, bigint>();
-  for (const ninja of aggregates) if (ninja.debt > 0n) debtByGradeMap.set(ninja.gradeLabel, (debtByGradeMap.get(ninja.gradeLabel) ?? 0n) + ninja.debt);
+  for (const ninja of activeAggregates) if (ninja.debt > 0n) debtByGradeMap.set(ninja.gradeLabel, (debtByGradeMap.get(ninja.gradeLabel) ?? 0n) + ninja.debt);
   const [payments, transactions, points, cyclePoints, exemptionEntries] = await Promise.all([
     prisma.taxPayment.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, select: { recordedById: true, amount: true } }),
     prisma.resourceTransaction.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, include: { items: { include: { resource: true } } } }),

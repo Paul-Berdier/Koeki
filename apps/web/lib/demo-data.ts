@@ -12,7 +12,8 @@ const ninjaRows: NinjaRow[] = [
   { id: "demo-72", code: "NIN-000072", name: "Izen Hoki", alias: null, grade: "Tokubetsu Jonin", points: 1290, debt: 8000n, badge: "due", statusLabel: "À payer", agent: "Kaemon T.", due: "4 jours" },
   { id: "demo-87", code: "NIN-000087", name: "Kagami Hoki", alias: "L’Œil du désert", grade: "Konin", points: 0, debt: 27000n, badge: "overdue", statusLabel: "En retard", agent: "Sonemi H.", due: "2 ans RP" },
   { id: "demo-94", code: "NIN-000094", name: "Tao Hoki", alias: null, grade: "Jonin", points: 2000, debt: 56000n, badge: "overdue", statusLabel: "En retard", agent: "Kaemon T.", due: "4 ans RP" },
-  { id: "demo-109", code: "NIN-000109", name: "Yukiro Hoki", alias: null, grade: "Chunin", points: 860, debt: 15000n, badge: "warning", statusLabel: "Échéance proche", agent: "Sonemi H.", due: "1 jour" }
+  { id: "demo-109", code: "NIN-000109", name: "Yukiro Hoki", alias: null, grade: "Chunin", points: 860, debt: 15000n, badge: "warning", statusLabel: "Échéance proche", agent: "Sonemi H.", due: "1 jour" },
+  { id: "demo-118", code: "NIN-000118", name: "Ren Kaze", alias: "Le Veilleur", grade: "Jonin", points: 1740, debt: 0n, badge: "draft", statusLabel: "Décédé", agent: "Kaemon T.", due: "—" }
 ];
 
 export const demoDashboard: DashboardData = {
@@ -29,14 +30,14 @@ export const demoDashboard: DashboardData = {
 };
 
 export const demoNinjas: NinjasData = {
-  summaryLine: "7 dossiers fictifs · 3 à jour · 3 en retard · 138 000 Ryō dus",
-  stats: { total: 7, upToDate: 3, overdue: 3, debt: 138000n },
+  summaryLine: "8 dossiers fictifs · 3 à jour · 3 en retard · 1 décédé · 138 000 Ryō dus",
+  stats: { total: 8, upToDate: 3, overdue: 3, deceased: 1, debt: 138000n },
   grades: [{ code: "CHUNIN", label: "Chunin" }, { code: "JONIN", label: "Jonin" }, { code: "KONIN", label: "Konin" }],
-  ninjas: ninjaRows, total: 7, page: 1, pageCount: 1
+  ninjas: ninjaRows, total: 8, page: 1, pageCount: 1
 };
 
 export const demoNinjaDetail: NinjaDetailData = {
-  id: "demo-58", code: "NIN-000058", name: "Araki Hoki", alias: null, clan: "Hoki", statusLabel: "Actif",
+  id: "demo-58", code: "NIN-000058", name: "Araki Hoki", alias: null, clan: "Hoki", lifecycleStatus: "ACTIVE", statusLabel: "Actif", diedAt: null,
   grade: { code: "JONIN", label: "Jonin" }, grades: [{ id: "g1", code: "JONIN", label: "Jonin" }],
   hasLinkedUser: false, notes: null, totalDebt: 32000n, lateYears: 2, nextDue: "Dépassée", pointsBalance: 2000, exemptionBalance: 12400n,
   assessments: [

@@ -39,7 +39,10 @@ export default async function EditNinjaPage({ params, searchParams }: { params: 
           <label>Pseudonyme<input type="text" name="alias" maxLength={80} defaultValue={ninja.alias ?? ""} /></label>
           <label>Clan ou famille<input type="text" name="clan" maxLength={80} defaultValue={ninja.clan ?? ""} /></label>
         </div>
-        {canWrite && <label>État administratif<select name="status" defaultValue={ninja.status === "INACTIVE" ? "INACTIVE" : "ACTIVE"}><option value="ACTIVE">Actif</option><option value="INACTIVE">Inactif</option></select></label>}
+        {canWrite && <div className="form-row">
+          <label>État administratif<select name="status" defaultValue={["ACTIVE", "INACTIVE", "DECEASED"].includes(ninja.status) ? ninja.status : "ACTIVE"}><option value="ACTIVE">Actif</option><option value="INACTIVE">Inactif</option><option value="DECEASED">Décédé</option></select></label>
+          <label>Date du décès<input type="date" name="diedAt" defaultValue={ninja.diedAt?.toISOString().slice(0, 10) ?? new Date().toISOString().slice(0, 10)} /></label>
+        </div>}
         {canWrite && <label>Notes internes<textarea name="notes" maxLength={2000} defaultValue={ninja.notes ?? ""} /></label>}
         <div className="form-actions"><button className="button button-primary" type="submit"><Save size={16} /> Enregistrer</button></div>
       </form>

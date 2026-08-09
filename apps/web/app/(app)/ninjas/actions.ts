@@ -16,6 +16,22 @@ const createNinjaSchema = z.object({
   notes: z.string().trim().max(2000).optional().transform((value) => value || null)
 });
 
+/**
+ * Allocates the next public numeric code while serialising concurrent creations.
+ * Historical codes such as NIN-EJ0001 are deliberately ignored.
+ */
+async function nextNinjaCode(tx: Prisma.TransactionClient): Promise<string> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714421)`;
+  const rows = await tx.$queryRaw<Array<{ nextValue: bigint }>>`
+    SELECT COALESCE(MAX(SUBSTRING("code" FROM 5 FOR 6)::bigint), 0) + 1 AS "nextValue"
+    FROM "NinjaProfile"
+    WHERE "code" ~ '^NIN-[0-9]{6}$'
+  `;
+  const nextValue = Number(rows[0]?.nextValue ?? 1n);
+  if (!Number.isSafeInteger(nextValue) || nextValue < 1 || nextValue > 999_999) throw new Error("Le registre a épuisé les codes ninja disponibles");
+  return `NIN-${String(nextValue).padStart(6, "0")}`;
+}
+
 export async function createNinja(formData: FormData) {
   const session = await requireWriteAccess("ninjas:write");
   const parsed = createNinjaSchema.safeParse(Object.fromEntries(formData));
@@ -24,10 +40,9 @@ export async function createNinja(formData: FormData) {
   if (!grade) redirect("/ninjas/new?erreur=Grade%20inconnu");
   let ninjaId: string | null = null;
   for (let attempt = 0; attempt < 3 && !ninjaId; attempt++) {
-    const last = await prisma.ninjaProfile.findFirst({ orderBy: { code: "desc" }, select: { code: true } });
-    const next = `NIN-${String((last ? Number(last.code.slice(4)) : 0) + 1).padStart(6, "0")}`;
     try {
       ninjaId = await prisma.$transaction(async (tx) => {
+        const next = await nextNinjaCode(tx);
         const ninja = await tx.ninjaProfile.create({ data: { code: next, firstName: parsed.data.firstName, lastName: parsed.data.lastName, alias: parsed.data.alias, clan: parsed.data.clan, notes: parsed.data.notes, currentGradeId: grade.id } });
         await tx.ninjaGradeHistory.create({ data: { ninjaId: ninja.id, gradeId: grade.id, effectiveFrom: new Date(), reason: "Création du dossier", changedById: session.userId } });
         await writeAudit(tx, { actorId: session.userId, action: "NINJA_CREATED", entityType: "NinjaProfile", entityId: ninja.id, newValues: { code: next, firstName: parsed.data.firstName, lastName: parsed.data.lastName, grade: grade.code } });
@@ -37,11 +52,6 @@ export async function createNinja(formData: FormData) {
   }
   if (!ninjaId) redirect("/ninjas/new?erreur=Conflit%20de%20code%2C%20r%C3%A9essayez");
   redirect(`/ninjas/${ninjaId}`);
-}
-
-async function nextNinjaCode() {
-  const last = await prisma.ninjaProfile.findFirst({ orderBy: { code: "desc" }, select: { code: true } });
-  return `NIN-${String((last ? Number(last.code.slice(4)) : 0) + 1).padStart(6, "0")}`;
 }
 
 /** Self-service: an invited agent registers their own ninja sheet, linked to their account. */
@@ -61,9 +71,9 @@ export async function createOwnProfile(formData: FormData) {
   if (!grade) redirect("/profil?erreur=Grade%20inconnu");
   let ninjaId: string | null = null;
   for (let attempt = 0; attempt < 3 && !ninjaId; attempt++) {
-    const code = await nextNinjaCode();
     try {
       ninjaId = await prisma.$transaction(async (tx) => {
+        const code = await nextNinjaCode(tx);
         const ninja = await tx.ninjaProfile.create({ data: { code, firstName: parsed.data.firstName, lastName: parsed.data.lastName, alias: parsed.data.alias, clan: parsed.data.clan, currentGradeId: grade!.id, userId: session.userId } });
         await tx.ninjaGradeHistory.create({ data: { ninjaId: ninja.id, gradeId: grade!.id, effectiveFrom: new Date(), reason: "Auto-enregistrement à l’arrivée", changedById: session.userId } });
         await writeAudit(tx, { actorId: session.userId, action: "NINJA_SELF_REGISTERED", entityType: "NinjaProfile", entityId: ninja.id, newValues: { code, firstName: parsed.data.firstName, lastName: parsed.data.lastName, grade: grade!.code } });
@@ -101,7 +111,8 @@ export async function claimOwnProfile(formData: FormData) {
 
 const updateNinjaSchema = createNinjaSchema.extend({
   ninjaId: z.string().min(1),
-  status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE")
+  status: z.enum(["ACTIVE", "INACTIVE", "DECEASED"]).default("ACTIVE"),
+  diedAt: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("")]).optional()
 }).omit({ gradeId: true });
 
 export async function updateNinja(formData: FormData) {
@@ -110,7 +121,9 @@ export async function updateNinja(formData: FormData) {
   if (!session) throw new Error("UNAUTHENTICATED");
   const parsed = updateNinjaSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
-  const { ninjaId, ...data } = parsed.data!;
+  const { ninjaId, diedAt: diedAtInput, ...data } = parsed.data!;
+  if (data.status === "DECEASED" && !diedAtInput) redirect(`/ninjas?erreur=${encodeURIComponent("La date du décès est obligatoire")}`);
+  const diedAt = data.status === "DECEASED" ? new Date(`${diedAtInput}T12:00:00.000Z`) : null;
   const previous = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId } });
   if (!previous) redirect("/ninjas?erreur=Dossier%20introuvable");
   if (previous!.status === "ARCHIVED") redirect(`/ninjas?erreur=${encodeURIComponent("Ce dossier est archivé — restaurez-le explicitement avant de le modifier")}`);
@@ -119,10 +132,10 @@ export async function updateNinja(formData: FormData) {
   if (!canWrite && !isOwner) throw new Error("FORBIDDEN");
   await prisma.$transaction(async (tx) => {
     if (canWrite) {
-      await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { ...data, version: { increment: 1 } } });
+      await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { ...data, diedAt, version: { increment: 1 } } });
       await writeAudit(tx, { actorId: session.userId, action: "NINJA_UPDATED", entityType: "NinjaProfile", entityId: ninjaId,
-        previousValues: { firstName: previous!.firstName, lastName: previous!.lastName, alias: previous!.alias, clan: previous!.clan, status: previous!.status },
-        newValues: { firstName: data.firstName, lastName: data.lastName, alias: data.alias, clan: data.clan, status: data.status } });
+        previousValues: { firstName: previous!.firstName, lastName: previous!.lastName, alias: previous!.alias, clan: previous!.clan, status: previous!.status, diedAt: previous!.diedAt },
+        newValues: { firstName: data.firstName, lastName: data.lastName, alias: data.alias, clan: data.clan, status: data.status, diedAt } });
     } else {
       // Owners may only adjust their pseudonym and clan — identity and status stay manager-controlled.
       await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { alias: data.alias, clan: data.clan, version: { increment: 1 } } });
@@ -215,6 +228,9 @@ export async function recordPayment(formData: FormData) {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
       // Serialize concurrent settlements on the same record, then recompute on locked state.
       await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaId} FOR UPDATE`;
+      const profile = await tx.ninjaProfile.findUnique({ where: { id: ninjaId }, select: { status: true } });
+      if (!profile) throw new Error("VALIDATION:Ninja introuvable");
+      if (profile.status !== "ACTIVE") throw new Error("VALIDATION:Ce dossier ninja n’est pas actif");
       const assessments = await loadNinjaFiscal(ninjaId, tx);
       if (!assessments) throw new Error("VALIDATION:Ninja introuvable");
       const targets = selected.map((id) => assessments.find((assessment) => assessment.id === id)).filter((target): target is NonNullable<typeof target> => Boolean(target)).sort((a, b) => a.rpYear - b.rpYear);

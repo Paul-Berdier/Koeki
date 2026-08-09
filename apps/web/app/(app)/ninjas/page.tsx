@@ -44,6 +44,7 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
         { label: "Dossiers", value: new Intl.NumberFormat("fr-FR").format(data.stats.total) },
         { label: "À jour", value: new Intl.NumberFormat("fr-FR").format(data.stats.upToDate) },
         { label: "En retard", value: new Intl.NumberFormat("fr-FR").format(data.stats.overdue) },
+        { label: "Décédés", value: new Intl.NumberFormat("fr-FR").format(data.stats.deceased) },
         { label: "Dette totale", value: <MoneyDisplay amount={data.stats.debt} /> }
       ]}
       actions={canWrite ? <Link className="button button-primary" href="/ninjas/new"><Plus size={17} /> Nouveau ninja</Link> : undefined} />

@@ -39,7 +39,7 @@ export async function recordResourceTransaction(formData: FormData) {
   }
   if (!lines.length) back("Ajoutez au moins une ressource — tapez son nom puis choisissez une proposition de la liste");
   const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId } });
-  if (!ninja) back("Ninja introuvable");
+  if (!ninja || ninja.status !== "ACTIVE") back(ninja ? "Ce dossier ninja n’est pas actif" : "Ninja introuvable");
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {

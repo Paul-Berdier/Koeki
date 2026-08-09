@@ -25,14 +25,16 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const isOwner = ownProfile?.id === id;
   const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "audit:read") });
   if (!data) notFound();
-  const donatable = !demoMode && canPay ? await prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }) : [];
+  const isActive = data.lifecycleStatus === "ACTIVE";
+  const donatable = !demoMode && canPay && isActive ? await prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }) : [];
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
   const settleable = data.assessments.filter((row) => row.remaining > 0n || row.badge === "overdue" || row.badge === "due" || row.badge === "warning");
 
   const overviewTab = <>
-    {canPay && <section className="panel stack-panel">
+    {canPay && !isActive && <p className="notice" role="status">Ce dossier est {data.statusLabel.toLowerCase()} : son historique reste consultable, mais aucune nouvelle opération fiscale ne peut être enregistrée.</p>}
+    {canPay && isActive && <section className="panel stack-panel">
       <SectionHeader title="Encaisser un règlement" description="Cochez les semaines réglées, puis ce que le joueur donne : des Ryō, des objets, ou les deux" />
       {settleable.length ? <form action={recordPayment} className="form-grid">
         <input type="hidden" name="ninjaId" value={data.id} />
@@ -58,6 +60,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
           <div className="person-cell" style={{ gridColumn: "1/-1" }}><NinjaAvatar name={data.name} /><span><strong>{data.name}</strong><small>{data.code}</small></span></div>
           <div><span>Grade</span><GradeBadge>{data.grade.label}</GradeBadge></div>
           <div><span>État</span>{data.statusLabel}</div>
+          {data.diedAt && <div><span>Date du décès</span>{data.diedAt}</div>}
           <div><span>Clan</span>{data.clan ?? "—"}</div>
           <div><span>Pseudonyme</span>{data.alias ?? "—"}</div>
           <div style={{ gridColumn: "1/-1" }}><span>Compte lié</span>{data.hasLinkedUser ? "Compte Discord associé" : "Aucun compte Discord associé"}</div>

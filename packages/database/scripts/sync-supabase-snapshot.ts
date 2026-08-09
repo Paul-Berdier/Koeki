@@ -330,7 +330,9 @@ async function syncSnapshot(prepared: PreparedSnapshot): Promise<void> {
               code,
               firstName: names.firstName,
               lastName: names.lastName,
-              status: "ACTIVE",
+              // Un dossier revenu dans la source peut sortir des archives, mais une décision
+              // administrative locale (inactif ou décédé) ne doit jamais être écrasée au déploiement.
+              status: profile.status === "ARCHIVED" ? "ACTIVE" : profile.status,
               currentGradeId: targetGrade.id,
               version: { increment: 1 }
             } });

@@ -15,8 +15,8 @@ export async function updateEquipment(formData: FormData) {
   const back = (message: string): never => redirect(`/equipement?erreur=${encodeURIComponent(message)}`);
   const ninjaId = formData.get("ninjaId");
   if (typeof ninjaId !== "string" || !ninjaId) back("Sélectionnez un ninja");
-  const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId as string }, select: { firstName: true, lastName: true } });
-  if (!ninja) back("Ninja introuvable");
+  const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId as string }, select: { firstName: true, lastName: true, status: true } });
+  if (!ninja || ninja.status !== "ACTIVE") back(ninja ? "La panoplie d’un ninja inactif ou décédé ne peut plus être modifiée" : "Ninja introuvable");
   const slots: Record<string, { tier: string; type: string | null }> = {};
   for (const slot of EQUIPMENT_SLOTS) {
     const tier = formData.get(`slot_${slot}_tier`);

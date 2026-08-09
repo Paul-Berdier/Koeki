@@ -250,6 +250,7 @@ model NinjaProfile {
   imageUrl             String?
   clan                 String?
   status               String                @default("ACTIVE")
+  diedAt               DateTime?
   currentGradeId       String
   referenceAgentId     String?
   userId               String?               @unique
