@@ -66,9 +66,11 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <section className="panel" id="bareme-panel">
           <SectionHeader title="Semaine fiscale en cours" description={`Semaine RP ${data.currentWeek.rpYear} · ${data.currentWeek.period} — échéance dimanche minuit`} />
           <div className="mini-list">
-            <div><span>Ninjas facturés</span><strong>{data.currentWeek.lines} / {data.currentWeek.activeNinjas}</strong></div>
+            <div><span>Ninjas facturés (grade renseigné)</span><strong>{data.currentWeek.lines} / {data.currentWeek.activeNinjas}</strong></div>
             <div><span>Dont réellement imposables</span><strong className={data.currentWeek.billable === 0 ? "negative" : "positive"}>{data.currentWeek.billable}</strong></div>
+            <div><span>Grades à mettre à jour</span><strong className={data.currentWeek.gradesToUpdate > 0 ? "negative" : "positive"}>{data.currentWeek.gradesToUpdate}</strong></div>
           </div>
+          {data.currentWeek.gradesToUpdate > 0 && <p className="notice" style={{ margin: "0 20px 16px" }} role="alert">Ces dossiers ne sont pas considérés à jour. Leur semaine sera facturée automatiquement dès qu’un grade réel sera enregistré.</p>}
           {data.currentWeek.billable === 0 && <p className="notice error" style={{ margin: "0 20px 16px" }} role="alert">Personne n’a de taxe à payer cette semaine : le barème est à 0 pour les grades des ninjas actifs. Renseignez les montants ci-dessous puis publiez, ou corrigez les grades.</p>}
           {canWrite && <form action={billCurrentWeek} className="form-grid" style={{ paddingTop: 0 }}>
             <div className="form-actions"><button className="button button-ghost" type="submit">Facturer la semaine en cours maintenant</button></div>

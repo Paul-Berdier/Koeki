@@ -3,6 +3,7 @@ import { PrismaClient, RoleCode, TaxAssessmentStatus } from "@prisma/client";
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "postgresql://koeki:koeki@127.0.0.1:5432/koeki?schema=public" }) });
 const gradeSeed = [
+  ["UNKNOWN", "Non renseigné", 0],
   ["GENIN_APPRENTICE", "Genin apprenti", 0], ["GENIN", "Genin simple", 0], ["GENIN_CONFIRMED", "Genin confirmé", 10_000],
   ["CHUNIN", "Chunin", 15_000], ["KONIN", "Konin", 20_000], ["TOKUBETSU_JONIN", "Tokubetsu Jonin", 25_000],
   ["JONIN", "Jonin", 25_000], ["JONIN_COMMANDER", "Commandant Jonin", 25_000], ["KAGE", "Kage", 0], ["SANIN", "Sanin", 0]
@@ -20,7 +21,7 @@ async function main() {
   const admin = await prisma.user.upsert({ where: { email: "admin.dev@koeki.local" }, create: { email: "admin.dev@koeki.local", name: "Sonemi Hakumei" }, update: {} });
   await prisma.userRole.upsert({ where: { userId_roleId: { userId: admin.id, roleId: roles.get("SUPER_ADMIN")! } }, create: { userId: admin.id, roleId: roles.get("SUPER_ADMIN")! }, update: {} });
   const grades = new Map<string, { id: string; amount: bigint; label: string }>();
-  for (const [code, label, amount] of gradeSeed) { const grade = await prisma.ninjaGrade.upsert({ where: { code }, create: { code, label, sortOrder: grades.size + 1 }, update: { label } }); grades.set(code, { id: grade.id, amount: BigInt(amount), label }); }
+  for (const [code, label, amount] of gradeSeed) { const grade = await prisma.ninjaGrade.upsert({ where: { code }, create: { code, label, sortOrder: grades.size }, update: { label } }); grades.set(code, { id: grade.id, amount: BigInt(amount), label }); }
   const policy = await prisma.taxPolicy.upsert({ where: { name_version: { name: "Barème initial", version: 1 } }, create: { name: "Barème initial", version: 1, effectiveFromRpYear: 1, isActive: true }, update: { isActive: true } });
   for (const grade of grades.values()) await prisma.taxPolicyGradeRate.upsert({ where: { taxPolicyId_gradeId: { taxPolicyId: policy.id, gradeId: grade.id } }, create: { taxPolicyId: policy.id, gradeId: grade.id, amount: grade.amount }, update: { amount: grade.amount } });
   const ninjas = new Map<string, string>();

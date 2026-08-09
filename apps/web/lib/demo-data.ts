@@ -20,7 +20,7 @@ export const demoDashboard: DashboardData = {
   rpYear: 48, expected: 401000n, collected: 214500n, exempted: 72000n, debt: 143000n, buybacks: 67400n, buybackCount: 23, stockValue: 418200n, criticalCount: 3, overdueNinjas: 12,
   recoveryRateBps: 7140, previousDeltaBps: 210,
   recoveryByYear: [{ rpYear: 44, percent: 82 }, { rpYear: 45, percent: 76 }, { rpYear: 46, percent: 88 }, { rpYear: 47, percent: 69 }, { rpYear: 48, percent: 71 }],
-  priorities: { penaltyRateMissing: true, overdueCount: 12, overdueOldCount: 4, criticalStocks: ["Cuivre", "tissu renforcé", "bois d’aulne"], reportsToReview: 2 },
+  priorities: { penaltyRateMissing: true, gradesToUpdate: 0, overdueCount: 12, overdueOldCount: 4, criticalStocks: ["Cuivre", "tissu renforcé", "bois d’aulne"], reportsToReview: 2 },
   activity: [
     { code: "PAY-2026-000184", label: "Paiement de taxe", subject: "Aoki Hoki", ninjaId: "demo-41", amount: 15000n, direction: "in", at: "Il y a 18 min", statusLabel: "Validée", status: "paid" },
     { code: "BUY-2026-000067", label: "Rachat de ressources", subject: "Mina Sabaku", ninjaId: "demo-58", amount: 8400n, direction: "out", at: "Il y a 42 min", statusLabel: "Validée", status: "paid" },
@@ -31,7 +31,7 @@ export const demoDashboard: DashboardData = {
 
 export const demoNinjas: NinjasData = {
   summaryLine: "8 dossiers fictifs · 3 à jour · 3 en retard · 1 décédé · 138 000 Ryō dus",
-  stats: { total: 8, upToDate: 3, overdue: 3, deceased: 1, debt: 138000n },
+  stats: { total: 8, upToDate: 3, needsUpdate: 0, overdue: 3, deceased: 1, debt: 138000n },
   grades: [{ code: "CHUNIN", label: "Chunin" }, { code: "JONIN", label: "Jonin" }, { code: "KONIN", label: "Konin" }],
   ninjas: ninjaRows, total: 8, page: 1, pageCount: 1
 };
@@ -141,7 +141,7 @@ export const demoAudit: AuditData = {
 export const demoAdmin: AdminData = {
   penalty: { percentBps: null, isValidated: false, isEnabled: false, basis: "ORIGINAL_TAX", maxApplications: 4, maxDebt: "32000" },
   gradeRates: [],
-  currentWeek: { rpYear: 48, period: "du 03 août au 09 août", lines: 7, billable: 5, activeNinjas: 7 },
+  currentWeek: { rpYear: 48, period: "du 03 août au 09 août", lines: 7, billable: 5, activeNinjas: 7, gradesToUpdate: 0 },
   approval: { amount: "50000", isValidated: false },
   policy: { name: "Barème initial", version: 1, rateCount: 10 },
   rpTimeLabel: "1 semaine réelle = 1 année RP",

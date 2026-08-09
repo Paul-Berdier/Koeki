@@ -38,7 +38,7 @@ const ninjaLifecycle = (status: string): { label: string; badge: BadgeStatus } |
   : status === "ACTIVE" ? null
   : { label: status, badge: "draft" };
 
-interface AssessmentAggregate { id: string; rpYear: number; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; dueAt: Date; status: TaxAssessmentStatus }
+interface AssessmentAggregate { id: string; rpYear: number; gradeCode: string; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; dueAt: Date; status: TaxAssessmentStatus }
 interface NinjaAggregate {
   id: string; code: string; firstName: string; lastName: string; alias: string | null; clan: string | null; status: string; diedAt: Date | null;
   gradeCode: string; gradeLabel: string; referenceAgentId: string | null; userId: string | null; notes: string | null;
@@ -46,7 +46,7 @@ interface NinjaAggregate {
 }
 
 function computeAssessment(assessment: {
-  id: string; originalAmount: bigint; dueAt: Date; status: TaxAssessmentStatus; gradeLabelSnapshot: string;
+  id: string; originalAmount: bigint; dueAt: Date; status: TaxAssessmentStatus; gradeCodeSnapshot: string; gradeLabelSnapshot: string;
   taxYear: { rpYear: number }; penalties: Array<{ amount: bigint }>; adjustments: Array<{ amount: bigint }>; exemptions: Array<{ amount: bigint }>;
   allocations: Array<{ amount: bigint; payment: { status: string } }>;
 }, currentRpYear: number, now: Date): AssessmentAggregate {
@@ -62,7 +62,7 @@ function computeAssessment(assessment: {
     : assessment.dueAt < now ? "OVERDUE"
     : paid > 0n ? "PARTIALLY_PAID"
     : assessment.taxYear.rpYear > currentRpYear ? "UPCOMING" : "DUE";
-  return { id: assessment.id, rpYear: assessment.taxYear.rpYear, gradeLabel: assessment.gradeLabelSnapshot, original: assessment.originalAmount, penalties, adjustments, exemptions, paid, remaining, dueAt: assessment.dueAt, status };
+  return { id: assessment.id, rpYear: assessment.taxYear.rpYear, gradeCode: assessment.gradeCodeSnapshot, gradeLabel: assessment.gradeLabelSnapshot, original: assessment.originalAmount, penalties, adjustments, exemptions, paid, remaining, dueAt: assessment.dueAt, status };
 }
 
 const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
@@ -89,12 +89,13 @@ const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
     const soon = upcoming && upcoming.dueAt.getTime() - now.getTime() < 2 * 86_400_000;
     // Zero-amount weeks kept OVERDUE come from the old register's fresh-start rule ("en tort").
     const legacyLate = assessments.filter((assessment) => assessment.status === "OVERDUE" && assessment.remaining === 0n).length;
-    const fiscalBadge: BadgeStatus = overdue.length ? "overdue" : soon ? "warning" : open.length ? "due" : legacyLate ? "warning" : "paid";
-    const fiscalStatusLabel = overdue.length ? "En retard" : soon ? "Échéance proche" : open.length ? "À payer" : legacyLate ? "Reprise à régulariser" : "À jour";
+    const gradeNeedsUpdate = ninja.currentGrade.code === "UNKNOWN";
+    const fiscalBadge: BadgeStatus = overdue.length ? "overdue" : soon ? "warning" : open.length ? "due" : gradeNeedsUpdate ? "warning" : legacyLate ? "warning" : "paid";
+    const fiscalStatusLabel = overdue.length ? "En retard" : soon ? "Échéance proche" : open.length ? "À payer" : gradeNeedsUpdate ? "Grade à mettre à jour" : legacyLate ? "Reprise à régulariser" : "À jour";
     const lifecycle = ninjaLifecycle(ninja.status);
     const badge = lifecycle?.badge ?? fiscalBadge;
     const statusLabel = lifecycle?.label ?? fiscalStatusLabel;
-    const due = lifecycle ? "—" : overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : legacyLate ? `${legacyLate} sem. ancien registre` : "—";
+    const due = lifecycle ? "—" : overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : gradeNeedsUpdate ? "Paiement non à jour" : legacyLate ? `${legacyLate} sem. ancien registre` : "—";
     return {
       id: ninja.id, code: ninja.code, firstName: ninja.firstName, lastName: ninja.lastName, alias: ninja.alias, clan: ninja.clan, status: ninja.status, diedAt: ninja.diedAt,
       gradeCode: ninja.currentGrade.code, gradeLabel: ninja.currentGrade.label, referenceAgentId: ninja.referenceAgentId, userId: ninja.userId, notes: ninja.notes,
@@ -139,7 +140,8 @@ export async function getDashboard(): Promise<DashboardData> {
   const now = new Date();
   const rpYear = service.currentRpYear(now);
   const activeAggregates = aggregates.filter((ninja) => ninja.status === "ACTIVE");
-  const all = activeAggregates.flatMap((ninja) => ninja.assessments);
+  const gradesToUpdate = activeAggregates.filter((ninja) => ninja.gradeCode === "UNKNOWN").length;
+  const all = activeAggregates.flatMap((ninja) => ninja.assessments).filter((assessment) => assessment.gradeCode !== "UNKNOWN");
   const rate = (year: number) => {
     const rows = all.filter((assessment) => assessment.rpYear === year && !EXCLUDED.includes(assessment.status));
     const totals = settlementTotals(rows);
@@ -170,6 +172,7 @@ export async function getDashboard(): Promise<DashboardData> {
     recoveryByYear: years.map((year) => ({ rpYear: year, percent: rate(year).percent })),
     priorities: {
       penaltyRateMissing: !penaltyConfig?.latePenaltyPercentBps || !penaltyConfig.isRateValidated,
+      gradesToUpdate,
       overdueCount: overdueNinjas.length, overdueOldCount: overdueNinjas.filter((ninja) => ninja.lateYears >= 2).length,
       criticalStocks, reportsToReview
     },
@@ -188,17 +191,20 @@ export async function getNinjas(params: { q?: string | undefined; grade?: string
   if (params.statut === "deceased") rows = rows.filter((ninja) => ninja.status === "DECEASED");
   else if (params.statut === "inactive") rows = rows.filter((ninja) => ninja.status === "INACTIVE");
   else if (params.statut === "archived") rows = rows.filter((ninja) => ninja.status === "ARCHIVED");
+  else if (params.statut === "grade_missing") rows = rows.filter((ninja) => ninja.status === "ACTIVE" && ninja.gradeCode === "UNKNOWN");
+  else if (params.statut === "warning") rows = rows.filter((ninja) => ninja.status === "ACTIVE" && ninja.gradeCode !== "UNKNOWN" && ninja.badge === "warning");
   else if (params.statut) rows = rows.filter((ninja) => ninja.status === "ACTIVE" && ninja.badge === params.statut);
   rows = [...rows].sort((a, b) => (b.debt > a.debt ? 1 : b.debt < a.debt ? -1 : a.lastName.localeCompare(b.lastName)));
   const total = rows.length;
   const activeAggregates = registry.filter((ninja) => ninja.status === "ACTIVE");
   const upToDate = activeAggregates.filter((ninja) => ninja.badge === "paid").length;
+  const needsUpdate = activeAggregates.filter((ninja) => ninja.gradeCode === "UNKNOWN").length;
   const overdue = activeAggregates.filter((ninja) => ninja.badge === "overdue").length;
   const deceased = registry.filter((ninja) => ninja.status === "DECEASED").length;
   const debt = sumBig(activeAggregates.map((ninja) => ninja.debt));
   return {
-    summaryLine: `${registry.length} dossier${registry.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${deceased} décédé${deceased > 1 ? "s" : ""} · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
-    stats: { total: registry.length, upToDate, overdue, deceased, debt },
+    summaryLine: `${registry.length} dossier${registry.length > 1 ? "s" : ""} · ${upToDate} à jour · ${needsUpdate} grade${needsUpdate > 1 ? "s" : ""} à mettre à jour · ${overdue} en retard · ${deceased} décédé${deceased > 1 ? "s" : ""} · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
+    stats: { total: registry.length, upToDate, needsUpdate, overdue, deceased, debt },
     grades: grades.map((grade) => ({ code: grade.code, label: grade.label })),
     ninjas: rows.map((ninja): NinjaRow => ({
       id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, grade: ninja.gradeLabel, points: ninja.points,
@@ -239,7 +245,7 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
   if (!ninja) return null;
   const currentRpYear = (await getRpService()).currentRpYear();
   const [grades, entries, payments, transactions, linked, exemption] = await Promise.all([
-    prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } }),
     prisma.pointLedgerEntry.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.taxPayment.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.resourceTransaction.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
@@ -270,8 +276,9 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
       })
       .map((assessment) => {
       // A zero-rate grade owes nothing: saying "Payée" would suggest money changed hands.
+      const gradeUnresolved = assessment.gradeCode === "UNKNOWN";
       const notTaxable = assessment.original === 0n && assessment.paid === 0n && assessment.penalties === 0n && assessment.gradeLabel !== "Ancien registre";
-      return { id: assessment.id, rpYear: assessment.rpYear, period: weekPeriod(assessment.dueAt), gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: notTaxable ? "Non imposable" : assessmentStatusLabels[assessment.status], badge: notTaxable ? ("draft" as BadgeStatus) : assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) };
+      return { id: assessment.id, rpYear: assessment.rpYear, period: weekPeriod(assessment.dueAt), gradeLabel: assessment.gradeLabel, original: assessment.original, penalties: assessment.penalties, adjustments: assessment.adjustments, exemptions: assessment.exemptions, paid: assessment.paid, remaining: assessment.remaining, statusLabel: gradeUnresolved ? "En attente du grade" : notTaxable ? "Non imposable" : assessmentStatusLabels[assessment.status], badge: gradeUnresolved ? ("pending" as BadgeStatus) : notTaxable ? ("draft" as BadgeStatus) : assessmentBadge(assessment.status), dueAt: formatDate(assessment.dueAt) };
     }),
     pointEntries: entries.map((entry) => ({ id: entry.id, at: formatDate(entry.createdAt), label: pointEventLabels[entry.eventType] ?? entry.eventType, points: entry.points, reason: entry.reason })),
     operations, preview
@@ -550,20 +557,24 @@ export async function getAdmin(): Promise<AdminData> {
   if (demoMode) return demoAdmin;
   const service = await getRpService();
   const currentRpYear = service.currentRpYear();
-  const [penaltySetting, approvalSetting, rpSetting, policy, allGrades, invitations, users, roles, freeNinjas, activeNinjas, currentYear] = await Promise.all([
+  const [penaltySetting, approvalSetting, rpSetting, policy, allGrades, invitations, users, roles, freeNinjas, activeNinjas, gradesToUpdate, currentYear] = await Promise.all([
     prisma.appSetting.findUnique({ where: { key: "latePenalty" } }),
     prisma.appSetting.findUnique({ where: { key: "approvalThreshold" } }),
     prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
     prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
-    prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } }),
     prisma.invitation.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { role: true, ninjaProfile: { select: { code: true } } } }),
     prisma.user.findMany({ include: { roles: { include: { role: true } }, ninjaProfile: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.role.findMany(),
     prisma.ninjaProfile.findMany({ where: { userId: null, status: "ACTIVE" }, orderBy: { code: "asc" }, select: { id: true, code: true, firstName: true, lastName: true } }),
-    prisma.ninjaProfile.count({ where: { status: "ACTIVE" } }),
+    prisma.ninjaProfile.count({ where: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } } }),
+    prisma.ninjaProfile.count({ where: { status: "ACTIVE", currentGrade: { code: "UNKNOWN" } } }),
     prisma.taxYear.findUnique({ where: { rpYear: currentRpYear }, include: { _count: { select: { assessments: true } } } })
   ]);
-  const billable = currentYear ? await prisma.taxAssessment.count({ where: { taxYearId: currentYear.id, originalAmount: { gt: 0 } } }) : 0;
+  const [lines, billable] = currentYear ? await Promise.all([
+    prisma.taxAssessment.count({ where: { taxYearId: currentYear.id, ninja: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } } } }),
+    prisma.taxAssessment.count({ where: { taxYearId: currentYear.id, ninja: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } }, originalAmount: { gt: 0 } } })
+  ]) : [0, 0];
   const penalty = penaltySetting?.value as { latePenaltyPercentBps?: number | null; latePenaltyBasis?: string; maxPenaltyApplications?: number; maxAssessmentDebt?: string; isPenaltyAutomationEnabled?: boolean; isRateValidated?: boolean } | undefined;
   const approval = approvalSetting?.value as { amount?: string; isValidated?: boolean } | undefined;
   const rp = rpSetting ? rpTimeConfigSchema.safeParse(rpSetting.value) : null;
@@ -580,7 +591,7 @@ export async function getAdmin(): Promise<AdminData> {
     },
     approval: { amount: approval?.amount ?? "50000", isValidated: approval?.isValidated ?? false },
     gradeRates: allGrades.map((grade) => ({ gradeId: grade.id, label: grade.label, amount: Number(policy?.rates.find((rate) => rate.gradeId === grade.id)?.amount ?? 0n) })),
-    currentWeek: { rpYear: currentRpYear, period: weekPeriod(service.dueAt(currentRpYear)), lines: currentYear?._count.assessments ?? 0, billable, activeNinjas },
+    currentWeek: { rpYear: currentRpYear, period: weekPeriod(service.dueAt(currentRpYear)), lines, billable, activeNinjas, gradesToUpdate },
     policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,
     rpTimeLabel: rpLabel,
     invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: invitation.status === "PENDING" }; }),

@@ -18,6 +18,7 @@ export default async function DashboardPage() {
       metrics={[
         { label: "Taux de recouvrement", value: rate },
         { label: "Dette ouverte", value: <MoneyDisplay amount={data.debt} /> },
+        { label: "Grades à mettre à jour", value: String(data.priorities.gradesToUpdate) },
         { label: "Ninjas en retard", value: String(data.overdueNinjas) }
       ]}
       actions={<><Link className="button button-ghost" href="/reports"><ReceiptText size={17} /> Rapprocher la journée</Link><Link className="button button-primary" href="/ninjas"><Plus size={17} /> Enregistrer</Link></>} />
@@ -47,6 +48,7 @@ export default async function DashboardPage() {
         <SectionHeader title="À traiter" description="Actions prioritaires" />
         <div className="priority-list">
           {data.priorities.penaltyRateMissing && <Link href="/admin"><span className="priority-icon danger"><AlertTriangle /></span><span><strong>Taux de majoration absent</strong><small>L’automatisation reste désactivée</small></span><b>Configurer</b></Link>}
+          {data.priorities.gradesToUpdate > 0 && <Link href="/ninjas?statut=grade_missing"><span className="priority-icon warn"><AlertTriangle /></span><span><strong>{data.priorities.gradesToUpdate} grade{data.priorities.gradesToUpdate > 1 ? "s" : ""} à mettre à jour</strong><small>Situation de paiement non à jour tant que le grade manque</small></span><b>Corriger</b></Link>}
           <Link href="/recouvrement"><span className="priority-icon warn"><Clock3 /></span><span><strong>{data.priorities.overdueCount} dossier{data.priorities.overdueCount > 1 ? "s" : ""} à relancer</strong><small>{data.priorities.overdueOldCount} dépasse{data.priorities.overdueOldCount > 1 ? "nt" : ""} deux années RP</small></span><b>Ouvrir</b></Link>
           <Link href="/inventory"><span className="priority-icon"><Boxes /></span><span><strong>{data.priorities.criticalStocks.length} stock{data.priorities.criticalStocks.length > 1 ? "s" : ""} critique{data.priorities.criticalStocks.length > 1 ? "s" : ""}</strong><small>{data.priorities.criticalStocks.slice(0, 3).join(", ") || "Aucun seuil franchi"}</small></span><b>Vérifier</b></Link>
           <Link href="/reports"><span className="priority-icon good"><CircleCheck /></span><span><strong>{data.priorities.reportsToReview} rapport{data.priorities.reportsToReview > 1 ? "s" : ""} à valider</strong><small>Soumis par les agents économiques</small></span><b>Examiner</b></Link>

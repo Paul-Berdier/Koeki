@@ -8,7 +8,7 @@ import { prisma } from "@koeki/database";
 export default async function NewNinjaPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requirePermission("ninjas:write");
   const query = await searchParams;
-  const grades = demoMode ? [] : await prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
+  const grades = demoMode ? [] : await prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } });
   const error = typeof query.erreur === "string" ? query.erreur : null;
   return <div className="page-wrap">
     <PageHeader eyebrow="Registre administratif" title="Nouveau ninja" description="Prénom, nom et grade sont obligatoires — le code administratif est attribué automatiquement."
@@ -22,7 +22,7 @@ export default async function NewNinjaPage({ searchParams }: { searchParams: Pro
           <label>Nom *<input type="text" name="lastName" required maxLength={80} /></label>
         </div>
         <div className="form-row">
-          <label>Grade *<select name="gradeId" required>{grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
+          <label>Grade *<select name="gradeId" required defaultValue=""><option value="" disabled>Sélectionner un grade…</option>{grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
           <label>Pseudonyme<input type="text" name="alias" maxLength={80} /></label>
         </div>
         <label>Clan ou famille<input type="text" name="clan" maxLength={80} /></label>

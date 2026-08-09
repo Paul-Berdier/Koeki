@@ -33,8 +33,10 @@ async function generateTaxes() {
       ORDER BY "id"
       FOR UPDATE
     `;
-    const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+    const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } }, include: { currentGrade: true } });
     const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
+    const missingRate = ninjas.find((ninja) => !rates.has(ninja.currentGradeId));
+    if (missingRate) throw new Error(`No tax rate configured for grade ${missingRate.currentGrade.code}`);
     // Catch-up is bounded by the last week this job actually billed (imported
     // legacy weeks are not billing runs), so a missed Sunday is filled in
     // without ever back-billing history.
@@ -43,18 +45,46 @@ async function generateTaxes() {
     // Revisit the current week on every run so an activation missed by an
     // earlier run can be caught safely by createMany(skipDuplicates).
     const firstYear = lastBilled ? Math.max(Math.min(lastBilled + 1, rpYear), rpYear - 12) : rpYear;
-    let created = 0;
+    let created = 0, repaired = 0;
     const years: number[] = [];
     for (let year = firstYear; year <= rpYear; year++) {
       const taxYear = await tx.taxYear.upsert({ where: { rpYear: year }, create: { rpYear: year, taxPolicyId: policy.id, startsAt: service.startOfRpYear(year), endsAt: service.endOfRpYear(year), dueAt: service.dueAt(year), generatedAt: new Date() }, update: {} });
       if (!taxYear.generatedAt) await tx.taxYear.update({ where: { id: taxYear.id }, data: { generatedAt: new Date() } });
+      if (year === rpYear) {
+        const reconciled = await tx.$queryRaw<Array<{ id: string }>>`
+          UPDATE "TaxAssessment" AS "assessment"
+          SET "taxPolicyId" = ${policy.id},
+              "gradeCodeSnapshot" = "grade"."code",
+              "gradeLabelSnapshot" = "grade"."label",
+              "originalAmount" = "rate"."amount",
+              "dueAt" = ${taxYear.dueAt},
+              "status" = (CASE WHEN "rate"."amount" = 0 THEN 'PAID' WHEN ${taxYear.dueAt} > CURRENT_TIMESTAMP THEN 'UPCOMING' ELSE 'DUE' END)::"TaxAssessmentStatus",
+              "version" = "assessment"."version" + 1
+          FROM "NinjaProfile" AS "ninja"
+          JOIN "NinjaGrade" AS "grade" ON "grade"."id" = "ninja"."currentGradeId"
+          JOIN "TaxPolicyGradeRate" AS "rate" ON "rate"."gradeId" = "grade"."id" AND "rate"."taxPolicyId" = ${policy.id}
+          WHERE "assessment"."taxYearId" = ${taxYear.id}
+            AND "assessment"."ninjaId" = "ninja"."id"
+            AND "ninja"."status" = 'ACTIVE'
+            AND "grade"."code" <> 'UNKNOWN'
+            AND "assessment"."gradeCodeSnapshot" = 'UNKNOWN'
+            AND "assessment"."originalAmount" = 0
+            AND "assessment"."status" IN ('UPCOMING', 'DUE', 'OVERDUE', 'PARTIALLY_PAID', 'PAID')
+            AND NOT EXISTS (SELECT 1 FROM "TaxPaymentAllocation" WHERE "assessmentId" = "assessment"."id")
+            AND NOT EXISTS (SELECT 1 FROM "TaxExemption" WHERE "assessmentId" = "assessment"."id")
+            AND NOT EXISTS (SELECT 1 FROM "TaxPenalty" WHERE "assessmentId" = "assessment"."id")
+            AND NOT EXISTS (SELECT 1 FROM "TaxAdjustment" WHERE "assessmentId" = "assessment"."id")
+          RETURNING "assessment"."id"
+        `;
+        repaired += reconciled.length;
+      }
       const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({ ninjaId: ninja.id, taxYearId: taxYear.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label, originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: taxYear.dueAt, status: taxYear.dueAt > new Date() ? "UPCOMING" : "DUE" })), skipDuplicates: true });
       created += result.count;
       if (result.count > 0) years.push(year);
     }
     const value = { lastRpYear: rpYear, at: new Date().toISOString() };
     await tx.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value }, update: { value, version: { increment: 1 } } });
-    return { created, years };
+    return { created, repaired, years };
   }, { timeout: 180_000, maxWait: 15_000 });
   const exempted = await autoApplyExemptions(rpYear);
   return { command: "taxes:generate", rpYear, ...generation, exempted };

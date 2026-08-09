@@ -166,7 +166,7 @@ export async function updateApprovalThreshold(formData: FormData) {
 export async function updateTaxRates(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
   const back = (message: string): never => redirect(`/admin?erreur=${encodeURIComponent(message)}`);
-  const grades = await prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
+  const grades = await prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } });
   const rates = new Map<string, bigint>();
   for (const grade of grades) {
     const raw = formData.get(`rate_${grade.id}`);
@@ -207,7 +207,7 @@ export async function updateTaxRates(formData: FormData) {
         allocations: { none: {} }, exemptions: { none: {} }, penalties: { none: {} }, adjustments: { none: {} }
       }, select: { id: true } });
       if (untouched.length) await tx.taxAssessment.deleteMany({ where: { id: { in: untouched.map((entry) => entry.id) } } });
-      const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+      const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } }, include: { currentGrade: true } });
       const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({
         ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
         originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > new Date() ? "UPCOMING" as const : "DUE" as const
@@ -238,7 +238,7 @@ export async function billCurrentWeek() {
   const session = await requireWriteAccess("settings:manage");
   const service = await getRpService();
   const rpYear = service.currentRpYear();
-  let created = 0, exempted = 0, missingPolicy = false;
+  let created = 0, repaired = 0, exempted = 0, missingPolicy = false, missingRateLabel: string | null = null;
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
     const policy = await tx.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
@@ -252,9 +252,40 @@ export async function billCurrentWeek() {
       ORDER BY "id"
       FOR UPDATE
     `;
-    const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+    const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } }, include: { currentGrade: true } });
     const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
+    const missingRate = ninjas.find((ninja) => !rates.has(ninja.currentGradeId));
+    if (missingRate) {
+      missingRateLabel = missingRate.currentGrade.label;
+      return;
+    }
     const year = await tx.taxYear.upsert({ where: { rpYear }, create: { rpYear, taxPolicyId: policy.id, startsAt: service.startOfRpYear(rpYear), endsAt: service.endOfRpYear(rpYear), dueAt: service.dueAt(rpYear), generatedAt: new Date() }, update: { generatedAt: new Date() } });
+    const reconciled = await tx.$queryRaw<Array<{ id: string }>>`
+      UPDATE "TaxAssessment" AS "assessment"
+      SET "taxPolicyId" = ${policy.id},
+          "gradeCodeSnapshot" = "grade"."code",
+          "gradeLabelSnapshot" = "grade"."label",
+          "originalAmount" = "rate"."amount",
+          "dueAt" = ${year.dueAt},
+          "status" = (CASE WHEN "rate"."amount" = 0 THEN 'PAID' WHEN ${year.dueAt} > CURRENT_TIMESTAMP THEN 'UPCOMING' ELSE 'DUE' END)::"TaxAssessmentStatus",
+          "version" = "assessment"."version" + 1
+      FROM "NinjaProfile" AS "ninja"
+      JOIN "NinjaGrade" AS "grade" ON "grade"."id" = "ninja"."currentGradeId"
+      JOIN "TaxPolicyGradeRate" AS "rate" ON "rate"."gradeId" = "grade"."id" AND "rate"."taxPolicyId" = ${policy.id}
+      WHERE "assessment"."taxYearId" = ${year.id}
+        AND "assessment"."ninjaId" = "ninja"."id"
+        AND "ninja"."status" = 'ACTIVE'
+        AND "grade"."code" <> 'UNKNOWN'
+        AND "assessment"."gradeCodeSnapshot" = 'UNKNOWN'
+        AND "assessment"."originalAmount" = 0
+        AND "assessment"."status" IN ('UPCOMING', 'DUE', 'OVERDUE', 'PARTIALLY_PAID', 'PAID')
+        AND NOT EXISTS (SELECT 1 FROM "TaxPaymentAllocation" WHERE "assessmentId" = "assessment"."id")
+        AND NOT EXISTS (SELECT 1 FROM "TaxExemption" WHERE "assessmentId" = "assessment"."id")
+        AND NOT EXISTS (SELECT 1 FROM "TaxPenalty" WHERE "assessmentId" = "assessment"."id")
+        AND NOT EXISTS (SELECT 1 FROM "TaxAdjustment" WHERE "assessmentId" = "assessment"."id")
+      RETURNING "assessment"."id"
+    `;
+    repaired = reconciled.length;
     const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({
       ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
       originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > new Date() ? "UPCOMING" as const : "DUE" as const
@@ -274,10 +305,11 @@ export async function billCurrentWeek() {
     }
     const marker = { lastRpYear: rpYear, at: new Date().toISOString() };
     await tx.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value: marker }, update: { value: marker, version: { increment: 1 } } });
-    await writeAudit(tx, { actorId: session.userId, action: "TAX_WEEK_BILLED", entityType: "TaxYear", entityId: year.id, reason: `Semaine RP ${rpYear} ouverte manuellement — ${created} taxes créées, ${exempted} couvertes par le crédit d’exonération` });
+    await writeAudit(tx, { actorId: session.userId, action: "TAX_WEEK_BILLED", entityType: "TaxYear", entityId: year.id, reason: `Semaine RP ${rpYear} ouverte manuellement — ${created} taxes créées, ${repaired} taxes remises au bon grade, ${exempted} couvertes par le crédit d’exonération` });
   }, { timeout: 180_000, maxWait: 15_000 });
   if (missingPolicy) redirect("/admin?erreur=Aucune%20politique%20fiscale%20active");
-  redirect(`/admin?info=${encodeURIComponent(created ? `Semaine RP ${rpYear} facturée — ${created} taxe${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}${exempted ? `, dont ${exempted} couverte${exempted > 1 ? "s" : ""} par le crédit d’exonération` : ""}` : `Semaine RP ${rpYear} déjà facturée pour tous les ninjas actifs`)}`);
+  if (missingRateLabel) redirect(`/admin?erreur=${encodeURIComponent(`Aucun montant fiscal n’est configuré pour le grade ${missingRateLabel}`)}`);
+  redirect(`/admin?info=${encodeURIComponent(created || repaired ? `Semaine RP ${rpYear} facturée — ${created} taxe${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}${repaired ? `, ${repaired} remise${repaired > 1 ? "s" : ""} au bon grade` : ""}${exempted ? `, dont ${exempted} couverte${exempted > 1 ? "s" : ""} par le crédit d’exonération` : ""}` : `Semaine RP ${rpYear} déjà facturée pour tous les ninjas dont le grade est renseigné`)}`);
 }
 
 export async function revokeUserAccess(formData: FormData) {

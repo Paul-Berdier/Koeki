@@ -26,6 +26,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "audit:read") });
   if (!data) notFound();
   const isActive = data.lifecycleStatus === "ACTIVE";
+  const gradeNeedsUpdate = isActive && data.grade.code === "UNKNOWN";
   const donatable = !demoMode && canPay && isActive ? await prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }) : [];
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
@@ -34,6 +35,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
 
   const overviewTab = <>
     {canPay && !isActive && <p className="notice" role="status">Ce dossier est {data.statusLabel.toLowerCase()} : son historique reste consultable, mais aucune nouvelle opération fiscale ne peut être enregistrée.</p>}
+    {gradeNeedsUpdate && <p className="notice" role="alert"><strong>Grade à mettre à jour.</strong> La situation de paiement n’est pas à jour. Dès qu’un grade réel sera enregistré, la taxe de la semaine en cours sera créée automatiquement au bon montant.</p>}
     {canPay && isActive && <section className="panel stack-panel">
       <SectionHeader title="Encaisser un règlement" description="Cochez les semaines réglées, puis ce que le joueur donne : des Ryō, des objets, ou les deux" />
       {settleable.length ? <form action={recordPayment} className="form-grid">
@@ -51,7 +53,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
         <SettlementItems resources={donatable.map((resource) => ({ id: resource.id, name: resource.name, label: `${resource.name}${resource.exemptionPerUnit > 0n ? ` — couvre ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/u` : ""}${resource.pointsPerUnit > 0 ? ` · ${resource.pointsPerUnit} pts/u` : ""}`, rate: Number(resource.exemptionPerUnit) }))} />
         <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} placeholder="Arrangement, contexte…" /></label>
         <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Régler les semaines cochées</button></div>
-      </form> : <p className="notice" style={{ margin: 18 }}>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</p>}
+      </form> : <p className="notice" style={{ margin: 18 }}>{gradeNeedsUpdate ? "Renseignez d’abord le grade dans l’onglet Gestion : la semaine en cours sera alors facturée immédiatement." : <>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</>}</p>}
     </section>}
     <div className="duo-grid">
       <section className="panel">
@@ -89,11 +91,11 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
 
   const adminTab = <div className="duo-grid">
     {isActive && <section className="panel">
-      <SectionHeader title="Changer le grade" description="Historisé, motif obligatoire, non rétroactif" />
+      <SectionHeader title="Changer le grade" description="Historisé et motif obligatoire — renseigner le grade ouvre immédiatement la semaine en cours" />
       <form action={changeGrade} className="form-grid">
         <input type="hidden" name="ninjaId" value={data.id} />
         <div className="form-row">
-          <label>Nouveau grade<select name="gradeId" defaultValue={data.grades.find((grade) => grade.code === data.grade.code)?.id}>{data.grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
+          <label>Nouveau grade<select name="gradeId" required defaultValue={data.grades.find((grade) => grade.code === data.grade.code)?.id ?? ""}>{gradeNeedsUpdate && <option value="" disabled>Sélectionner un grade…</option>}{data.grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
           <label>Motif<input type="text" name="reason" required minLength={3} maxLength={300} placeholder="Promotion validée par le conseil…" /></label>
         </div>
         <div className="form-actions"><button className="button button-ghost" type="submit">Appliquer le changement</button></div>
@@ -127,7 +129,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
     {error && <p className="notice error" role="alert">{error}</p>}
 
     <section className="metric-grid" aria-label="Situation fiscale">
-      <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : "good"} />
+      <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : gradeNeedsUpdate ? "Grade à renseigner avant facturation" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : gradeNeedsUpdate ? "warn" : "good"} />
       <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats — couvre automatiquement les taxes ouvertes dès qu’il est crédité" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
       <MetricCard label="Retard" value={lateYearsLabel(data.lateYears)} detail={data.lateYears >= 2 ? "Dossier prioritaire" : "Sous surveillance normale"} tone={data.lateYears >= 2 ? "danger" : data.lateYears > 0 ? "warn" : "good"} />
       <MetricCard label="Points" value={<PointDisplay points={data.pointsBalance} />} detail="Solde explicable depuis le registre" tone="neutral" />

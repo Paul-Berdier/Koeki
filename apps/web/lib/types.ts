@@ -7,12 +7,12 @@ export interface DashboardData {
   rpYear: number; expected: bigint; collected: bigint; exempted: bigint; debt: bigint; buybacks: bigint; buybackCount: number; stockValue: bigint; criticalCount: number; overdueNinjas: number;
   recoveryRateBps: number; previousDeltaBps: number | null;
   recoveryByYear: Array<{ rpYear: number; percent: number }>;
-  priorities: { penaltyRateMissing: boolean; overdueCount: number; overdueOldCount: number; criticalStocks: string[]; reportsToReview: number };
+  priorities: { penaltyRateMissing: boolean; gradesToUpdate: number; overdueCount: number; overdueOldCount: number; criticalStocks: string[]; reportsToReview: number };
   activity: ActivityRow[];
 }
 
 export interface NinjaRow { id: string; code: string; name: string; alias: string | null; grade: string; points: number; debt: bigint; badge: BadgeStatus; statusLabel: string; agent: string; due: string }
-export interface NinjasData { summaryLine: string; stats: { total: number; upToDate: number; overdue: number; deceased: number; debt: bigint }; grades: Array<{ code: string; label: string }>; ninjas: NinjaRow[]; total: number; page: number; pageCount: number }
+export interface NinjasData { summaryLine: string; stats: { total: number; upToDate: number; needsUpdate: number; overdue: number; deceased: number; debt: bigint }; grades: Array<{ code: string; label: string }>; ninjas: NinjaRow[]; total: number; page: number; pageCount: number }
 
 export interface AssessmentRow { id: string; rpYear: number; period: string; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; statusLabel: string; badge: BadgeStatus; dueAt: string }
 export interface NinjaDetailData {
@@ -69,7 +69,7 @@ export interface AuditData { rows: Array<{ id: string; at: string; actor: string
 export interface AdminData {
   penalty: { percentBps: number | null; isValidated: boolean; isEnabled: boolean; basis: string; maxApplications: number; maxDebt: string };
   gradeRates: Array<{ gradeId: string; label: string; amount: number }>;
-  currentWeek: { rpYear: number; period: string; lines: number; billable: number; activeNinjas: number };
+  currentWeek: { rpYear: number; period: string; lines: number; billable: number; activeNinjas: number; gradesToUpdate: number };
   approval: { amount: string; isValidated: boolean };
   policy: { name: string; version: number; rateCount: number } | null;
   rpTimeLabel: string;

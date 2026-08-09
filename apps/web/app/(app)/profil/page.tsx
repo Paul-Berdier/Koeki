@@ -14,7 +14,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
     if (existing) redirect(`/ninjas/${existing.id}`);
   }
   const [grades, unclaimed] = demoMode ? [[], []] : await Promise.all([
-    prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
+    prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } }),
     prisma.ninjaProfile.findMany({
       where: {
         userId: null,
@@ -32,7 +32,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
       <label>Nom *<input type="text" name="lastName" required maxLength={80} /></label>
     </div>
     <div className="form-row">
-      <label>Grade *<select name="gradeId" required>{grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
+      <label>Grade *<select name="gradeId" required defaultValue=""><option value="" disabled>Sélectionner un grade…</option>{grades.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
       <label>Pseudonyme<input type="text" name="alias" maxLength={80} /></label>
     </div>
     <label>Clan ou famille<input type="text" name="clan" maxLength={80} /></label>

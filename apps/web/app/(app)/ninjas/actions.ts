@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { getRpService, loadNinjaFiscal } from "@/lib/data";
 import { awardPoints, grantExemption, isUniqueViolation, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { billCurrentWeekAfterGradeResolution } from "@/lib/grade-tax";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
@@ -98,7 +99,7 @@ export async function createNinja(formData: FormData) {
     ninjaId = await prisma.$transaction(async (tx) => {
       await lockNinjaRegistry(tx);
       await assertNinjaNameAvailable(tx, parsed.data.firstName, parsed.data.lastName);
-      const grade = await tx.ninjaGrade.findFirst({ where: { id: parsed.data.gradeId, isActive: true } });
+      const grade = await tx.ninjaGrade.findFirst({ where: { id: parsed.data.gradeId, isActive: true, code: { not: "UNKNOWN" } } });
       if (!grade) throw new Error("VALIDATION:Grade inconnu ou inactif");
       const next = await nextNinjaCode(tx);
       const ninja = await tx.ninjaProfile.create({ data: { code: next, firstName: parsed.data.firstName, lastName: parsed.data.lastName, alias: parsed.data.alias, clan: parsed.data.clan, notes: parsed.data.notes, currentGradeId: grade.id } });
@@ -131,7 +132,7 @@ export async function createOwnProfile(formData: FormData) {
       const linked = await tx.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
       if (linked) throw new Error(`EXISTING:${linked.id}`);
       await assertNinjaNameAvailable(tx, parsed.data.firstName, parsed.data.lastName);
-      const grade = await tx.ninjaGrade.findFirst({ where: { id: parsed.data.gradeId, isActive: true } });
+      const grade = await tx.ninjaGrade.findFirst({ where: { id: parsed.data.gradeId, isActive: true, code: { not: "UNKNOWN" } } });
       if (!grade) throw new Error("VALIDATION:Grade inconnu ou inactif");
       const code = await nextNinjaCode(tx);
       const ninja = await tx.ninjaProfile.create({ data: { code, firstName: parsed.data.firstName, lastName: parsed.data.lastName, alias: parsed.data.alias, clan: parsed.data.clan, currentGradeId: grade.id, userId: session.userId } });
@@ -511,26 +512,51 @@ export async function changeGrade(formData: FormData) {
   if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
   const { ninjaId, gradeId, reason } = parsed.data;
   const back = (message: string): never => redirect(`/ninjas/${ninjaId}?erreur=${encodeURIComponent(message)}`);
+  const service = await getRpService();
+  let outcome = "Grade mis à jour";
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaId} FOR UPDATE`;
+      // Same order as weekly/admin billing: global fiscal lock first, ninja row second.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
+      await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "NinjaProfile" WHERE "id" = ${ninjaId} FOR UPDATE`;
       const [ninja, grade] = await Promise.all([
         tx.ninjaProfile.findUnique({ where: { id: ninjaId }, include: { currentGrade: true } }),
-        tx.ninjaGrade.findFirst({ where: { id: gradeId, isActive: true } })
+        tx.ninjaGrade.findFirst({ where: { id: gradeId, isActive: true, code: { not: "UNKNOWN" } } })
       ]);
       if (!ninja || !grade) throw new Error("VALIDATION:Dossier ou grade introuvable");
       if (ninja.status !== "ACTIVE") throw new Error("VALIDATION:Le grade d’un dossier inactif, décédé ou archivé ne peut pas être modifié");
-      if (ninja.currentGradeId === gradeId) return;
+      if (ninja.currentGradeId === gradeId) {
+        outcome = "Grade inchangé — aucune modification";
+        return;
+      }
+      const billing = ninja.currentGrade.code === "UNKNOWN"
+        ? await billCurrentWeekAfterGradeResolution(tx, service, { ninjaId, grade, actorId: session.userId })
+        : null;
       const changedAt = new Date();
       await tx.ninjaGradeHistory.updateMany({ where: { ninjaId, effectiveTo: null }, data: { effectiveTo: changedAt } });
       await tx.ninjaGradeHistory.create({ data: { ninjaId, gradeId, effectiveFrom: changedAt, reason, changedById: session.userId } });
       await tx.ninjaProfile.update({ where: { id: ninjaId }, data: { currentGradeId: gradeId, version: { increment: 1 } } });
-      await writeAudit(tx, { actorId: session.userId, action: "GRADE_CHANGED", entityType: "NinjaProfile", entityId: ninjaId, reason, previousValues: { grade: ninja.currentGrade.code }, newValues: { grade: grade.code } });
-    });
+      await writeAudit(tx, {
+        actorId: session.userId,
+        action: "GRADE_CHANGED",
+        entityType: "NinjaProfile",
+        entityId: ninjaId,
+        reason,
+        previousValues: { grade: ninja.currentGrade.code },
+        newValues: billing
+          ? { grade: grade.code, currentTaxRpYear: billing.rpYear, currentTaxAmount: Number(billing.amount), exemptionCreditUsed: Number(billing.covered) }
+          : { grade: grade.code }
+      });
+      if (billing?.billed) {
+        outcome = billing.amount > 0n
+          ? `Grade mis à jour — semaine RP ${billing.rpYear} facturée ${Number(billing.amount).toLocaleString("fr-FR")} Ryō${billing.covered > 0n ? `, ${Number(billing.covered).toLocaleString("fr-FR")} Ryō de crédit appliqués` : ""}`
+          : `Grade mis à jour — semaine RP ${billing.rpYear} enregistrée comme non imposable`;
+      }
+    }, { timeout: 30_000, maxWait: 10_000 });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
     if (isUniqueViolation(error)) back("Un autre changement de grade vient d’être enregistré — rechargez la fiche");
     throw error;
   }
-  redirect(`/ninjas/${ninjaId}`);
+  redirect(`/ninjas/${ninjaId}?info=${encodeURIComponent(outcome)}`);
 }

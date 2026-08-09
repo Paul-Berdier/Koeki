@@ -43,6 +43,7 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
       metrics={[
         { label: "Dossiers", value: new Intl.NumberFormat("fr-FR").format(data.stats.total) },
         { label: "À jour", value: new Intl.NumberFormat("fr-FR").format(data.stats.upToDate) },
+        { label: "Grades à mettre à jour", value: new Intl.NumberFormat("fr-FR").format(data.stats.needsUpdate) },
         { label: "En retard", value: new Intl.NumberFormat("fr-FR").format(data.stats.overdue) },
         { label: "Décédés", value: new Intl.NumberFormat("fr-FR").format(data.stats.deceased) },
         { label: "Dette totale", value: <MoneyDisplay amount={data.stats.debt} /> }
