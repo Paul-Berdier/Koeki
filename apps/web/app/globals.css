@@ -319,6 +319,9 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .person-cell { display: flex; align-items: center; gap: 11px; }
 .person-cell strong, .person-cell small { display: block; }
 .person-cell small { margin-top: 3px; color: var(--sand-500); font-size: 9px; }
+.ninja-record-link { color: inherit; text-decoration: none; }
+.ninja-record-link:hover strong, .ninja-record-link:focus-visible strong { color: var(--gold-300); text-decoration: underline; text-underline-offset: 3px; }
+.ninja-register-footer { margin-top: 10px; border: 1px solid var(--border); border-radius: var(--radius-md); justify-content: flex-start; }
 .avatar { width: 34px; height: 34px; object-fit: cover; border-radius: 50%; border: 1px solid var(--border-strong); }
 .avatar-fallback { display: grid; place-items: center; background: linear-gradient(135deg, #473723, #231d16); color: var(--gold-400); font-size: 10px; font-weight: 700; }
 .ninja-card-grid { display: none; }

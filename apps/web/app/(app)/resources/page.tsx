@@ -23,7 +23,7 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
   const aside = (canManage || data.pendingApprovals.length > 0) ? <aside className="aside-duo">
     {canManage && data.pendingApprovals.length > 0 && <section className="panel">
       <SectionHeader title="Validations en attente" description="Rachats au-dessus du seuil configuré" />
-      <div className="mini-list">{data.pendingApprovals.map((pending) => <div key={pending.id}><span><strong>{pending.ninja}</strong><small>{pending.receipt} · {pending.at}</small></span><form action={approveTransaction} style={{ display: "flex", alignItems: "center", gap: 8 }}><MoneyDisplay amount={pending.total} /><input type="hidden" name="transactionId" value={pending.id} /><button className="button button-ghost" type="submit"><CheckCircle2 size={15} /> Valider</button></form></div>)}</div>
+      <div className="mini-list">{data.pendingApprovals.map((pending) => <div key={pending.id}><span><Link className="ninja-record-link" href={`/ninjas/${pending.ninjaId}`}><strong>{pending.ninja}</strong></Link><small>{pending.receipt} · {pending.at}</small></span><form action={approveTransaction} style={{ display: "flex", alignItems: "center", gap: 8 }}><MoneyDisplay amount={pending.total} /><input type="hidden" name="transactionId" value={pending.id} /><button className="button button-ghost" type="submit"><CheckCircle2 size={15} /> Valider</button></form></div>)}</div>
     </section>}
     {canManage && <section className="panel">
       <SectionHeader title="Modifier un prix" description="Historisé — n’affecte jamais les anciennes transactions" />

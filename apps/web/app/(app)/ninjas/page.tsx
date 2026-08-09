@@ -18,16 +18,13 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
   const q = typeof params.q === "string" ? params.q : undefined;
   const grade = typeof params.grade === "string" && params.grade ? params.grade : undefined;
   const statut = typeof params.statut === "string" && params.statut ? params.statut : undefined;
-  const page = typeof params.page === "string" ? Number(params.page) || 1 : 1;
-  const data = await getNinjas({ q, grade, statut, page });
+  const data = await getNinjas({ q, grade, statut });
   const canWrite = hasPermission(session, "ninjas:write");
   const info = typeof params.info === "string" ? params.info : null;
   const error = typeof params.erreur === "string" ? params.erreur : null;
-  const pageQuery = (target: number) => `?${new URLSearchParams({ ...(q ? { q } : {}), ...(grade ? { grade } : {}), ...(statut ? { statut } : {}), page: String(target) })}`;
   const table = <section className="panel ninja-table-panel">
     {data.ninjas.length ? <div className="table-scroll"><table className="ninja-table"><thead><tr><th>Ninja</th><th>Grade</th><th>Situation</th><th className="num">Dette</th><th className="num">Points</th><th>Agent</th><th>Échéance</th></tr></thead><tbody>{data.ninjas.map((ninja) => <tr key={ninja.code}><td><Link href={`/ninjas/${ninja.id}`} className="person-cell"><NinjaAvatar name={ninja.name} /><span><strong>{ninja.name}</strong><small>{ninja.code}{ninja.alias && ` · ${ninja.alias}`}</small></span></Link></td><td><GradeBadge>{ninja.grade}</GradeBadge></td><td><StatusBadge status={ninja.badge}>{ninja.statusLabel}</StatusBadge></td><td className={`num ${ninja.debt > 0n ? "negative" : "muted"}`}>{ninja.debt ? <MoneyDisplay amount={ninja.debt} /> : "Aucune"}</td><td className="num"><PointDisplay points={ninja.points} /></td><td>{ninja.agent}</td><td>{ninja.due}</td></tr>)}</tbody></table></div>
       : <EmptyState title="Aucun ninja trouvé" description="Ajustez la recherche ou les filtres — ou créez un nouveau dossier." />}
-    <footer className="table-footer"><span>{data.total ? `${(data.page - 1) * 25 + 1}–${Math.min(data.page * 25, data.total)} sur ${data.total} ninjas` : "0 ninja"}</span><div>{data.page > 1 ? <Link className="button button-ghost" href={pageQuery(data.page - 1)}>Précédent</Link> : <button disabled>Précédent</button>}{data.page < data.pageCount ? <Link className="button button-ghost" href={pageQuery(data.page + 1)}>Suivant</Link> : <button disabled>Suivant</button>}</div></footer>
   </section>;
   const cards = <section className="ninja-card-grid" aria-label="Registre des ninjas en cartes">{data.ninjas.map((ninja) => <article className="ninja-card" key={ninja.code}>
     <header><Link href={`/ninjas/${ninja.id}`} className="person-cell"><NinjaAvatar name={ninja.name} /><span><strong>{ninja.name}</strong><small>{ninja.code}</small></span></Link><StatusBadge status={ninja.badge}>{ninja.statusLabel}</StatusBadge></header>
@@ -54,5 +51,6 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
     {error && <p className="notice error" role="alert">{error}</p>}
     <NinjaFilters grades={data.grades} />
     <NinjaViews table={table} cards={cards} />
+    <footer className="panel table-footer ninja-register-footer"><span>{data.total ? `${data.total.toLocaleString("fr-FR")} ninja${data.total > 1 ? "s" : ""} affiché${data.total > 1 ? "s" : ""} · chaque nom ouvre son dossier` : "0 ninja"}</span></footer>
   </div>;
 }

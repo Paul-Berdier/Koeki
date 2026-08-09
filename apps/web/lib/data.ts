@@ -142,8 +142,8 @@ export async function getDashboard(): Promise<DashboardData> {
     prisma.resourceTransaction.findMany({ orderBy: { createdAt: "desc" }, take: 6, include: { ninja: true } })
   ]);
   const activity = [
-    ...payments.map((payment) => ({ code: payment.receiptNumber, label: "Paiement de taxe", subject: `${payment.ninja.firstName} ${payment.ninja.lastName}`, amount: payment.amount, direction: "in" as const, createdAt: payment.createdAt, statusLabel: payment.status === "VALIDATED" ? "Validée" : payment.status === "REVERSED" ? "Contre-passée" : "En attente", status: (payment.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus })),
-    ...transactions.map((transaction) => ({ code: transaction.receiptNumber, label: transaction.type === "BUYBACK" ? "Rachat de ressources" : "Don enregistré", subject: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, amount: transaction.totalAmount, direction: (transaction.type === "BUYBACK" ? "out" : "in") as "in" | "out", createdAt: transaction.createdAt, statusLabel: transaction.status === "VALIDATED" ? "Validée" : transaction.status === "PENDING_APPROVAL" ? "À valider" : "En attente", status: (transaction.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus }))
+    ...payments.map((payment) => ({ code: payment.receiptNumber, label: "Paiement de taxe", subject: `${payment.ninja.firstName} ${payment.ninja.lastName}`, ninjaId: payment.ninja.id, amount: payment.amount, direction: "in" as const, createdAt: payment.createdAt, statusLabel: payment.status === "VALIDATED" ? "Validée" : payment.status === "REVERSED" ? "Contre-passée" : "En attente", status: (payment.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus })),
+    ...transactions.map((transaction) => ({ code: transaction.receiptNumber, label: transaction.type === "BUYBACK" ? "Rachat de ressources" : "Don enregistré", subject: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, ninjaId: transaction.ninja.id, amount: transaction.totalAmount, direction: (transaction.type === "BUYBACK" ? "out" : "in") as "in" | "out", createdAt: transaction.createdAt, statusLabel: transaction.status === "VALIDATED" ? "Validée" : transaction.status === "PENDING_APPROVAL" ? "À valider" : "En attente", status: (transaction.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus }))
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 6)
     .map(({ createdAt, ...row }) => ({ ...row, at: relativeTime(createdAt, now) }));
   const stockValue = sumBig(resources.map((resource) => BigInt(Math.max(0, Math.round(stocks.get(resource.id) ?? 0))) * (prices.get(resource.id) ?? 0n)));
@@ -172,10 +172,7 @@ export async function getNinjas(params: { q?: string | undefined; grade?: string
   if (params.grade) rows = rows.filter((ninja) => ninja.gradeCode === params.grade);
   if (params.statut) rows = rows.filter((ninja) => ninja.badge === params.statut);
   rows = [...rows].sort((a, b) => (b.debt > a.debt ? 1 : b.debt < a.debt ? -1 : a.lastName.localeCompare(b.lastName)));
-  const pageSize = 25;
   const total = rows.length;
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(Math.max(1, params.page ?? 1), pageCount);
   const upToDate = aggregates.filter((ninja) => ninja.badge === "paid").length;
   const overdue = aggregates.filter((ninja) => ninja.badge === "overdue").length;
   const debt = sumBig(aggregates.map((ninja) => ninja.debt));
@@ -183,11 +180,11 @@ export async function getNinjas(params: { q?: string | undefined; grade?: string
     summaryLine: `${aggregates.length} dossier${aggregates.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
     stats: { total: aggregates.length, upToDate, overdue, debt },
     grades: grades.map((grade) => ({ code: grade.code, label: grade.label })),
-    ninjas: rows.slice((page - 1) * pageSize, page * pageSize).map((ninja): NinjaRow => ({
+    ninjas: rows.map((ninja): NinjaRow => ({
       id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, grade: ninja.gradeLabel, points: ninja.points,
       debt: ninja.debt, badge: ninja.badge, statusLabel: ninja.statusLabel, agent: ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "—", due: ninja.due
     })),
-    total, page, pageCount
+    total, page: 1, pageCount: 1
   };
 }
 
@@ -322,7 +319,7 @@ export async function getResources(canApprove: boolean, params: ResourceFilterPa
         demand: (resource.demand === "CRITICAL" || resource.demand === "NEEDED" ? resource.demand : "NONE") as "NONE" | "NEEDED" | "CRITICAL"
       };
     }),
-    pendingApprovals: pending.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, ninja: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, total: transaction.totalAmount, at: formatDate(transaction.createdAt) }))
+    pendingApprovals: pending.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, ninjaId: transaction.ninja.id, ninja: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, total: transaction.totalAmount, at: formatDate(transaction.createdAt) }))
   };
 }
 
@@ -412,7 +409,8 @@ export async function getStatistics(): Promise<StatisticsData> {
   const activityOf = (userId: string) => { const entry = agentActivity.get(userId) ?? { name: users.get(userId) ?? "Agent Kōeki", payments: 0, collected: 0n, donations: 0, buybacks: 0 }; agentActivity.set(userId, entry); return entry; };
   for (const payment of payments) { const entry = activityOf(payment.recordedById); entry.payments++; entry.collected += payment.amount; }
   for (const transaction of transactions) { const entry = activityOf(transaction.agentId); if (transaction.type === "BUYBACK") entry.buybacks++; else entry.donations++; }
-  const ninjaNames = new Map(aggregates.map((ninja) => [ninja.id, { name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code }]));
+  const ninjaNames = new Map(aggregates.map((ninja) => [ninja.id, { id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code }]));
+  const ninjaIdsByCode = new Map(aggregates.map((ninja) => [ninja.code, ninja.id]));
   return {
     rpYear, expected: cycle.expected, collected: cycle.collected, exempted: cycle.exempted, remaining: cycle.expected > cycle.settled ? cycle.expected - cycle.settled : 0n,
     rateBps: rateBps(cycle.settled, cycle.expected),
@@ -421,7 +419,8 @@ export async function getStatistics(): Promise<StatisticsData> {
     agents: buildAgentScores([...agentActivity.values()]),
     topResources: buildTopResources(transactions.flatMap((transaction) => transaction.items.map((item) => ({ resourceId: item.resourceId, type: transaction.type, name: item.resource.name, quantity: Number(item.quantity) }))))
       .map((row) => ({ name: row.name, typeLabel: row.type === "BUYBACK" ? "Rachat" : "Don", quantity: row.quantity })),
-    topNinjas: buildNinjaLeaderboard(cyclePoints.map((entry) => { const ninja = ninjaNames.get(entry.ninjaId); return { name: ninja?.name ?? "Ninja inconnu", code: ninja?.code ?? "—", points: entry._sum.points ?? 0 }; })),
+    topNinjas: buildNinjaLeaderboard(cyclePoints.map((entry) => { const ninja = ninjaNames.get(entry.ninjaId); return { name: ninja?.name ?? "Ninja inconnu", code: ninja?.code ?? "—", points: entry._sum.points ?? 0 }; }))
+      .map((ninja) => ({ ...ninja, id: ninjaIdsByCode.get(ninja.code) ?? null })),
     weekCompliance: summarizeWeekCompliance(currentRows.map((row) => row.status)),
     exemptionFlow: summarizeExemptionFlow(exemptionEntries, since),
     pointsDistributed: points._sum.points ?? 0
@@ -432,7 +431,7 @@ export const eventKindLabels: Record<string, string> = { TOURNOI: "Tournoi", THE
 
 export async function getEvents(): Promise<EventsData> {
   if (demoMode) return demoEvents;
-  const events = await prisma.event.findMany({ orderBy: { startsAt: "desc" }, take: 30, include: { winner: { select: { firstName: true, lastName: true } } } });
+  const events = await prisma.event.findMany({ orderBy: { startsAt: "desc" }, take: 30, include: { winner: { select: { id: true, firstName: true, lastName: true } } } });
   const stateMap: Record<string, { label: string; badge: BadgeStatus }> = {
     PLANNED: { label: "À venir", badge: "pending" }, OPEN: { label: "En cours", badge: "due" },
     FINISHED: { label: "Terminé", badge: "paid" }, CANCELLED: { label: "Annulé", badge: "draft" }
@@ -450,7 +449,7 @@ export async function getEvents(): Promise<EventsData> {
         id: event.id, name: event.name, kindLabel: eventKindLabels[event.kind] ?? event.kind, statusLabel: state.label, badge: state.badge,
         period: `${formatDate(event.startsAt)}${event.endsAt ? ` — ${formatDate(event.endsAt)}` : ""}`, resourceFocus: event.resourceFocus,
         prize: event.prize, rewardPoints: event.rewardPoints, participants: event.participantCount,
-        winner: event.winner ? `${event.winner.firstName} ${event.winner.lastName}`.trim() : null, isOpen: event.status === "OPEN" || event.status === "PLANNED"
+        winnerId: event.winner?.id ?? null, winner: event.winner ? `${event.winner.firstName} ${event.winner.lastName}`.trim() : null, isOpen: event.status === "OPEN" || event.status === "PLANNED"
       };
     })
   };

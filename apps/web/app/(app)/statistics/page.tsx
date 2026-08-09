@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { EmptyState, MoneyDisplay, PageHeader, PointDisplay, SectionHeader, ZoneTitle } from "@koeki/ui";
 import { getStatistics } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
@@ -22,7 +23,7 @@ export default async function StatisticsPage() {
     </div>
     <ZoneTitle title="Ninjas et dons" detail="Classement du cycle et crédit d’exonération" />
     <div className="dashboard-grid stats-grid">
-      <section className="panel"><SectionHeader title="Classement des ninjas" description="Points gagnés sur le cycle en cours" />{data.topNinjas.length ? <><div className="mini-list">{data.topNinjas.map((ninja, index) => <div key={ninja.code}><span><strong>#{index + 1} · {ninja.name}</strong><small>{ninja.code}</small></span><PointDisplay points={ninja.points} /></div>)}</div><p className="chart-summary">Seules les écritures positives comptent ; les corrections n’effacent jamais l’histoire du registre.</p></> : <EmptyState title="Aucun point ce cycle" description="Les dons et paiements de la semaine alimenteront ce classement." />}</section>
+      <section className="panel"><SectionHeader title="Classement des ninjas" description="Points gagnés sur le cycle en cours" />{data.topNinjas.length ? <><div className="mini-list">{data.topNinjas.map((ninja, index) => <div key={ninja.code}><span>{ninja.id ? <Link className="ninja-record-link" href={`/ninjas/${ninja.id}`}><strong>#{index + 1} · {ninja.name}</strong></Link> : <strong>#{index + 1} · {ninja.name}</strong>}<small>{ninja.code}</small></span><PointDisplay points={ninja.points} /></div>)}</div><p className="chart-summary">Seules les écritures positives comptent ; les corrections n’effacent jamais l’histoire du registre.</p></> : <EmptyState title="Aucun point ce cycle" description="Les dons et paiements de la semaine alimenteront ce classement." />}</section>
       <section className="panel"><SectionHeader title="Économie des dons" description="Points distribués et crédit d’exonération" /><div style={{ padding: "16px 20px 0", textAlign: "center" }}><PointDisplay points={data.pointsDistributed} /></div><div className="mini-list">
         <div><span><strong>Crédit accordé</strong><small>Cycle en cours</small></span><strong><MoneyDisplay amount={data.exemptionFlow.granted} /></strong></div>
         <div><span><strong>Crédit consommé</strong><small>Cycle en cours</small></span><strong><MoneyDisplay amount={data.exemptionFlow.spent} /></strong></div>

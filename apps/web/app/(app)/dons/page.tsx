@@ -43,8 +43,8 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
   const [profile, resources, pending, recent, cyclePoints, cycleDons, allNinjas] = await Promise.all([
     prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true, code: true, firstName: true, lastName: true, status: true } }),
     prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }),
-    prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" }, include: { ninja: { select: { code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
-    prisma.resourceTransaction.findMany({ where: registerWhere, orderBy: { createdAt: "desc" }, take: 100, include: { ninja: { select: { code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
+    prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" }, include: { ninja: { select: { id: true, code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
+    prisma.resourceTransaction.findMany({ where: registerWhere, orderBy: { createdAt: "desc" }, take: 100, include: { ninja: { select: { id: true, code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
     prisma.pointLedgerEntry.aggregate({ where: { eventType: "DONATION", points: { gt: 0 }, createdAt: { gte: since } }, _sum: { points: true } }),
     prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "VALIDATED", validatedAt: { gte: since } }, select: { id: true } }),
     prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { firstName: true, lastName: true } })
@@ -97,7 +97,7 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
         {pending.length ? <div className="mini-list">{pending.map((don) => {
           const totals = estimate(don.items);
           return <div key={don.id} style={{ display: "block" }}>
-            <span><strong>{don.ninja.firstName} {don.ninja.lastName}</strong><small>{don.receiptNumber} · {formatDateTime(don.createdAt)} — {contentOf(don.items)}</small></span>
+            <span><Link className="ninja-record-link" href={`/ninjas/${don.ninja.id}`}><strong>{don.ninja.firstName} {don.ninja.lastName}</strong></Link><small>{don.receiptNumber} · {formatDateTime(don.createdAt)} — {contentOf(don.items)}</small></span>
             <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
               <form action={validateDonation}><input type="hidden" name="transactionId" value={don.id} /><button className="button button-primary" type="submit" style={{ minHeight: 32 }}>Valider · +{formatRyo(totals.points)} pts · {formatRyo(totals.exemption)} ¥</button></form>
               <form action={rejectDonation} style={{ display: "flex", gap: 8, flex: 1, minWidth: 220 }}><input type="hidden" name="transactionId" value={don.id} /><input name="reason" placeholder="Motif du refus (facultatif)" maxLength={300} style={{ flex: 1 }} /><button className="button button-ghost" type="submit" style={{ minHeight: 32 }}>Refuser</button></form>
@@ -116,7 +116,7 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
           const isPending = don.status === "PENDING_APPROVAL";
           return <tr key={don.id}>
             <td>{formatDateTime(don.createdAt)}</td>
-            <td><strong>{don.ninja.firstName} {don.ninja.lastName}</strong> <small style={{ color: "var(--sand-500)" }}>{don.ninja.code}</small></td>
+            <td><Link className="ninja-record-link" href={`/ninjas/${don.ninja.id}`}><strong>{don.ninja.firstName} {don.ninja.lastName}</strong></Link> <small style={{ color: "var(--sand-500)" }}>{don.ninja.code}</small></td>
             <td>{contentOf(don.items) || <span className="muted">—</span>}</td>
             <td>{isPending ? <span className="muted">~{formatRyo(totals.points)}</span> : <PointDisplay points={don.totalPoints} />}</td>
             <td>{isPending ? <span className="muted">~{formatRyo(totals.exemption)} ¥</span> : granted !== undefined ? <MoneyDisplay amount={granted} /> : totals.exemption > 0 ? <MoneyDisplay amount={BigInt(Math.round(totals.exemption))} /> : <span className="muted">—</span>}</td>

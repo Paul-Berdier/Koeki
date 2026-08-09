@@ -2,7 +2,7 @@ import type { BadgeStatus } from "./format";
 
 export interface ShellInfo { rpYear: number; rpDayLabel: string; rpProgress: number; overdueCount: number; userName: string; userRoleLabel: string }
 
-export interface ActivityRow { code: string; label: string; subject: string; amount: bigint; direction: "in" | "out"; at: string; statusLabel: string; status: BadgeStatus }
+export interface ActivityRow { code: string; label: string; subject: string; ninjaId: string; amount: bigint; direction: "in" | "out"; at: string; statusLabel: string; status: BadgeStatus }
 export interface DashboardData {
   rpYear: number; expected: bigint; collected: bigint; exempted: bigint; debt: bigint; buybacks: bigint; buybackCount: number; stockValue: bigint; criticalCount: number; overdueNinjas: number;
   recoveryRateBps: number; previousDeltaBps: number | null;
@@ -34,7 +34,7 @@ export interface ResourcesData {
   metrics: { buybackTotal: bigint; buybackCount: number; donationValue: bigint; donationCount: number; activeCount: number; totalCount: number };
   categories: Array<{ code: string; label: string }>;
   resources: ResourceRow[];
-  pendingApprovals: Array<{ id: string; receipt: string; ninja: string; total: bigint; at: string }>;
+  pendingApprovals: Array<{ id: string; receipt: string; ninjaId: string; ninja: string; total: bigint; at: string }>;
 }
 
 export interface InventoryData {
@@ -52,13 +52,13 @@ export interface StatisticsData {
   debtByGrade: Array<{ grade: string; amount: bigint; percent: number }>;
   agents: Array<{ name: string; initials: string; payments: number; collected: bigint; donations: number; buybacks: number; transactions: number; score: number }>;
   topResources: Array<{ name: string; typeLabel: string; quantity: number }>;
-  topNinjas: Array<{ name: string; code: string; points: number }>;
+  topNinjas: Array<{ id: string | null; name: string; code: string; points: number }>;
   weekCompliance: { settled: number; pending: number; overdue: number; total: number; settledRateBps: number };
   exemptionFlow: { granted: bigint; spent: bigint; outstanding: bigint };
   pointsDistributed: number;
 }
 
-export interface EventRow { id: string; name: string; kindLabel: string; statusLabel: string; badge: BadgeStatus; period: string; resourceFocus: string | null; prize: bigint; rewardPoints: number; participants: number; winner: string | null; isOpen: boolean }
+export interface EventRow { id: string; name: string; kindLabel: string; statusLabel: string; badge: BadgeStatus; period: string; resourceFocus: string | null; prize: bigint; rewardPoints: number; participants: number; winnerId: string | null; winner: string | null; isOpen: boolean }
 export interface EventsData { metrics: { open: number; finished: number; totalPrize: bigint; participants: number }; events: EventRow[] }
 
 export interface ReportRow { id: string; period: string; agent: string; payments: number; donationBuybacks: string; processed: bigint; statusLabel: string; badge: BadgeStatus; canReview: boolean }

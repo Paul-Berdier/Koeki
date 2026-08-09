@@ -21,10 +21,10 @@ export const demoDashboard: DashboardData = {
   recoveryByYear: [{ rpYear: 44, percent: 82 }, { rpYear: 45, percent: 76 }, { rpYear: 46, percent: 88 }, { rpYear: 47, percent: 69 }, { rpYear: 48, percent: 71 }],
   priorities: { penaltyRateMissing: true, overdueCount: 12, overdueOldCount: 4, criticalStocks: ["Cuivre", "tissu renforcé", "bois d’aulne"], reportsToReview: 2 },
   activity: [
-    { code: "PAY-2026-000184", label: "Paiement de taxe", subject: "Aoki Hoki", amount: 15000n, direction: "in", at: "Il y a 18 min", statusLabel: "Validée", status: "paid" },
-    { code: "BUY-2026-000067", label: "Rachat de ressources", subject: "Mina Sabaku", amount: 8400n, direction: "out", at: "Il y a 42 min", statusLabel: "Validée", status: "paid" },
-    { code: "DON-2026-000031", label: "Don enregistré", subject: "Sora Kaze", amount: 4200n, direction: "in", at: "Il y a 1 h", statusLabel: "Validée", status: "paid" },
-    { code: "ADJ-2026-000012", label: "Remise validée", subject: "Izen Hoki", amount: 2000n, direction: "out", at: "Il y a 2 h", statusLabel: "Validée", status: "paid" }
+    { code: "PAY-2026-000184", label: "Paiement de taxe", subject: "Aoki Hoki", ninjaId: "demo-41", amount: 15000n, direction: "in", at: "Il y a 18 min", statusLabel: "Validée", status: "paid" },
+    { code: "BUY-2026-000067", label: "Rachat de ressources", subject: "Mina Sabaku", ninjaId: "demo-58", amount: 8400n, direction: "out", at: "Il y a 42 min", statusLabel: "Validée", status: "paid" },
+    { code: "DON-2026-000031", label: "Don enregistré", subject: "Sora Kaze", ninjaId: "demo-63", amount: 4200n, direction: "in", at: "Il y a 1 h", statusLabel: "Validée", status: "paid" },
+    { code: "ADJ-2026-000012", label: "Remise validée", subject: "Izen Hoki", ninjaId: "demo-72", amount: 2000n, direction: "out", at: "Il y a 2 h", statusLabel: "Validée", status: "paid" }
   ]
 };
 
@@ -102,8 +102,8 @@ export const demoStatistics: StatisticsData = {
   ],
   topResources: [{ name: "Minerai de cuivre", typeLabel: "Rachat", quantity: 64 }, { name: "Herbe du désert", typeLabel: "Don", quantity: 31 }],
   topNinjas: [
-    { name: "Medo Nimto", code: "NIN-001424", points: 625 }, { name: "Toshiro Makaze", code: "NIN-001388", points: 410 },
-    { name: "Aoki Hoki", code: "NIN-000041", points: 260 }
+    { id: "demo-1424", name: "Medo Nimto", code: "NIN-001424", points: 625 }, { id: "demo-1388", name: "Toshiro Makaze", code: "NIN-001388", points: 410 },
+    { id: "demo-41", name: "Aoki Hoki", code: "NIN-000041", points: 260 }
   ],
   weekCompliance: { settled: 148, pending: 39, overdue: 23, total: 210, settledRateBps: 7047 },
   exemptionFlow: { granted: 842000n, spent: 316000n, outstanding: 1928000n },
@@ -113,8 +113,8 @@ export const demoStatistics: StatisticsData = {
 export const demoEvents: EventsData = {
   metrics: { open: 1, finished: 2, totalPrize: 150000n, participants: 131 },
   events: [
-    { id: "ev1", name: "Tournoi Lavande", kindLabel: "Tournoi", statusLabel: "Terminé", badge: "paid", period: "20 — 29 juil.", resourceFocus: "Lavande", prize: 50000n, rewardPoints: 500, participants: 15, winner: "Doma Nua", isOpen: false },
-    { id: "ev2", name: "Tournoi récolte #1", kindLabel: "Tournoi", statusLabel: "Terminé", badge: "paid", period: "04 — 13 juil.", resourceFocus: "Toutes (hors Ryō)", prize: 100000n, rewardPoints: 1000, participants: 116, winner: "Kagemoto Shuni", isOpen: false }
+    { id: "ev1", name: "Tournoi Lavande", kindLabel: "Tournoi", statusLabel: "Terminé", badge: "paid", period: "20 — 29 juil.", resourceFocus: "Lavande", prize: 50000n, rewardPoints: 500, participants: 15, winnerId: "demo-41", winner: "Doma Nua", isOpen: false },
+    { id: "ev2", name: "Tournoi récolte #1", kindLabel: "Tournoi", statusLabel: "Terminé", badge: "paid", period: "04 — 13 juil.", resourceFocus: "Toutes (hors Ryō)", prize: 100000n, rewardPoints: 1000, participants: 116, winnerId: "demo-58", winner: "Kagemoto Shuni", isOpen: false }
   ]
 };
 
