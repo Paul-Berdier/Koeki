@@ -30,7 +30,7 @@ export function NinjaFilters({ grades }: { grades: Array<{ code: string; label: 
     </select>
     <label className="sr-only" htmlFor="filter-statut">Situation du ninja</label>
     <select id="filter-statut" name="statut" className="button button-ghost" defaultValue={params.get("statut") ?? ""} onChange={(event) => navigate({ statut: event.target.value })}>
-      <option value="">Toutes situations</option><option value="paid">À jour</option><option value="due">À payer</option><option value="warning">Échéance proche / reprise</option><option value="overdue">En retard</option><option value="inactive">Inactifs</option><option value="deceased">Décédés</option>
+      <option value="">Toutes situations</option><option value="paid">À jour</option><option value="due">À payer</option><option value="warning">Échéance proche / reprise</option><option value="overdue">En retard</option><option value="inactive">Inactifs</option><option value="deceased">Décédés</option><option value="archived">Archivés</option>
     </select>
     <button className="button button-ghost" type="submit"><Filter size={17} /> Filtrer</button>
   </form>;

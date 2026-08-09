@@ -3,12 +3,20 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { isUniqueViolation, writeAudit } from "@/lib/finance";
+import { isUniqueViolation, lockResources, parseFourDecimal, writeAudit } from "@/lib/finance";
 import { hasPermission, requireWriteAccess } from "@/lib/session";
+
+const adjustmentQuantitySchema = z.preprocess(
+  (value) => typeof value === "string" ? value : "",
+  z.string().trim()
+    .refine((value) => parseFourDecimal(value) !== null, "La quantité doit avoir au maximum 4 décimales")
+    .transform((value) => parseFourDecimal(value)!)
+    .refine((value) => value !== 0 && Math.abs(value) <= 1_000_000, "La quantité doit être non nulle (± 1 000 000 max)")
+);
 
 const adjustmentSchema = z.object({
   resourceId: z.string().min(1, "Sélectionnez une ressource"),
-  quantity: z.coerce.number().refine((value) => Number.isFinite(value) && value !== 0 && Math.abs(value) <= 1_000_000, "La quantité doit être non nulle (± 1 000 000 max)"),
+  quantity: adjustmentQuantitySchema,
   justification: z.string().trim().min(3, "Une justification est obligatoire").max(300),
   allowNegative: z.literal("on").optional(),
   idempotencyKey: z.string().uuid()
@@ -23,6 +31,8 @@ export async function recordAdjustment(formData: FormData) {
   const overrideAllowed = allowNegative === "on" && hasPermission(session, "settings:manage");
   try {
     await prisma.$transaction(async (tx) => {
+      const locked = await lockResources(tx, [resourceId]);
+      if (!locked.has(resourceId)) throw new Error("VALIDATION:Ressource introuvable");
       const resource = await tx.resource.findUnique({ where: { id: resourceId } });
       if (!resource) throw new Error("VALIDATION:Ressource introuvable");
       const aggregate = await tx.inventoryMovement.aggregate({ where: { resourceId }, _sum: { quantity: true } });

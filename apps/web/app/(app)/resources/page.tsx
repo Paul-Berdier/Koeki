@@ -11,8 +11,9 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
   const session = await requireSession();
   const query = await searchParams;
   const canManage = !demoMode && hasPermission(session, "settings:manage");
+  const canApprove = !demoMode && session.roles.some((role) => role === "SUPER_ADMIN" || role === "KOEKI_MANAGER");
   const canTransact = !demoMode && hasPermission(session, "inventory:write");
-  const data = await getResources(canManage, {
+  const data = await getResources(canApprove, {
     q: typeof query.q === "string" ? query.q : undefined,
     categorie: typeof query.categorie === "string" && query.categorie ? query.categorie : undefined,
     besoin: typeof query.besoin === "string" && query.besoin ? query.besoin : undefined,
@@ -21,7 +22,7 @@ export default async function ResourcesPage({ searchParams }: { searchParams: Pr
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const aside = (canManage || data.pendingApprovals.length > 0) ? <aside className="aside-duo">
-    {canManage && data.pendingApprovals.length > 0 && <section className="panel">
+    {canApprove && data.pendingApprovals.length > 0 && <section className="panel">
       <SectionHeader title="Validations en attente" description="Rachats au-dessus du seuil configuré" />
       <div className="mini-list">{data.pendingApprovals.map((pending) => <div key={pending.id}><span><Link className="ninja-record-link" href={`/ninjas/${pending.ninjaId}`}><strong>{pending.ninja}</strong></Link><small>{pending.receipt} · {pending.at}</small></span><form action={approveTransaction} style={{ display: "flex", alignItems: "center", gap: 8 }}><MoneyDisplay amount={pending.total} /><input type="hidden" name="transactionId" value={pending.id} /><button className="button button-ghost" type="submit"><CheckCircle2 size={15} /> Valider</button></form></div>)}</div>
     </section>}

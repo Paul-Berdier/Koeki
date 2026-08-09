@@ -3,6 +3,56 @@ import { calculatePoints, createRpTimeService, defaultRpTimeConfig, rpTimeConfig
 
 export type Tx = Prisma.TransactionClient;
 
+const DECIMAL_SCALE = 10_000;
+const POSTGRES_INT_MIN = -2_147_483_648;
+const POSTGRES_INT_MAX = 2_147_483_647;
+
+/** Parses a user-entered quantity without silently rounding beyond Decimal(20,4). */
+export function parseFourDecimal(raw: string): number | null {
+  const normalized = raw.trim().replace(",", ".");
+  if (!/^[+-]?(?:\d+(?:\.\d{1,4})?|\.\d{1,4})$/.test(normalized)) return null;
+  const value = Number(normalized);
+  const scaled = Math.round(value * DECIMAL_SCALE);
+  if (!Number.isFinite(value) || !Number.isSafeInteger(scaled)) return null;
+  return scaled / DECIMAL_SCALE;
+}
+
+function scaledQuantity(quantity: number): bigint {
+  const rawScaled = quantity * DECIMAL_SCALE;
+  const scaled = Math.round(rawScaled);
+  const tolerance = Number.EPSILON * Math.max(1, Math.abs(rawScaled)) * 4;
+  if (!Number.isFinite(quantity) || !Number.isSafeInteger(scaled) || Math.abs(rawScaled - scaled) > tolerance || (quantity !== 0 && scaled === 0)) {
+    throw new Error("VALIDATION:Quantité invalide — 4 décimales maximum");
+  }
+  return BigInt(scaled);
+}
+
+/** Serialises stock-sensitive mutations. IDs are sorted so multi-resource commands
+ * always acquire locks in the same order and cannot deadlock one another. */
+export async function lockResources(tx: Tx, resourceIds: string[]): Promise<Set<string>> {
+  const ids = [...new Set(resourceIds)].sort();
+  if (!ids.length) return new Set();
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"
+    FROM "Resource"
+    WHERE "id" IN (${Prisma.join(ids)})
+    ORDER BY "id"
+    FOR UPDATE
+  `;
+  return new Set(rows.map((row) => row.id));
+}
+
+/** Locks a ninja lifecycle row and confirms it is still eligible for a mutation. */
+export async function lockActiveNinja(tx: Tx, ninjaId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ status: string }>>`
+    SELECT "status"
+    FROM "NinjaProfile"
+    WHERE "id" = ${ninjaId}
+    FOR UPDATE
+  `;
+  return rows[0]?.status === "ACTIVE";
+}
+
 export async function writeAudit(tx: Tx, entry: { actorId: string | null; action: string; entityType: string; entityId: string; reason?: string | undefined; previousValues?: Prisma.InputJsonValue | undefined; newValues?: Prisma.InputJsonValue | undefined }) {
   await tx.auditLog.create({ data: {
     actorId: entry.actorId, action: entry.action, entityType: entry.entityType, entityId: entry.entityId, requestId: crypto.randomUUID(),
@@ -26,7 +76,7 @@ export async function nextTransactionReceipt(tx: Tx, type: "DONATION" | "BUYBACK
 }
 
 /** Multiplies a decimal quantity (4-digit precision) by an integer bigint rate, flooring the result. */
-export const scaledTimes = (quantity: number, rate: bigint) => (BigInt(Math.round(quantity * 10_000)) * rate) / 10_000n;
+export const scaledTimes = (quantity: number, rate: bigint) => (scaledQuantity(quantity) * rate) / BigInt(DECIMAL_SCALE);
 
 export async function activePrice(tx: Tx, resourceId: string) {
   const price = await tx.resourcePriceHistory.findFirst({ where: { resourceId, effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, orderBy: { effectiveFrom: "desc" } });
@@ -61,6 +111,9 @@ export async function applyValidatedTransaction(tx: Tx, transaction: { id: strin
  *  top-ups on a partially covered week get a suffixed source so the unique constraint
  *  never blocks completing it. */
 export async function autoCoverOpenTaxes(tx: Tx, ninjaId: string, grantedById: string, sourceKey: string): Promise<bigint> {
+  // All credit spenders take the same lifecycle lock before reading the wallet.
+  // Besides blocking post-mortem coverage, this serialises concurrent donations.
+  if (!await lockActiveNinja(tx, ninjaId)) return 0n;
   let balance = await exemptionBalance(tx, ninjaId);
   if (balance <= 0n) return 0n;
   const rpSetting = await tx.appSetting.findUnique({ where: { key: "rpTime" } });
@@ -100,6 +153,9 @@ export async function awardPoints(tx: Tx, input: { ninjaId: string; eventType: P
     min: rule.minimum ?? undefined, max: rule.maximum ?? undefined
   });
   if (total === 0) return 0;
+  if (!Number.isSafeInteger(total) || total < POSTGRES_INT_MIN || total > POSTGRES_INT_MAX) {
+    throw new Error(`VALIDATION:Total de points hors limites (${POSTGRES_INT_MIN.toLocaleString("fr-FR")} à ${POSTGRES_INT_MAX.toLocaleString("fr-FR")})`);
+  }
   const existing = await tx.pointLedgerEntry.findUnique({ where: { sourceType_sourceId_eventType: { sourceType: input.sourceType, sourceId: input.sourceId, eventType: input.eventType } } });
   if (existing) return 0;
   await tx.pointLedgerEntry.create({ data: { ninjaId: input.ninjaId, ruleId: rules[0]?.id ?? null, eventType: input.eventType, points: total, sourceType: input.sourceType, sourceId: input.sourceId } });

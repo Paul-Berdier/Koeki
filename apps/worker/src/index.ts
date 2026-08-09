@@ -1,8 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { prisma } from "@koeki/database";
+import { prisma, type Prisma } from "@koeki/database";
 import { calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo } from "@koeki/domain";
 
 const isUniqueViolation = (error: unknown) => (error as { code?: string } | null)?.code === "P2002";
+
+/** Serializes lifecycle-sensitive writes with administrative status changes. */
+async function lockNinja(tx: Prisma.TransactionClient, ninjaId: string) {
+  const rows = await tx.$queryRaw<Array<{ status: string; userId: string | null }>>`
+    SELECT "status", "userId"
+    FROM "NinjaProfile"
+    WHERE "id" = ${ninjaId}
+    FOR UPDATE
+  `;
+  return rows[0] ?? null;
+}
 
 async function rpService() {
   const setting = await prisma.appSetting.findUnique({ where: { key: "rpTime" } });
@@ -12,28 +23,41 @@ async function rpService() {
 
 async function generateTaxes() {
   const service = await rpService(), rpYear = service.currentRpYear();
-  const policy = await prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: { include: { grade: true } } } });
-  if (!policy) throw new Error("No active tax policy");
-  const ninjas = await prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
-  const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
-  // Catch-up bounded by the last week this job actually billed (imported legacy weeks are
-  // not billing runs), so a missed Sunday is filled in without ever back-billing history.
-  const marker = await prisma.appSetting.findUnique({ where: { key: "taxGeneration" } });
-  const lastBilled = (marker?.value as { lastRpYear?: number } | undefined)?.lastRpYear;
-  const firstYear = lastBilled ? Math.max(lastBilled + 1, rpYear - 12) : rpYear;
-  let created = 0;
-  const years: number[] = [];
-  for (let year = firstYear; year <= rpYear; year++) {
-    const taxYear = await prisma.taxYear.upsert({ where: { rpYear: year }, create: { rpYear: year, taxPolicyId: policy.id, startsAt: service.startOfRpYear(year), endsAt: service.endOfRpYear(year), dueAt: service.dueAt(year), generatedAt: new Date() }, update: {} });
-    if (!taxYear.generatedAt) await prisma.taxYear.update({ where: { id: taxYear.id }, data: { generatedAt: new Date() } });
-    const result = await prisma.taxAssessment.createMany({ data: ninjas.map((ninja) => ({ ninjaId: ninja.id, taxYearId: taxYear.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label, originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: taxYear.dueAt, status: taxYear.dueAt > new Date() ? "UPCOMING" : "DUE" })), skipDuplicates: true });
-    created += result.count;
-    if (result.count > 0) years.push(year);
-  }
+  const generation = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
+    const policy = await tx.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: { include: { grade: true } } } });
+    if (!policy) throw new Error("No active tax policy");
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "NinjaProfile"
+      ORDER BY "id"
+      FOR UPDATE
+    `;
+    const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+    const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
+    // Catch-up is bounded by the last week this job actually billed (imported
+    // legacy weeks are not billing runs), so a missed Sunday is filled in
+    // without ever back-billing history.
+    const marker = await tx.appSetting.findUnique({ where: { key: "taxGeneration" } });
+    const lastBilled = (marker?.value as { lastRpYear?: number } | undefined)?.lastRpYear;
+    // Revisit the current week on every run so an activation missed by an
+    // earlier run can be caught safely by createMany(skipDuplicates).
+    const firstYear = lastBilled ? Math.max(Math.min(lastBilled + 1, rpYear), rpYear - 12) : rpYear;
+    let created = 0;
+    const years: number[] = [];
+    for (let year = firstYear; year <= rpYear; year++) {
+      const taxYear = await tx.taxYear.upsert({ where: { rpYear: year }, create: { rpYear: year, taxPolicyId: policy.id, startsAt: service.startOfRpYear(year), endsAt: service.endOfRpYear(year), dueAt: service.dueAt(year), generatedAt: new Date() }, update: {} });
+      if (!taxYear.generatedAt) await tx.taxYear.update({ where: { id: taxYear.id }, data: { generatedAt: new Date() } });
+      const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({ ninjaId: ninja.id, taxYearId: taxYear.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label, originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: taxYear.dueAt, status: taxYear.dueAt > new Date() ? "UPCOMING" : "DUE" })), skipDuplicates: true });
+      created += result.count;
+      if (result.count > 0) years.push(year);
+    }
+    const value = { lastRpYear: rpYear, at: new Date().toISOString() };
+    await tx.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value }, update: { value, version: { increment: 1 } } });
+    return { created, years };
+  }, { timeout: 180_000, maxWait: 15_000 });
   const exempted = await autoApplyExemptions(rpYear);
-  const value = { lastRpYear: rpYear, at: new Date().toISOString() };
-  await prisma.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value }, update: { value, version: { increment: 1 } } });
-  return { command: "taxes:generate", rpYear, created, years, exempted };
+  return { command: "taxes:generate", rpYear, ...generation, exempted };
 }
 
 /** The exemption credit is not a manual payment method: it is deducted automatically
@@ -43,31 +67,39 @@ async function autoApplyExemptions(rpYear: number) {
   const systemUser = await prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } });
   if (!systemUser) return 0;
   const assessments = await prisma.taxAssessment.findMany({
-    where: { taxYear: { rpYear }, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID", "OVERDUE"] } },
+    where: { ninja: { status: "ACTIVE" }, taxYear: { rpYear }, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID", "OVERDUE"] } },
     include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } } }
   });
   let applied = 0;
-  for (const assessment of assessments) {
-    const already = await prisma.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
-    if (already) continue;
-    const balance = (await prisma.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
-    if (balance <= 0n) continue;
-    const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
-    const gross = assessment.originalAmount
-      + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n)
-      + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n)
-      - assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
-    const remaining = gross - paid;
-    if (remaining <= 0n) continue;
-    const use = balance < remaining ? balance : remaining;
+  for (const candidate of assessments) {
     try {
-      await prisma.$transaction(async (tx) => {
+      const committed = await prisma.$transaction(async (tx) => {
+        const ninja = await lockNinja(tx, candidate.ninjaId);
+        if (ninja?.status !== "ACTIVE") return false;
+        const assessment = await tx.taxAssessment.findFirst({
+          where: { id: candidate.id, ninjaId: candidate.ninjaId, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID", "OVERDUE"] } },
+          include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } } }
+        });
+        if (!assessment) return false;
+        const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+        if (already) return false;
+        const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
+        if (balance <= 0n) return false;
+        const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
+        const gross = assessment.originalAmount
+          + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n)
+          + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n)
+          - assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
+        const remaining = gross - paid;
+        if (remaining <= 0n) return false;
+        const use = balance < remaining ? balance : remaining;
         await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe année RP ${rpYear}` } });
         await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
         if (use >= remaining) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
         await tx.auditLog.create({ data: { action: "TAX_AUTO_EXEMPTED", entityType: "TaxAssessment", entityId: assessment.id, requestId: randomUUID(), reason: `${use.toLocaleString("fr-FR")} ¥ de crédit d’exonération appliqués automatiquement (année RP ${rpYear})` } });
+        return true;
       });
-      applied++;
+      if (committed) applied++;
     } catch (error) { if (!isUniqueViolation(error)) throw error; }
   }
   return applied;
@@ -78,17 +110,30 @@ async function applyPenalties() {
   const config = setting?.value as { latePenaltyPercentBps?: number; latePenaltyBasis?: "ORIGINAL_TAX"|"REMAINING_PRINCIPAL"|"CURRENT_DEBT"; latePenaltyFrequencyRpYears?: number; maxPenaltyApplications?: number; maxAssessmentDebt?: string; isPenaltyAutomationEnabled?: boolean; isRateValidated?: boolean } | undefined;
   if (!config?.isPenaltyAutomationEnabled || !config.isRateValidated || !config.latePenaltyPercentBps) return { command: "penalties:apply", created: 0, disabled: true };
   const service = await rpService();
-  const assessments = await prisma.taxAssessment.findMany({ where: { status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } }, include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true } });
+  const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } }, include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true } });
   let created = 0;
-  for (const assessment of assessments) {
-    const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
-    const adjustments = assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
-    const penaltyTotal = assessment.penalties.reduce((sum, item) => sum + item.amount, 0n);
-    const remainingPrincipal = assessment.originalAmount > paid ? assessment.originalAmount - paid : 0n;
-    const currentDebt = remainingPrincipal + penaltyTotal + adjustments;
-    const decision = calculateNextPenalty({ originalTax: ryo(assessment.originalAmount), remainingPrincipal: ryo(remainingPrincipal), currentDebt: ryo(currentDebt < 0n ? 0n : currentDebt), appliedPenaltyIndexes: assessment.penalties.map((item) => item.applicationIndex), completeLateYears: service.completeLateYears(assessment.dueAt) }, { latePenaltyPercentBps: config.latePenaltyPercentBps, latePenaltyBasis: config.latePenaltyBasis ?? "ORIGINAL_TAX", latePenaltyFrequencyRpYears: config.latePenaltyFrequencyRpYears ?? 1, maxPenaltyApplications: config.maxPenaltyApplications ?? 4, maxAssessmentDebt: ryo(config.maxAssessmentDebt ?? "32000"), isPenaltyAutomationEnabled: true, isRateValidated: true });
-    if (!decision || decision.amount === 0n) continue;
-    try { await prisma.taxPenalty.create({ data: { assessmentId: assessment.id, applicationIndex: decision.index, rpYearApplied: service.currentRpYear(), percentBps: config.latePenaltyPercentBps, basis: config.latePenaltyBasis ?? "ORIGINAL_TAX", basisAmount: assessment.originalAmount, amount: decision.amount } }); created++; }
+  for (const candidate of assessments) {
+    try {
+      const committed = await prisma.$transaction(async (tx) => {
+        const ninja = await lockNinja(tx, candidate.ninjaId);
+        if (ninja?.status !== "ACTIVE") return false;
+        const assessment = await tx.taxAssessment.findFirst({
+          where: { id: candidate.id, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } },
+          include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true }
+        });
+        if (!assessment) return false;
+        const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
+        const adjustments = assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
+        const penaltyTotal = assessment.penalties.reduce((sum, item) => sum + item.amount, 0n);
+        const remainingPrincipal = assessment.originalAmount > paid ? assessment.originalAmount - paid : 0n;
+        const currentDebt = remainingPrincipal + penaltyTotal + adjustments;
+        const decision = calculateNextPenalty({ originalTax: ryo(assessment.originalAmount), remainingPrincipal: ryo(remainingPrincipal), currentDebt: ryo(currentDebt < 0n ? 0n : currentDebt), appliedPenaltyIndexes: assessment.penalties.map((item) => item.applicationIndex), completeLateYears: service.completeLateYears(assessment.dueAt) }, { latePenaltyPercentBps: config.latePenaltyPercentBps!, latePenaltyBasis: config.latePenaltyBasis ?? "ORIGINAL_TAX", latePenaltyFrequencyRpYears: config.latePenaltyFrequencyRpYears ?? 1, maxPenaltyApplications: config.maxPenaltyApplications ?? 4, maxAssessmentDebt: ryo(config.maxAssessmentDebt ?? "32000"), isPenaltyAutomationEnabled: true, isRateValidated: true });
+        if (!decision || decision.amount === 0n) return false;
+        await tx.taxPenalty.create({ data: { assessmentId: assessment.id, applicationIndex: decision.index, rpYearApplied: service.currentRpYear(), percentBps: config.latePenaltyPercentBps!, basis: config.latePenaltyBasis ?? "ORIGINAL_TAX", basisAmount: assessment.originalAmount, amount: decision.amount } });
+        return true;
+      });
+      if (committed) created++;
+    }
     catch (error) { if (!isUniqueViolation(error)) throw error; }
   }
   return { command: "penalties:apply", created, disabled: false };
@@ -97,18 +142,40 @@ async function applyPenalties() {
 const assessmentStatusLabels: Record<string, string> = { DUE: "à payer", OVERDUE: "en retard", PARTIALLY_PAID: "partiellement payée" };
 
 async function sendReminders() {
-  const swept = await prisma.taxAssessment.updateMany({ where: { dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE"] }, originalAmount: { gt: 0 } }, data: { status: "OVERDUE" } });
-  const assessments = await prisma.taxAssessment.findMany({ where: { status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } }, include: { ninja: { select: { userId: true, firstName: true, lastName: true } }, taxYear: { select: { rpYear: true } } } });
+  const overdueCandidates = await prisma.taxAssessment.findMany({
+    where: { ninja: { status: "ACTIVE" }, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE"] }, originalAmount: { gt: 0 } },
+    select: { id: true, ninjaId: true }
+  });
+  let swept = 0;
+  for (const candidate of overdueCandidates) {
+    const updated = await prisma.$transaction(async (tx) => {
+      const ninja = await lockNinja(tx, candidate.ninjaId);
+      if (ninja?.status !== "ACTIVE") return false;
+      const result = await tx.taxAssessment.updateMany({ where: { id: candidate.id, ninjaId: candidate.ninjaId, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE"] }, originalAmount: { gt: 0 } }, data: { status: "OVERDUE" } });
+      return result.count === 1;
+    });
+    if (updated) swept++;
+  }
+  const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } }, include: { taxYear: { select: { rpYear: true } } } });
   let sent = 0;
   for (const assessment of assessments) {
-    if (!assessment.ninja.userId) continue;
-    const title = `Taxe année RP ${assessment.taxYear.rpYear} ${assessmentStatusLabels[assessment.status] ?? "à traiter"}`;
-    const existing = await prisma.notification.findFirst({ where: { userId: assessment.ninja.userId, title, status: "UNREAD" } });
-    if (existing) continue;
-    await prisma.notification.create({ data: { userId: assessment.ninja.userId, title, body: `Le service économique de Suna vous rappelle votre taxe de l’année RP ${assessment.taxYear.rpYear} (échéance ${assessment.dueAt.toISOString().slice(0, 10)}).` } });
-    sent++;
+    const notified = await prisma.$transaction(async (tx) => {
+      const ninja = await lockNinja(tx, assessment.ninjaId);
+      if (ninja?.status !== "ACTIVE" || !ninja.userId) return false;
+      const current = await tx.taxAssessment.findFirst({
+        where: { id: assessment.id, ninjaId: assessment.ninjaId, status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } },
+        include: { taxYear: { select: { rpYear: true } } }
+      });
+      if (!current) return false;
+      const title = `Taxe année RP ${current.taxYear.rpYear} ${assessmentStatusLabels[current.status] ?? "à traiter"}`;
+      const existing = await tx.notification.findFirst({ where: { userId: ninja.userId, title, status: "UNREAD" } });
+      if (existing) return false;
+      await tx.notification.create({ data: { userId: ninja.userId, title, body: `Le service économique de Suna vous rappelle votre taxe de l’année RP ${current.taxYear.rpYear} (échéance ${current.dueAt.toISOString().slice(0, 10)}).` } });
+      return true;
+    });
+    if (notified) sent++;
   }
-  return { command: "reminders:send", eligible: assessments.length, sent, statusSweep: swept.count };
+  return { command: "reminders:send", eligible: assessments.length, sent, statusSweep: swept };
 }
 
 async function checkInventory() {
@@ -136,7 +203,7 @@ async function checkInventory() {
 
 async function refreshStats() {
   const service = await rpService(), rpYear = service.currentRpYear();
-  const assessments = await prisma.taxAssessment.findMany({ where: { taxYear: { rpYear }, status: { notIn: ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED", "DRAFT"] } }, include: { penalties: true, adjustments: true, exemptions: true, allocations: { include: { payment: { select: { status: true } } } } } });
+  const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, taxYear: { rpYear }, status: { notIn: ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED", "DRAFT"] } }, include: { penalties: true, adjustments: true, exemptions: true, allocations: { include: { payment: { select: { status: true } } } } } });
   // Expected stays gross; taxes covered by exemption credit count as settled alongside ryō payments.
   let expected = 0n, collected = 0n, exempted = 0n;
   for (const assessment of assessments) {
@@ -145,8 +212,8 @@ async function refreshStats() {
     exempted += assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
   }
   const [payments, transactions] = await Promise.all([
-    prisma.taxPayment.count({ where: { status: "VALIDATED" } }),
-    prisma.resourceTransaction.count({ where: { status: "VALIDATED" } })
+    prisma.taxPayment.count({ where: { ninja: { status: "ACTIVE" }, status: "VALIDATED" } }),
+    prisma.resourceTransaction.count({ where: { ninja: { status: "ACTIVE" }, status: "VALIDATED" } })
   ]);
   const value = { refreshedAt: new Date().toISOString(), rpYear, expected: String(expected), collected: String(collected), exempted: String(exempted), recoveryRateBps: expected > 0n ? Number(((collected + exempted) * 10_000n) / expected) : 0, payments, transactions };
   await prisma.appSetting.upsert({ where: { key: "statsSnapshot" }, create: { key: "statsSnapshot", value }, update: { value, version: { increment: 1 } } });

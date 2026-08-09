@@ -6,6 +6,8 @@ import { prisma } from "@koeki/database";
 import { isUniqueViolation, writeAudit } from "@/lib/finance";
 import { requireWriteAccess } from "@/lib/session";
 
+const canReviewReports = (roles: readonly string[]) => roles.some((role) => role === "SUPER_ADMIN" || role === "KOEKI_MANAGER");
+
 const reportSchema = z.object({
   periodStart: z.coerce.date(),
   periodEnd: z.coerce.date(),
@@ -30,16 +32,18 @@ export async function createReport(formData: FormData) {
     prisma.taxAdjustment.count({ where: { createdById: session.userId, createdAt: { gte: data.periodStart, lte: end } } })
   ]);
   try {
-    const report = await prisma.agentReport.create({ data: {
-      authorId: session.userId, periodStart: data.periodStart, periodEnd: end, summary: data.summary, incidents: data.incidents, stockIssues: data.stockIssues, followUps: data.followUps,
-      status: data.intent === "submit" ? "SUBMITTED" : "DRAFT",
-      paymentCount: payments.length, collectedAmount: payments.reduce((total, payment) => total + payment.amount, 0n),
-      donationCount: transactions.filter((transaction) => transaction.type === "DONATION").length,
-      buybackCount: transactions.filter((transaction) => transaction.type === "BUYBACK").length,
-      processedValue: transactions.reduce((total, transaction) => total + transaction.totalAmount, 0n),
-      correctionCount: corrections
-    } });
-    await prisma.$transaction(async (tx) => writeAudit(tx, { actorId: session.userId, action: data.intent === "submit" ? "REPORT_SUBMITTED" : "REPORT_DRAFTED", entityType: "AgentReport", entityId: report.id, reason: `Période ${data.periodStart.toISOString().slice(0, 10)} → ${data.periodEnd.toISOString().slice(0, 10)}` }));
+    await prisma.$transaction(async (tx) => {
+      const report = await tx.agentReport.create({ data: {
+        authorId: session.userId, periodStart: data.periodStart, periodEnd: end, summary: data.summary, incidents: data.incidents, stockIssues: data.stockIssues, followUps: data.followUps,
+        status: data.intent === "submit" ? "SUBMITTED" : "DRAFT",
+        paymentCount: payments.length, collectedAmount: payments.reduce((total, payment) => total + payment.amount, 0n),
+        donationCount: transactions.filter((transaction) => transaction.type === "DONATION").length,
+        buybackCount: transactions.filter((transaction) => transaction.type === "BUYBACK").length,
+        processedValue: transactions.reduce((total, transaction) => total + transaction.totalAmount, 0n),
+        correctionCount: corrections
+      } });
+      await writeAudit(tx, { actorId: session.userId, action: data.intent === "submit" ? "REPORT_SUBMITTED" : "REPORT_DRAFTED", entityType: "AgentReport", entityId: report.id, reason: `Période ${data.periodStart.toISOString().slice(0, 10)} → ${data.periodEnd.toISOString().slice(0, 10)}` });
+    });
   } catch (error) {
     if (isUniqueViolation(error)) back("Un rapport existe déjà pour cette période");
     throw error;
@@ -51,14 +55,25 @@ const reviewSchema = z.object({ reportId: z.string().min(1), intent: z.enum(["ap
 
 export async function reviewReport(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
+  if (!canReviewReports(session.roles)) redirect("/reports?erreur=Examen%20r%C3%A9serv%C3%A9%20aux%20responsables");
   const parsed = reviewSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect("/reports");
   const { reportId, intent } = parsed.data!;
-  const report = await prisma.agentReport.findUnique({ where: { id: reportId } });
-  if (!report || report.status !== "SUBMITTED") redirect("/reports?erreur=Rapport%20d%C3%A9j%C3%A0%20trait%C3%A9");
-  await prisma.$transaction(async (tx) => {
-    await tx.agentReport.update({ where: { id: reportId }, data: { status: intent === "approve" ? "APPROVED" : "RETURNED", reviewerId: session.userId } });
-    await writeAudit(tx, { actorId: session.userId, action: intent === "approve" ? "REPORT_APPROVED" : "REPORT_RETURNED", entityType: "AgentReport", entityId: reportId });
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      const report = await tx.agentReport.findUnique({ where: { id: reportId } });
+      if (!report || report.status !== "SUBMITTED") throw new Error("VALIDATION:Rapport déjà traité");
+      if (report.authorId === session.userId) throw new Error("VALIDATION:Vous ne pouvez pas examiner votre propre rapport");
+      const reviewed = await tx.agentReport.updateMany({
+        where: { id: reportId, status: "SUBMITTED" },
+        data: { status: intent === "approve" ? "APPROVED" : "RETURNED", reviewerId: session.userId }
+      });
+      if (reviewed.count !== 1) throw new Error("VALIDATION:Rapport déjà traité");
+      await writeAudit(tx, { actorId: session.userId, action: intent === "approve" ? "REPORT_APPROVED" : "REPORT_RETURNED", entityType: "AgentReport", entityId: reportId });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) redirect(`/reports?erreur=${encodeURIComponent(error.message.slice("VALIDATION:".length))}`);
+    throw error;
+  }
   redirect("/reports");
 }

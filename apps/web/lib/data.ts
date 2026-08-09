@@ -34,6 +34,7 @@ const shortName = (name: string) => { const [first, second] = name.trim().split(
 const ninjaLifecycle = (status: string): { label: string; badge: BadgeStatus } | null =>
   status === "DECEASED" ? { label: "Décédé", badge: "draft" }
   : status === "INACTIVE" ? { label: "Inactif", badge: "pending" }
+  : status === "ARCHIVED" ? { label: "Archivé", badge: "draft" }
   : status === "ACTIVE" ? null
   : { label: status, badge: "draft" };
 
@@ -66,7 +67,6 @@ function computeAssessment(assessment: {
 
 const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
   const [service, ninjas] = await Promise.all([getRpService(), prisma.ninjaProfile.findMany({
-    where: { status: { not: "ARCHIVED" } },
     include: {
       currentGrade: true, pointEntries: { select: { points: true } },
       assessments: { include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } }, taxYear: { select: { rpYear: true } } } }
@@ -77,7 +77,7 @@ const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
   return ninjas.map((ninja) => {
     const assessments = ninja.assessments.map((assessment) => computeAssessment(assessment, currentRpYear, now))
       // Une échéance postérieure au décès reste dans l'historique, mais ne constitue plus une dette.
-      .map((assessment) => ninja.diedAt && assessment.dueAt > ninja.diedAt && assessment.paid === 0n && !EXCLUDED.includes(assessment.status)
+      .map((assessment) => ninja.diedAt && assessment.dueAt > ninja.diedAt && !EXCLUDED.includes(assessment.status)
         ? { ...assessment, remaining: 0n, status: "CANCELLED" as TaxAssessmentStatus }
         : assessment)
       .sort((a, b) => b.rpYear - a.rpYear);
@@ -181,22 +181,24 @@ export async function getNinjas(params: { q?: string | undefined; grade?: string
   if (demoMode) return demoNinjas;
   const [aggregates, users, grades] = await Promise.all([loadNinjaAggregates(), getUserNames(), prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })]);
   const query = params.q?.trim().toLowerCase();
-  let rows = aggregates;
+  const registry = aggregates.filter((ninja) => ninja.status !== "ARCHIVED");
+  let rows = params.statut === "archived" ? aggregates.filter((ninja) => ninja.status === "ARCHIVED") : registry;
   if (query) rows = rows.filter((ninja) => [`${ninja.firstName} ${ninja.lastName}`, ninja.code, ninja.alias ?? ""].some((value) => value.toLowerCase().includes(query)));
   if (params.grade) rows = rows.filter((ninja) => ninja.gradeCode === params.grade);
   if (params.statut === "deceased") rows = rows.filter((ninja) => ninja.status === "DECEASED");
   else if (params.statut === "inactive") rows = rows.filter((ninja) => ninja.status === "INACTIVE");
+  else if (params.statut === "archived") rows = rows.filter((ninja) => ninja.status === "ARCHIVED");
   else if (params.statut) rows = rows.filter((ninja) => ninja.status === "ACTIVE" && ninja.badge === params.statut);
   rows = [...rows].sort((a, b) => (b.debt > a.debt ? 1 : b.debt < a.debt ? -1 : a.lastName.localeCompare(b.lastName)));
   const total = rows.length;
-  const activeAggregates = aggregates.filter((ninja) => ninja.status === "ACTIVE");
+  const activeAggregates = registry.filter((ninja) => ninja.status === "ACTIVE");
   const upToDate = activeAggregates.filter((ninja) => ninja.badge === "paid").length;
   const overdue = activeAggregates.filter((ninja) => ninja.badge === "overdue").length;
-  const deceased = aggregates.filter((ninja) => ninja.status === "DECEASED").length;
+  const deceased = registry.filter((ninja) => ninja.status === "DECEASED").length;
   const debt = sumBig(activeAggregates.map((ninja) => ninja.debt));
   return {
-    summaryLine: `${aggregates.length} dossier${aggregates.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${deceased} décédé${deceased > 1 ? "s" : ""} · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
-    stats: { total: aggregates.length, upToDate, overdue, deceased, debt },
+    summaryLine: `${registry.length} dossier${registry.length > 1 ? "s" : ""} · ${upToDate} à jour · ${overdue} en retard · ${deceased} décédé${deceased > 1 ? "s" : ""} · ${new Intl.NumberFormat("fr-FR").format(Number(debt))} Ryō dus`,
+    stats: { total: registry.length, upToDate, overdue, deceased, debt },
     grades: grades.map((grade) => ({ code: grade.code, label: grade.label })),
     ninjas: rows.map((ninja): NinjaRow => ({
       id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, grade: ninja.gradeLabel, points: ninja.points,

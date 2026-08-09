@@ -1,18 +1,20 @@
 export async function GET() {
   let database: "ok" | "unreachable" = "unreachable";
-  if (process.env.DEMO_MODE !== "true") {
+  const demo = process.env.DEMO_MODE === "true";
+  if (!demo) {
     try {
       const { prisma } = await import("@koeki/database");
       await prisma.$queryRaw`SELECT 1`;
       database = "ok";
     } catch { database = "unreachable"; }
   }
+  const healthy = demo || database === "ok";
   return Response.json(
     {
-      status: "ok",
-      database: process.env.DEMO_MODE === "true" ? "demo" : database,
+      status: healthy ? "ok" : "error",
+      database: demo ? "demo" : database,
       timestamp: new Date().toISOString(),
     },
-    { status: 200 },
+    { status: healthy ? 200 : 503, headers: { "Cache-Control": "no-store" } },
   );
 }

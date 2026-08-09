@@ -3,8 +3,11 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { activePrice, applyValidatedTransaction, isUniqueViolation, nextTransactionReceipt, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
-import { hasPermission, requireWriteAccess } from "@/lib/session";
+import { activePrice, applyValidatedTransaction, isUniqueViolation, lockActiveNinja, lockResources, nextTransactionReceipt, parseFourDecimal, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { requireWriteAccess } from "@/lib/session";
+
+const MAX_UNIT_PRICE = 100_000_000;
+const canApproveBuybacks = (roles: readonly string[]) => roles.some((role) => role === "SUPER_ADMIN" || role === "KOEKI_MANAGER");
 
 const transactionSchema = z.object({
   type: z.enum(["DONATION", "BUYBACK"]),
@@ -23,26 +26,25 @@ export async function recordResourceTransaction(formData: FormData) {
     const resourceId = formData.get(`resourceId_${index}`);
     const quantityRaw = formData.get(`quantity_${index}`);
     if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
-      const quantity = Number(quantityRaw.replace(",", "."));
-      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité invalide sur la ligne ${index} (entre 0,01 et 1 000 000)`);
+      const quantity = parseFourDecimal(quantityRaw) ?? back(`Quantité invalide sur la ligne ${index} (4 décimales maximum)`);
+      if (quantity <= 0 || quantity > 1_000_000) back(`Quantité invalide sur la ligne ${index} (entre 0,0001 et 1 000 000)`);
       if (lines.some((line) => line.resourceId === resourceId)) back("Une même ressource apparaît deux fois");
       // Buyback price is negotiable downwards: the agent may enter a unit price below the catalog maximum.
       let negotiated: bigint | null = null;
       const priceRaw = formData.get(`unitPrice_${index}`);
       if (type === "BUYBACK" && typeof priceRaw === "string" && priceRaw !== "") {
         const price = Number(priceRaw);
-        if (!Number.isInteger(price) || price < 1 || price > 100_000_000) back(`Prix négocié invalide sur la ligne ${index} (entier en Ryō, minimum 1)`);
+        if (!Number.isSafeInteger(price) || price < 1 || price > MAX_UNIT_PRICE) back(`Prix négocié invalide sur la ligne ${index} (entier en Ryō, de 1 à ${MAX_UNIT_PRICE.toLocaleString("fr-FR")})`);
         negotiated = BigInt(price);
       }
       lines.push({ resourceId, quantity, negotiated });
     }
   }
   if (!lines.length) back("Ajoutez au moins une ressource — tapez son nom puis choisissez une proposition de la liste");
-  const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaId } });
-  if (!ninja || ninja.status !== "ACTIVE") back(ninja ? "Ce dossier ninja n’est pas actif" : "Ninja introuvable");
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
+      if (!await lockActiveNinja(tx, ninjaId)) throw new Error("VALIDATION:Ninja introuvable ou dossier inactif");
       const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }> = [];
       for (const line of lines) {
         const resource = await tx.resource.findUnique({ where: { id: line.resourceId } });
@@ -56,7 +58,7 @@ export async function recordResourceTransaction(formData: FormData) {
       const totalAmount = items.reduce((total, item) => total + item.lineTotal, 0n);
       const approvalSetting = await tx.appSetting.findUnique({ where: { key: "approvalThreshold" } });
       const approval = approvalSetting?.value as { amount?: string; isValidated?: boolean } | undefined;
-      const needsApproval = type === "BUYBACK" && approval?.isValidated === true && totalAmount > BigInt(approval.amount ?? "50000") && !hasPermission(session, "settings:manage");
+      const needsApproval = type === "BUYBACK" && approval?.isValidated === true && totalAmount > BigInt(approval.amount ?? "50000") && !canApproveBuybacks(session.roles);
       const receiptNumber = await nextTransactionReceipt(tx, type);
       const transaction = await tx.resourceTransaction.create({ data: {
         receiptNumber, type, status: needsApproval ? "PENDING_APPROVAL" : "VALIDATED", ninjaId, agentId: session.userId, totalAmount, idempotencyKey, validatedAt: needsApproval ? null : new Date()
@@ -76,13 +78,20 @@ export async function recordResourceTransaction(formData: FormData) {
 
 export async function approveTransaction(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
+  if (!canApproveBuybacks(session.roles)) redirect("/resources?erreur=Validation%20r%C3%A9serv%C3%A9e%20aux%20responsables");
   const transactionId = formData.get("transactionId");
   if (typeof transactionId !== "string" || !transactionId) redirect("/resources");
   try {
     await prisma.$transaction(async (tx) => {
-      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true, pointsPerUnit: true } } } } } });
-      if (!transaction || transaction.status !== "PENDING_APPROVAL") throw new Error("VALIDATION:Transaction déjà traitée");
-      await tx.resourceTransaction.update({ where: { id: transactionId }, data: { status: "VALIDATED", validatedAt: new Date() } });
+      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true, pointsPerUnit: true, isActive: true } } } } } });
+      if (!transaction || transaction.type !== "BUYBACK" || transaction.status !== "PENDING_APPROVAL") throw new Error("VALIDATION:Rachat déjà traité ou introuvable");
+      if (!await lockActiveNinja(tx, transaction.ninjaId)) throw new Error("VALIDATION:Le dossier ninja n’est plus actif");
+      if (transaction.items.some((item) => !item.resource.isActive)) throw new Error("VALIDATION:Une ressource du rachat est devenue inactive");
+      const approved = await tx.resourceTransaction.updateMany({
+        where: { id: transactionId, type: "BUYBACK", status: "PENDING_APPROVAL" },
+        data: { status: "VALIDATED", validatedAt: new Date() }
+      });
+      if (approved.count !== 1) throw new Error("VALIDATION:Rachat déjà traité");
       await applyValidatedTransaction(tx, { id: transaction.id, type: transaction.type, ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey }, transaction.items.map((item) => ({ resourceId: item.resourceId, quantity: Number(item.quantity), unitPrice: item.unitPriceSnapshot, exemptionPerUnit: item.resource.exemptionPerUnit, pointsPerUnit: item.resource.pointsPerUnit })), transaction.agentId);
       await writeAudit(tx, { actorId: session.userId, action: "BUYBACK_APPROVED", entityType: "ResourceTransaction", entityId: transactionId, reason: `Validation managériale du reçu ${transaction.receiptNumber}` });
     });
@@ -94,12 +103,20 @@ export async function approveTransaction(formData: FormData) {
   redirect("/resources");
 }
 
+const stockLevelSchema = z.preprocess(
+  (value) => value === undefined || value === null || value === "" ? "0" : typeof value === "number" ? String(value) : value,
+  z.string().trim()
+    .refine((value) => parseFourDecimal(value) !== null, "Quantité invalide (4 décimales maximum)")
+    .transform((value) => parseFourDecimal(value)!)
+    .pipe(z.number().min(0).max(1_000_000_000))
+);
+
 const resourceSchema = z.object({
   name: z.string().trim().min(2, "Le nom est obligatoire").max(120),
   categoryId: z.string().min(1, "La catégorie est obligatoire"),
   description: z.string().trim().max(500).optional().transform((value) => value || null),
-  minimumStock: z.coerce.number().min(0).max(1_000_000_000).default(0),
-  criticalStock: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  minimumStock: stockLevelSchema,
+  criticalStock: stockLevelSchema,
   demand: z.enum(["NONE", "NEEDED", "CRITICAL"]).default("NONE"),
   pointsPerUnit: z.coerce.number().int("Points invalides (entier)").min(0).max(1_000_000).default(0),
   exemptionPerUnit: z.coerce.number().int("Exonération invalide (entier en Ryō)").min(0).max(100_000_000_000).default(0)
@@ -114,9 +131,9 @@ export async function createResource(formData: FormData) {
   if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
   const priceRaw = formData.get("price");
   const price = typeof priceRaw === "string" && priceRaw !== "" ? Number(priceRaw) : null;
-  if (price !== null && (!Number.isInteger(price) || price < 0)) back("Prix invalide (entier en Ryō)");
+  if (price !== null && (!Number.isSafeInteger(price) || price < 0 || price > MAX_UNIT_PRICE)) back(`Prix invalide (entier en Ryō, maximum ${MAX_UNIT_PRICE.toLocaleString("fr-FR")})`);
   const data = parsed.data!;
-  if (data.criticalStock > data.minimumStock && data.minimumStock > 0) back("Le seuil critique doit être inférieur ou égal au seuil bas");
+  if (data.criticalStock > data.minimumStock) back("Le seuil critique doit être inférieur ou égal au seuil bas");
   const base = codeBase(data.name);
   let created = false;
   for (let attempt = 0; attempt < 3 && !created; attempt++) {
@@ -142,6 +159,7 @@ export async function updateResource(formData: FormData) {
   const parsed = updateResourceSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/resources?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
   const { resourceId, isActive, ...data } = parsed.data!;
+  if (data.criticalStock > data.minimumStock) redirect(`/resources?erreur=${encodeURIComponent("Le seuil critique doit être inférieur ou égal au seuil bas")}`);
   const previous = await prisma.resource.findUnique({ where: { id: resourceId } });
   if (!previous) redirect("/resources?erreur=Ressource%20introuvable");
   await prisma.$transaction(async (tx) => {
@@ -174,21 +192,31 @@ export async function deleteResource(formData: FormData) {
   redirect("/resources");
 }
 
-const priceSchema = z.object({ resourceId: z.string().min(1), price: z.coerce.number().int().min(0, "Prix invalide"), reason: z.string().trim().min(3, "Un motif est obligatoire").max(300) });
+const priceSchema = z.object({
+  resourceId: z.string().min(1),
+  price: z.coerce.number().int().min(0, "Prix invalide").max(MAX_UNIT_PRICE, `Prix maximum : ${MAX_UNIT_PRICE.toLocaleString("fr-FR")} Ryō`),
+  reason: z.string().trim().min(3, "Un motif est obligatoire").max(300)
+});
 
 export async function updatePrice(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
   const parsed = priceSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/resources?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
   const { resourceId, price, reason } = parsed.data!;
-  const resource = await prisma.resource.findUnique({ where: { id: resourceId } });
-  if (!resource) redirect("/resources?erreur=Ressource%20introuvable");
-  await prisma.$transaction(async (tx) => {
-    const previous = await activePrice(tx, resourceId);
-    const now = new Date();
-    await tx.resourcePriceHistory.updateMany({ where: { resourceId, effectiveTo: null }, data: { effectiveTo: now } });
-    await tx.resourcePriceHistory.create({ data: { resourceId, pricePerUnit: BigInt(price), effectiveFrom: now, createdById: session.userId } });
-    await writeAudit(tx, { actorId: session.userId, action: "PRICE_UPDATED", entityType: "Resource", entityId: resourceId, reason, previousValues: { pricePerUnit: previous === null ? null : Number(previous) }, newValues: { pricePerUnit: price } });
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      const locked = await lockResources(tx, [resourceId]);
+      if (!locked.has(resourceId)) throw new Error("VALIDATION:Ressource introuvable");
+      const previous = await activePrice(tx, resourceId);
+      const now = new Date();
+      await tx.resourcePriceHistory.updateMany({ where: { resourceId, effectiveTo: null }, data: { effectiveTo: now } });
+      await tx.resourcePriceHistory.create({ data: { resourceId, pricePerUnit: BigInt(price), effectiveFrom: now, createdById: session.userId } });
+      await writeAudit(tx, { actorId: session.userId, action: "PRICE_UPDATED", entityType: "Resource", entityId: resourceId, reason, previousValues: { pricePerUnit: previous === null ? null : Number(previous) }, newValues: { pricePerUnit: price } });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) redirect(`/resources?erreur=${encodeURIComponent(error.message.slice("VALIDATION:".length))}`);
+    if (isUniqueViolation(error)) redirect("/resources?erreur=Un%20autre%20prix%20vient%20d%E2%80%99%C3%AAtre%20enregistr%C3%A9");
+    throw error;
+  }
   redirect("/resources");
 }

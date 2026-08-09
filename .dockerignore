@@ -1,0 +1,12 @@
+.git
+.github
+.claude
+.idea
+.pnpm-store
+**/node_modules
+**/.next
+**/test-results
+**/*.tsbuildinfo
+.env
+.env.*
+packages/database/data/import

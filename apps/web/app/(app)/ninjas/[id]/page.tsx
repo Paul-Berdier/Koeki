@@ -88,7 +88,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   </section>;
 
   const adminTab = <div className="duo-grid">
-    <section className="panel">
+    {isActive && <section className="panel">
       <SectionHeader title="Changer le grade" description="Historisé, motif obligatoire, non rétroactif" />
       <form action={changeGrade} className="form-grid">
         <input type="hidden" name="ninjaId" value={data.id} />
@@ -98,7 +98,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
         </div>
         <div className="form-actions"><button className="button button-ghost" type="submit">Appliquer le changement</button></div>
       </form>
-    </section>
+    </section>}
     {settleable.length > 0 && <section className="panel">
       <SectionHeader title="Remettre une semaine" description="Annule la semaine sans encaissement — motif obligatoire, audité" />
       <form action={waiveAssessment} className="form-grid">

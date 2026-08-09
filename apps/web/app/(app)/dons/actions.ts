@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { activePrice, applyValidatedTransaction, isUniqueViolation, nextTransactionReceipt, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { activePrice, applyValidatedTransaction, isUniqueViolation, lockActiveNinja, nextTransactionReceipt, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { requireWriteAccess } from "@/lib/session";
 
 const declarationSchema = z.object({ idempotencyKey: z.string().uuid() });
@@ -33,6 +33,7 @@ export async function declareOwnDonation(formData: FormData) {
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
+      if (!await lockActiveNinja(tx, profile!.id)) throw new Error("VALIDATION:Votre dossier ninja n’est plus actif");
       const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint }> = [];
       for (const line of lines) {
         const resource = await tx.resource.findUnique({ where: { id: line.resourceId } });
@@ -66,9 +67,15 @@ export async function validateDonation(formData: FormData) {
   let covered = 0n;
   try {
     await prisma.$transaction(async (tx) => {
-      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true, pointsPerUnit: true } } } } } });
+      const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId }, include: { items: { include: { resource: { select: { exemptionPerUnit: true, pointsPerUnit: true, isActive: true } } } } } });
       if (!transaction || transaction.type !== "DONATION" || transaction.status !== "PENDING_APPROVAL") throw new Error("VALIDATION:Déclaration déjà traitée");
-      await tx.resourceTransaction.update({ where: { id: transactionId }, data: { status: "VALIDATED", validatedAt: new Date(), agentId: session.userId } });
+      if (!await lockActiveNinja(tx, transaction.ninjaId)) throw new Error("VALIDATION:Le dossier ninja n’est plus actif");
+      if (transaction.items.some((item) => !item.resource.isActive)) throw new Error("VALIDATION:Un objet de la déclaration est devenu inactif");
+      const validated = await tx.resourceTransaction.updateMany({
+        where: { id: transactionId, type: "DONATION", status: "PENDING_APPROVAL" },
+        data: { status: "VALIDATED", validatedAt: new Date(), agentId: session.userId }
+      });
+      if (validated.count !== 1) throw new Error("VALIDATION:Déclaration déjà traitée");
       const applied = await applyValidatedTransaction(tx, { id: transaction.id, type: "DONATION", ninjaId: transaction.ninjaId, receiptNumber: transaction.receiptNumber, totalAmount: transaction.totalAmount, idempotencyKey: transaction.idempotencyKey },
         transaction.items.map((item) => ({ resourceId: item.resourceId, quantity: Number(item.quantity), unitPrice: item.unitPriceSnapshot, exemptionPerUnit: item.resource.exemptionPerUnit, pointsPerUnit: item.resource.pointsPerUnit })), session.userId);
       covered = applied.covered;
@@ -96,7 +103,11 @@ export async function rejectDonation(formData: FormData) {
     await prisma.$transaction(async (tx) => {
       const transaction = await tx.resourceTransaction.findUnique({ where: { id: transactionId } });
       if (!transaction || transaction.type !== "DONATION" || transaction.status !== "PENDING_APPROVAL") throw new Error("VALIDATION:Déclaration déjà traitée");
-      await tx.resourceTransaction.update({ where: { id: transactionId }, data: { status: "CANCELLED" } });
+      const rejected = await tx.resourceTransaction.updateMany({
+        where: { id: transactionId, type: "DONATION", status: "PENDING_APPROVAL" },
+        data: { status: "CANCELLED" }
+      });
+      if (rejected.count !== 1) throw new Error("VALIDATION:Déclaration déjà traitée");
       await writeAudit(tx, { actorId: session.userId, action: "DONATION_REJECTED", entityType: "ResourceTransaction", entityId: transactionId, reason: `Déclaration ${transaction.receiptNumber} refusée — ${reason}` });
     });
   } catch (error) {

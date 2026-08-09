@@ -1,6 +1,7 @@
 // One-shot migration of the old register (export of 2026-07-30): purges every test
 // record, then imports the resource catalog, 349 ninjas and 2 279 historical donations.
-// Guarded by an AppSetting flag so redeploys never replay it.
+// Guarded by an explicit environment opt-in and AppSetting flags. This command
+// is never part of the production startup because it destructively replaces data.
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -883,6 +884,9 @@ async function applyJoninBoard20260809() {
 }
 
 async function main() {
+  if (process.env.ALLOW_LEGACY_IMPORT !== "true") {
+    throw new Error("Import historique refusé : définissez ALLOW_LEGACY_IMPORT=true uniquement pour une migration manuelle contrôlée");
+  }
   await importCore();
   await importTaxHistory();
   await importEvents();
@@ -897,5 +901,23 @@ async function main() {
   await restoreCatalogPrices20260807();
   await importJoninEquipment20260807();
   await applyJoninBoard20260809();
+  await prisma.$queryRaw`
+    SELECT setval(
+      '"NinjaProfile_code_seq"',
+      GREATEST(COALESCE(MAX(
+        CASE
+          WHEN "code" ~ '^NIN-[0-9]{6}$' THEN SUBSTRING("code" FROM 5 FOR 6)::bigint
+          ELSE NULL
+        END
+      ), 0), 1),
+      COALESCE(MAX(
+        CASE
+          WHEN "code" ~ '^NIN-[0-9]{6}$' THEN SUBSTRING("code" FROM 5 FOR 6)::bigint
+          ELSE NULL
+        END
+      ), 0) > 0
+    )
+    FROM "NinjaProfile"
+  `;
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

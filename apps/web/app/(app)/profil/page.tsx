@@ -15,7 +15,15 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   }
   const [grades, unclaimed] = demoMode ? [[], []] : await Promise.all([
     prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } }),
-    prisma.ninjaProfile.findMany({ where: { userId: null, status: "ACTIVE" }, orderBy: [{ firstName: "asc" }, { lastName: "asc" }], select: { id: true, code: true, firstName: true, lastName: true } })
+    prisma.ninjaProfile.findMany({
+      where: {
+        userId: null,
+        status: "ACTIVE",
+        invitations: { none: { status: "PENDING", expiresAt: { gt: new Date() } } }
+      },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+      select: { id: true, code: true, firstName: true, lastName: true }
+    })
   ]);
   const creationForm = (withConfirm: boolean) => <form action={createOwnProfile} className="form-grid">
     {withConfirm ? <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" name="confirmNew" required style={{ minHeight: 0, width: 16, height: 16 }} /> J’ai cherché dans la liste : ma fiche n’existe pas encore dans le registre</label> : <input type="hidden" name="confirmNew" value="on" />}

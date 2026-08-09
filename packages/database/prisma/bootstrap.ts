@@ -21,7 +21,7 @@ async function main() {
   await prisma.userRole.upsert({ where: { userId_roleId: { userId: admin.id, roleId: roles.get("SUPER_ADMIN")! } }, create: { userId: admin.id, roleId: roles.get("SUPER_ADMIN")! }, update: {} });
   const grades = new Map<string, { id: string; amount: bigint }>();
   for (const [code, label, amount] of gradeSeed) { const grade = await prisma.ninjaGrade.upsert({ where: { code }, create: { code, label, sortOrder: grades.size + 1 }, update: { label } }); grades.set(code, { id: grade.id, amount: BigInt(amount) }); }
-  const policy = await prisma.taxPolicy.upsert({ where: { name_version: { name: "Barème initial", version: 1 } }, create: { name: "Barème initial", version: 1, effectiveFromRpYear: 1, isActive: true }, update: { isActive: true } });
+  const policy = await prisma.taxPolicy.upsert({ where: { name_version: { name: "Barème initial", version: 1 } }, create: { name: "Barème initial", version: 1, effectiveFromRpYear: 1, isActive: true }, update: {} });
   for (const grade of grades.values()) await prisma.taxPolicyGradeRate.upsert({ where: { taxPolicyId_gradeId: { taxPolicyId: policy.id, gradeId: grade.id } }, create: { taxPolicyId: policy.id, gradeId: grade.id, amount: grade.amount }, update: {} });
   for (const [code, label] of categorySeed) await prisma.resourceCategory.upsert({ where: { code }, create: { code, label }, update: { label } });
   await prisma.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value: { latePenaltyPercentBps: null, latePenaltyBasis: "ORIGINAL_TAX", latePenaltyFrequencyRpYears: 1, maxPenaltyApplications: 4, maxAssessmentDebt: "32000", isPenaltyAutomationEnabled: false, isRateValidated: false } }, update: {} });

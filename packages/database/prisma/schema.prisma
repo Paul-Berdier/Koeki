@@ -251,6 +251,7 @@ model NinjaProfile {
   clan                 String?
   status               String                @default("ACTIVE")
   diedAt               DateTime?
+  archivedFromStatus   String?
   currentGradeId       String
   referenceAgentId     String?
   userId               String?               @unique
@@ -408,7 +409,7 @@ model TaxPaymentAllocation {
   payment         TaxPayment    @relation(fields: [paymentId], references: [id])
   assessment      TaxAssessment @relation(fields: [assessmentId], references: [id])
 
-  @@unique([paymentId, assessmentId, allocationOrder])
+  @@unique([paymentId, assessmentId])
 }
 
 model TaxAdjustment {

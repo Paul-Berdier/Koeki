@@ -12,7 +12,6 @@
     "invite": "tsx scripts/create-invitation.ts",
     "invite:bootstrap": "tsx scripts/bootstrap-invite.ts",
     "import:legacy": "tsx scripts/import-legacy.ts",
-    "sync:supabase": "tsx scripts/sync-supabase-snapshot.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json"
   },

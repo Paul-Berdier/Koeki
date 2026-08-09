@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
-import { isUniqueViolation, writeAudit } from "@/lib/finance";
+import { isUniqueViolation, lockResources, parseFourDecimal, writeAudit } from "@/lib/finance";
 import { requireWriteAccess } from "@/lib/session";
 
+const MAX_CRAFT_COST = 100_000_000;
 const executeSchema = z.object({ recipeId: z.string().min(1), quantity: z.coerce.number().int().min(1).max(999), idempotencyKey: z.string().uuid() });
 
 export async function executeCraft(formData: FormData) {
@@ -20,6 +21,9 @@ export async function executeCraft(formData: FormData) {
       const recipe = await tx.craftRecipe.findUnique({ where: { id: recipeId }, include: { ingredients: { include: { resource: true } }, outputs: true } });
       if (!recipe || recipe.status !== "ACTIVE") throw new Error("VALIDATION:Recette inconnue ou inactive");
       if (!recipe.ingredients.length) throw new Error("VALIDATION:Cette recette n’a aucun ingrédient défini");
+      const resourceIds = [...recipe.ingredients.map((ingredient) => ingredient.resourceId), ...recipe.outputs.map((output) => output.resourceId)];
+      const locked = await lockResources(tx, resourceIds);
+      if (locked.size !== new Set(resourceIds).size) throw new Error("VALIDATION:Une ressource de la recette est introuvable");
       for (const ingredient of recipe.ingredients) {
         const aggregate = await tx.inventoryMovement.aggregate({ where: { resourceId: ingredient.resourceId }, _sum: { quantity: true } });
         const needed = ingredient.quantity.mul(quantity);
@@ -53,7 +57,7 @@ const recipeSchema = z.object({
   description: z.string().trim().max(1000).optional().transform((value) => value || ""),
   difficulty: z.string().trim().min(1).max(40),
   durationRpMinutes: z.coerce.number().int().min(1).max(100_000),
-  cost: z.coerce.number().int().min(0),
+  cost: z.coerce.number().int().min(0).max(MAX_CRAFT_COST),
   minimumGradeCode: z.string().trim().optional().transform((value) => value || null)
 });
 
@@ -69,16 +73,24 @@ export async function createRecipe(formData: FormData) {
     const resourceId = formData.get(`ingredientId_${index}`);
     const quantityRaw = formData.get(`ingredientQty_${index}`);
     if (typeof resourceId === "string" && resourceId && typeof quantityRaw === "string" && quantityRaw) {
-      const quantity = Number(quantityRaw.replace(",", "."));
-      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) back(`Quantité d’ingrédient invalide (ligne ${index})`);
+      const quantity = parseFourDecimal(quantityRaw) ?? back(`Quantité d’ingrédient invalide (ligne ${index}, 4 décimales maximum)`);
+      if (quantity <= 0 || quantity > 1_000_000) back(`Quantité d’ingrédient invalide (ligne ${index}, maximum 1 000 000)`);
       if (ingredients.some((ingredient) => ingredient.resourceId === resourceId)) back("Un ingrédient apparaît deux fois");
       ingredients.push({ resourceId, quantity });
     }
   }
   if (!ingredients.length) back("Ajoutez au moins un ingrédient — tapez son nom puis choisissez une proposition de la liste");
-  const outputId = formData.get("outputId");
+  const outputIdRaw = formData.get("outputId");
   const outputQtyRaw = formData.get("outputQty");
-  const output = typeof outputId === "string" && outputId && typeof outputQtyRaw === "string" && Number(outputQtyRaw) > 0 && Number(outputQtyRaw) <= 1_000_000 ? { resourceId: outputId, quantity: Number(outputQtyRaw) } : null;
+  const outputId = typeof outputIdRaw === "string" ? outputIdRaw : "";
+  const outputQuantityText = typeof outputQtyRaw === "string" ? outputQtyRaw : "";
+  let output: { resourceId: string; quantity: number } | null = null;
+  if (outputId || outputQuantityText) {
+    if (!outputId || !outputQuantityText) back("La ressource produite et sa quantité doivent être renseignées ensemble");
+    const quantity = parseFourDecimal(outputQuantityText) ?? back("Quantité produite invalide (4 décimales maximum)");
+    if (quantity <= 0 || quantity > 1_000_000) back("Quantité produite invalide (maximum 1 000 000)");
+    output = { resourceId: outputId, quantity };
+  }
   const data = parsed.data!;
   if (data.code && !/^[A-Z0-9-]{3,20}$/.test(data.code)) back("Code invalide (3 à 20 caractères : majuscules, chiffres, tirets) — ou laissez-le vide");
   if (!data.code) {

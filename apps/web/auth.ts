@@ -21,10 +21,17 @@ async function consumeInvitation(userId: string, token: string) {
   const invitation = await findUsableInvitation(token);
   if (!invitation) throw new Error("INVITATION_UNUSABLE");
   await prisma.$transaction(async (tx) => {
+    if (invitation.ninjaProfileId) {
+      await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${invitation.ninjaProfileId} FOR UPDATE`;
+      const linked = await tx.ninjaProfile.updateMany({
+        where: { id: invitation.ninjaProfileId, status: "ACTIVE", userId: null },
+        data: { userId, version: { increment: 1 } }
+      });
+      if (linked.count !== 1) throw new Error("INVITED_NINJA_UNAVAILABLE");
+    }
     const consumed = await tx.invitation.updateMany({ where: { id: invitation.id, status: "PENDING", consumedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { status: "USED", consumedById: userId, consumedAt: new Date() } });
     if (consumed.count !== 1) throw new Error("INVITATION_ALREADY_CONSUMED");
     await tx.userRole.create({ data: { userId, roleId: invitation.roleId, assignedById: invitation.createdById } });
-    if (invitation.ninjaProfileId) await tx.ninjaProfile.update({ where: { id: invitation.ninjaProfileId }, data: { userId } });
     await tx.auditLog.create({ data: { actorId: userId, action: "INVITATION_CONSUMED", entityType: "Invitation", entityId: invitation.id, requestId: crypto.randomUUID() } });
   });
   (await cookies()).delete("koeki_invite");

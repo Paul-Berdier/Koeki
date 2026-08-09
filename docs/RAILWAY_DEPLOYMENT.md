@@ -46,7 +46,7 @@ STORAGE_ACCESS_KEY=<clé Kōeki>
 STORAGE_SECRET_KEY=<secret Kōeki>
 ```
 
-`DEMO_MODE` doit être absent. Health check : `/api/health` (répond `database: "ok"` quand PostgreSQL est joignable). Commande de démarrage (définie dans `railway.json`) : `pnpm db:deploy && pnpm --filter @koeki/web start` — les migrations s’appliquent automatiquement à chaque déploiement.
+`DEMO_MODE` doit être absent. Health check : `/api/health` (répond `database: "ok"` quand PostgreSQL est joignable). La commande `pnpm start:prod` applique les migrations, vérifie les référentiels Railway et démarre le site. Aucun import, aucune synchronisation externe et aucune invitation contenant un jeton brut ne sont exécutés au démarrage.
 
 ## 4. Amorçage de la base
 

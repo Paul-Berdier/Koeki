@@ -11,7 +11,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   if (!hasPermission(session, "reports:write") && !hasPermission(session, "audit:read")) redirect("/access-denied");
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;
-  const canReview = !demoMode && hasPermission(session, "settings:manage");
+  const canReview = !demoMode && session.roles.some((role) => role === "SUPER_ADMIN" || role === "KOEKI_MANAGER");
   const canWrite = !demoMode && hasPermission(session, "reports:write");
   const data = await getReports(session, canReview);
   return <ModulePage eyebrow="Suivi des agents" title="Rapports" description="Les chiffres d’activité sont préremplis depuis les écritures réelles — l’agent ne ressaisit rien."

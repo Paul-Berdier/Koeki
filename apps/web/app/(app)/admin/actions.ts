@@ -26,21 +26,31 @@ export async function createInvitation(formData: FormData) {
   const role = await prisma.role.findUnique({ where: { id: roleId } });
   if (!role) back("Rôle inconnu");
   if (role!.code === "SUPER_ADMIN" && !hasPermission(session, "users:manage")) back("Seul un super-administrateur peut inviter un super-administrateur");
-  if (ninjaProfileId) {
-    const ninja = await prisma.ninjaProfile.findUnique({ where: { id: ninjaProfileId }, include: { invitations: { where: { status: "PENDING", revokedAt: null, expiresAt: { gt: new Date() } } } } });
-    if (!ninja) back("Ninja introuvable");
-    if (ninja!.userId) back("Ce ninja est déjà associé à un compte");
-    if (ninja!.invitations.length) back("Une invitation encore valable existe déjà pour ce ninja — révoquez-la d’abord");
-  }
   const { token, tokenHash } = createInvitationToken(pepper!);
   const expiresAt = new Date(Date.now() + expiresDays * 86_400_000);
   try {
     await prisma.$transaction(async (tx) => {
+      if (ninjaProfileId) {
+        await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaProfileId} FOR UPDATE`;
+        await tx.invitation.updateMany({
+          where: { ninjaProfileId, status: "PENDING", expiresAt: { lte: new Date() } },
+          data: { status: "EXPIRED" }
+        });
+        const ninja = await tx.ninjaProfile.findUnique({
+          where: { id: ninjaProfileId },
+          include: { invitations: { where: { status: "PENDING" } } }
+        });
+        if (!ninja) throw new Error("VALIDATION:Ninja introuvable");
+        if (ninja.status !== "ACTIVE") throw new Error("VALIDATION:Seul un dossier ninja actif peut être réservé");
+        if (ninja.userId) throw new Error("VALIDATION:Ce ninja est déjà associé à un compte");
+        if (ninja.invitations.length) throw new Error("VALIDATION:Une invitation encore valable existe déjà pour ce ninja — révoquez-la d’abord");
+      }
       const invitation = await tx.invitation.create({ data: { tokenHash, roleId, ninjaProfileId, createdById: session.userId, expiresAt } });
       await writeAudit(tx, { actorId: session.userId, action: "INVITATION_CREATED", entityType: "Invitation", entityId: invitation.id, newValues: { role: role!.code, ninjaProfileId, expiresAt: expiresAt.toISOString() } });
     });
   } catch (error) {
-    if (isUniqueViolation(error)) back("Collision de jeton improbable — réessayez");
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
+    if (isUniqueViolation(error)) back(ninjaProfileId ? "Une invitation réserve déjà ce ninja" : "Collision de jeton improbable — réessayez");
     throw error;
   }
   (await cookies()).set("koeki_last_invite", JSON.stringify({ token, role: role!.code, expiresAt: expiresAt.toISOString() }), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 600, path: "/admin" });
@@ -165,21 +175,35 @@ export async function updateTaxRates(formData: FormData) {
     if (!Number.isInteger(value) || value < 0 || value > 100_000_000) back(`Montant invalide pour ${grade.label} (entier en Ryō)`);
     rates.set(grade.id, BigInt(value));
   }
-  const active = await prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
-  if (active && grades.every((grade) => (active.rates.find((rate) => rate.gradeId === grade.id)?.amount ?? 0n) === rates.get(grade.id))) redirect(`/admin?info=${encodeURIComponent("Barème inchangé — rien à faire")}`);
   const service = await getRpService();
   const rpYear = service.currentRpYear();
-  let version = 0, rebilled = 0, exempted = 0;
+  let version = 0, rebilled = 0, exempted = 0, unchanged = false;
   await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
+    const active = await tx.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
+    if (active && grades.every((grade) => (active.rates.find((rate) => rate.gradeId === grade.id)?.amount ?? 0n) === rates.get(grade.id))) {
+      unchanged = true;
+      return;
+    }
+    // Serialize billing with every lifecycle update, including activation and
+    // restoration of a currently non-active dossier.
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "NinjaProfile"
+      ORDER BY "id"
+      FOR UPDATE
+    `;
     const name = active?.name ?? "Barème Kōeki";
     const latest = await tx.taxPolicy.findFirst({ where: { name }, orderBy: { version: "desc" } });
     version = (latest?.version ?? 0) + 1;
-    if (active) await tx.taxPolicy.update({ where: { id: active.id }, data: { isActive: false, effectiveToRpYear: rpYear } });
+    await tx.taxPolicy.updateMany({ where: { isActive: true }, data: { isActive: false, effectiveToRpYear: rpYear } });
     const policy = await tx.taxPolicy.create({ data: { name, version, effectiveFromRpYear: rpYear, isActive: true, rates: { createMany: { data: grades.map((grade) => ({ gradeId: grade.id, amount: rates.get(grade.id)! })) } } } });
     const year = await tx.taxYear.findUnique({ where: { rpYear } });
     if (year) {
       const untouched = await tx.taxAssessment.findMany({ where: {
         taxYearId: year.id, taxPolicy: { name: { not: "Ancien registre" } },
+        ninja: { status: "ACTIVE" },
+        status: { in: ["UPCOMING", "DUE"] },
         allocations: { none: {} }, exemptions: { none: {} }, penalties: { none: {} }, adjustments: { none: {} }
       }, select: { id: true } });
       if (untouched.length) await tx.taxAssessment.deleteMany({ where: { id: { in: untouched.map((entry) => entry.id) } } });
@@ -189,7 +213,7 @@ export async function updateTaxRates(formData: FormData) {
         originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > new Date() ? "UPCOMING" as const : "DUE" as const
       })), skipDuplicates: true });
       rebilled = result.count;
-      const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, taxPolicyId: policy.id, originalAmount: { gt: 0 } }, select: { id: true, ninjaId: true, originalAmount: true } });
+      const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, taxPolicyId: policy.id, ninja: { status: "ACTIVE" }, originalAmount: { gt: 0 } }, select: { id: true, ninjaId: true, originalAmount: true } });
       for (const assessment of fresh) {
         const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
         if (already) continue;
@@ -204,6 +228,7 @@ export async function updateTaxRates(formData: FormData) {
     }
     await writeAudit(tx, { actorId: session.userId, action: "TAX_POLICY_UPDATED", entityType: "TaxPolicy", entityId: policy.id, reason: `Barème v${version} publié — semaine RP ${rpYear} refacturée (${rebilled} taxes régénérées, ${exempted} couvertes par crédit)`, newValues: Object.fromEntries(grades.map((grade) => [grade.label, Number(rates.get(grade.id))])) });
   }, { timeout: 180_000, maxWait: 15_000 });
+  if (unchanged) redirect(`/admin?info=${encodeURIComponent("Barème inchangé — rien à faire")}`);
   redirect(`/admin?info=${encodeURIComponent(`Barème v${version} appliqué — ${rebilled} taxes refacturées pour la semaine en cours${exempted ? `, dont ${exempted} couvertes par le crédit d’exonération` : ""}`)}`);
 }
 
@@ -211,21 +236,31 @@ export async function updateTaxRates(formData: FormData) {
  *  without waiting for Sunday's worker run. Idempotent: existing lines are left alone. */
 export async function billCurrentWeek() {
   const session = await requireWriteAccess("settings:manage");
-  const policy = await prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
-  if (!policy) redirect("/admin?erreur=Aucune%20politique%20fiscale%20active");
   const service = await getRpService();
   const rpYear = service.currentRpYear();
-  const ninjas = await prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
-  const rates = new Map(policy!.rates.map((rate) => [rate.gradeId, rate.amount]));
-  let created = 0, exempted = 0;
+  let created = 0, exempted = 0, missingPolicy = false;
   await prisma.$transaction(async (tx) => {
-    const year = await tx.taxYear.upsert({ where: { rpYear }, create: { rpYear, taxPolicyId: policy!.id, startsAt: service.startOfRpYear(rpYear), endsAt: service.endOfRpYear(rpYear), dueAt: service.dueAt(rpYear), generatedAt: new Date() }, update: { generatedAt: new Date() } });
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
+    const policy = await tx.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
+    if (!policy) {
+      missingPolicy = true;
+      return;
+    }
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "NinjaProfile"
+      ORDER BY "id"
+      FOR UPDATE
+    `;
+    const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE" }, include: { currentGrade: true } });
+    const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
+    const year = await tx.taxYear.upsert({ where: { rpYear }, create: { rpYear, taxPolicyId: policy.id, startsAt: service.startOfRpYear(rpYear), endsAt: service.endOfRpYear(rpYear), dueAt: service.dueAt(rpYear), generatedAt: new Date() }, update: { generatedAt: new Date() } });
     const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({
-      ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy!.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
+      ninjaId: ninja.id, taxYearId: year.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label,
       originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > new Date() ? "UPCOMING" as const : "DUE" as const
     })), skipDuplicates: true });
     created = result.count;
-    const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
+    const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, ninja: { status: "ACTIVE" }, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
     for (const assessment of fresh) {
       const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
       if (already) continue;
@@ -241,6 +276,7 @@ export async function billCurrentWeek() {
     await tx.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value: marker }, update: { value: marker, version: { increment: 1 } } });
     await writeAudit(tx, { actorId: session.userId, action: "TAX_WEEK_BILLED", entityType: "TaxYear", entityId: year.id, reason: `Semaine RP ${rpYear} ouverte manuellement — ${created} taxes créées, ${exempted} couvertes par le crédit d’exonération` });
   }, { timeout: 180_000, maxWait: 15_000 });
+  if (missingPolicy) redirect("/admin?erreur=Aucune%20politique%20fiscale%20active");
   redirect(`/admin?info=${encodeURIComponent(created ? `Semaine RP ${rpYear} facturée — ${created} taxe${created > 1 ? "s" : ""} créée${created > 1 ? "s" : ""}${exempted ? `, dont ${exempted} couverte${exempted > 1 ? "s" : ""} par le crédit d’exonération` : ""}` : `Semaine RP ${rpYear} déjà facturée pour tous les ninjas actifs`)}`);
 }
 
