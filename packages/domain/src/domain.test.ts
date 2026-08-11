@@ -5,6 +5,29 @@ import { createRpTimeService } from "./rp-time";
 import { calculatePoints } from "./points";
 import { simulateCraft } from "./crafting";
 import { percentOf, ryo } from "./money";
+import { can } from "./permissions";
+
+describe("report permissions", () => {
+  it("keeps reading, writing and reviewing as separate capabilities", () => {
+    expect(can("SUPER_ADMIN", "reports:read")).toBe(true);
+    expect(can("SUPER_ADMIN", "reports:read-all")).toBe(true);
+    expect(can("SUPER_ADMIN", "reports:write")).toBe(true);
+    expect(can("SUPER_ADMIN", "reports:review")).toBe(true);
+    expect(can("KOEKI_MANAGER", "reports:review")).toBe(true);
+
+    expect(can("ECONOMIC_AGENT", "reports:read")).toBe(true);
+    expect(can("ECONOMIC_AGENT", "reports:read-all")).toBe(false);
+    expect(can("ECONOMIC_AGENT", "reports:write")).toBe(true);
+    expect(can("ECONOMIC_AGENT", "reports:review")).toBe(false);
+
+    expect(can("AUDITOR", "reports:read")).toBe(true);
+    expect(can("AUDITOR", "reports:read-all")).toBe(true);
+    expect(can("AUDITOR", "reports:write")).toBe(false);
+    expect(can("AUDITOR", "reports:review")).toBe(false);
+
+    expect(can("NINJA", "reports:read")).toBe(false);
+  });
+});
 
 describe("initial tax policy", () => {
   it("uses the exact configured grade rates", () => {

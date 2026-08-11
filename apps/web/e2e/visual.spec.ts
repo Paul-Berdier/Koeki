@@ -44,3 +44,15 @@ test("equipment board becomes a compact card list on mobile", async ({ page }, t
   expect(overflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "test-results/equipment-mobile.png", fullPage: true });
 });
+
+test("reports expose their readable content without horizontal overflow", async ({ page }, testInfo) => {
+  await page.goto("/reports");
+  await expect(page.getByRole("heading", { name: "Rapports" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".report-card")).toHaveCount(3);
+  await expect(page.locator(".report-card").first().locator(".report-preview").getByText("Activité régulière au comptoir et clôture de la période sans écart de caisse.", { exact: true })).toBeVisible();
+  await page.locator(".report-details summary").first().click();
+  await expect(page.getByText("Stock de cuivre à surveiller.", { exact: true })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `test-results/reports-${testInfo.project.name}.png`, fullPage: true });
+});

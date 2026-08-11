@@ -4,15 +4,18 @@ import { AlertTriangle, ArrowRight, Boxes, CircleCheck, Clock3, Plus, ReceiptTex
 import { EmptyState, MetricCard, MoneyDisplay, PageHeader, SectionHeader, StatusBadge, ZoneTitle } from "@koeki/ui";
 import { getDashboard } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
-import { demoMode, requireSession } from "@/lib/session";
+import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { prisma } from "@koeki/database";
 
 export default async function DashboardPage() {
   const session = await requireSession();
   const ownProfile = demoMode ? { id: "demo" } : await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
   if (!demoMode && session.roles.length === 1 && session.roles[0] === "NINJA") redirect(ownProfile ? `/ninjas/${ownProfile.id}` : "/profil");
-  const data = await getDashboard();
+  const data = await getDashboard(session);
   const rate = formatPercentBps(data.recoveryRateBps);
+  const canReadReports = hasPermission(session, "reports:read");
+  const canWriteReports = !demoMode && hasPermission(session, "reports:write");
+  const canReviewReports = !demoMode && hasPermission(session, "reports:review");
   return <div className="page-wrap">
     <PageHeader eyebrow={`Situation du village · année RP ${data.rpYear}`} title="Salle des comptes" description="Une lecture immédiate des finances, des échéances et des opérations à traiter."
       metrics={[
@@ -21,7 +24,7 @@ export default async function DashboardPage() {
         { label: "Grades à mettre à jour", value: String(data.priorities.gradesToUpdate) },
         { label: "Ninjas en retard", value: String(data.overdueNinjas) }
       ]}
-      actions={<><Link className="button button-ghost" href="/reports"><ReceiptText size={17} /> Rapprocher la journée</Link><Link className="button button-primary" href="/ninjas"><Plus size={17} /> Enregistrer</Link></>} />
+      actions={<>{canWriteReports ? <Link className="button button-ghost" href="/reports/new"><ReceiptText size={17} /> Nouveau rapport</Link> : canReadReports ? <Link className="button button-ghost" href="/reports"><ReceiptText size={17} /> Voir les rapports</Link> : null}<Link className="button button-primary" href="/ninjas"><Plus size={17} /> Enregistrer</Link></>} />
     {!ownProfile && <p className="notice" role="status">Bienvenue à la Kōeki ! Vous n’avez pas encore de fiche ninja : <Link href="/profil" className="text-link">enregistrez votre identité de shinobi</Link> pour lier vos taxes, points et opérations à votre compte.</p>}
 
     <ZoneTitle title="Revenus de Suna" detail={`Année RP ${data.rpYear} — Ryō encaissés et taxes couvertes par les dons`} />
@@ -51,7 +54,7 @@ export default async function DashboardPage() {
           {data.priorities.gradesToUpdate > 0 && <Link href="/ninjas?statut=grade_missing"><span className="priority-icon warn"><AlertTriangle /></span><span><strong>{data.priorities.gradesToUpdate} grade{data.priorities.gradesToUpdate > 1 ? "s" : ""} à mettre à jour</strong><small>Situation de paiement non à jour tant que le grade manque</small></span><b>Corriger</b></Link>}
           <Link href="/recouvrement"><span className="priority-icon warn"><Clock3 /></span><span><strong>{data.priorities.overdueCount} dossier{data.priorities.overdueCount > 1 ? "s" : ""} à relancer</strong><small>{data.priorities.overdueOldCount} dépasse{data.priorities.overdueOldCount > 1 ? "nt" : ""} deux années RP</small></span><b>Ouvrir</b></Link>
           <Link href="/inventory"><span className="priority-icon"><Boxes /></span><span><strong>{data.priorities.criticalStocks.length} stock{data.priorities.criticalStocks.length > 1 ? "s" : ""} critique{data.priorities.criticalStocks.length > 1 ? "s" : ""}</strong><small>{data.priorities.criticalStocks.slice(0, 3).join(", ") || "Aucun seuil franchi"}</small></span><b>Vérifier</b></Link>
-          <Link href="/reports"><span className="priority-icon good"><CircleCheck /></span><span><strong>{data.priorities.reportsToReview} rapport{data.priorities.reportsToReview > 1 ? "s" : ""} à valider</strong><small>Soumis par les agents économiques</small></span><b>Examiner</b></Link>
+          {canReviewReports && <Link href="/reports?statut=SUBMITTED"><span className="priority-icon good"><CircleCheck /></span><span><strong>{data.priorities.reportsToReview} rapport{data.priorities.reportsToReview > 1 ? "s" : ""} à valider</strong><small>Soumis par les agents économiques</small></span><b>Examiner</b></Link>}
         </div>
       </section>
     </div>
@@ -61,7 +64,7 @@ export default async function DashboardPage() {
       <MetricCard label="Rachats ce cycle" value={<MoneyDisplay amount={data.buybacks} />} detail={`${data.buybackCount} transaction${data.buybackCount > 1 ? "s" : ""} validées`} />
       <MetricCard label="Valeur des stocks" value={<MoneyDisplay amount={data.stockValue} />} detail="Au dernier prix connu du catalogue" />
       <MetricCard label="Stocks critiques" value={String(data.priorities.criticalStocks.length)} detail={data.priorities.criticalStocks.slice(0, 3).join(", ") || "Aucun seuil franchi"} tone={data.priorities.criticalStocks.length ? "warn" : "good"} />
-      <MetricCard label="Rapports à valider" value={String(data.priorities.reportsToReview)} detail="Journées soumises par les agents" tone={data.priorities.reportsToReview ? "warn" : "neutral"} />
+      {canReviewReports && <MetricCard label="Rapports à valider" value={String(data.priorities.reportsToReview)} detail="Journées soumises par les agents" tone={data.priorities.reportsToReview ? "warn" : "neutral"} />}
     </section>
 
     <ZoneTitle title="Dernières opérations" detail="Écritures du service économique" />

@@ -3,7 +3,7 @@ import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
 import { allocatePayment, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, settlementTotals, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
-import { demoMode, roleLabels, type SessionInfo } from "./session";
+import { demoMode, hasPermission, roleLabels, type SessionInfo } from "./session";
 import type { AdminData, AuditData, CraftingData, DashboardData, EventsData, InventoryData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
 
 const sumBig = (values: bigint[]) => values.reduce((total, value) => total + value, 0n);
@@ -129,12 +129,13 @@ export async function getShellInfo(session: SessionInfo | null): Promise<ShellIn
   };
 }
 
-export async function getDashboard(): Promise<DashboardData> {
+export async function getDashboard(session?: SessionInfo): Promise<DashboardData> {
   if (demoMode) return demoDashboard;
+  const canReviewReports = session ? hasPermission(session, "reports:review") : false;
   const [service, aggregates, prices, stocks, penaltySetting, reportsToReview, resources] = await Promise.all([
     getRpService(), loadNinjaAggregates(), activePriceMap(), stockMap(),
     prisma.appSetting.findUnique({ where: { key: "latePenalty" } }),
-    prisma.agentReport.count({ where: { status: "SUBMITTED" } }),
+    canReviewReports ? prisma.agentReport.count({ where: { status: "SUBMITTED", authorId: { not: session!.userId } } }) : Promise.resolve(0),
     prisma.resource.findMany({ where: { isActive: true } })
   ]);
   const now = new Date();
@@ -486,35 +487,65 @@ export async function getEvents(): Promise<EventsData> {
   };
 }
 
-export async function getReports(session: SessionInfo, canReview: boolean): Promise<ReportsData> {
+export const reportStatusOptions = [
+  { value: "DRAFT", label: "Brouillon", badge: "draft" },
+  { value: "SUBMITTED", label: "Soumis", badge: "pending" },
+  { value: "REVIEWED", label: "Examiné", badge: "warning" },
+  { value: "RETURNED", label: "Renvoyé", badge: "overdue" },
+  { value: "APPROVED", label: "Approuvé", badge: "paid" }
+] as const satisfies ReadonlyArray<{ value: string; label: string; badge: BadgeStatus }>;
+
+export interface ReportsFilterParams { auteur?: string | undefined; statut?: string | undefined }
+
+export async function getReports(session: SessionInfo, page = 1, filters: ReportsFilterParams = {}): Promise<ReportsData> {
   if (demoMode) return demoReports;
-  const [reports, users] = await Promise.all([
-    prisma.agentReport.findMany({
-      where: canReview || session.roles.includes("AUDITOR") ? {} : { authorId: session.userId },
-      orderBy: { periodStart: "desc" }, take: 30
-    }),
+  if (!hasPermission(session, "reports:read")) throw new Error("FORBIDDEN");
+  const pageSize = 12;
+  const requestedPage = Number.isSafeInteger(page) && page > 0 ? page : 1;
+  const status = reportStatusOptions.find((option) => option.value === filters.statut)?.value;
+  const canReadAll = hasPermission(session, "reports:read-all");
+  const visibilityWhere: Prisma.AgentReportWhereInput = canReadAll
+    ? { OR: [{ authorId: session.userId }, { status: { not: "DRAFT" } }] }
+    : { authorId: session.userId };
+  const filterWhere: Prisma.AgentReportWhereInput = {
+    ...(filters.auteur ? { authorId: filters.auteur } : {}),
+    ...(status ? { status } : {})
+  };
+  const where: Prisma.AgentReportWhereInput = { AND: [visibilityWhere, filterWhere] };
+  const canReview = hasPermission(session, "reports:review");
+  const canWrite = hasPermission(session, "reports:write");
+  const total = await prisma.agentReport.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(requestedPage, pageCount);
+  const [reports, toReview, approved, totals, reportAuthors, users] = await Promise.all([
+    prisma.agentReport.findMany({ where, orderBy: [{ periodStart: "desc" }, { createdAt: "desc" }], skip: (currentPage - 1) * pageSize, take: pageSize }),
+    prisma.agentReport.count({ where: { AND: [where, { status: "SUBMITTED" }, ...(canReview ? [{ authorId: { not: session.userId } }] : [])] } }),
+    prisma.agentReport.count({ where: { AND: [where, { status: "APPROVED" }] } }),
+    prisma.agentReport.aggregate({ where, _sum: { paymentCount: true, donationCount: true, buybackCount: true, collectedAmount: true, processedValue: true, correctionCount: true } }),
+    prisma.agentReport.findMany({ where: visibilityWhere, select: { authorId: true }, distinct: ["authorId"] }),
     getUserNames()
   ]);
-  const statusLabelMap: Record<string, { label: string; badge: BadgeStatus }> = {
-    DRAFT: { label: "Brouillon", badge: "draft" }, SUBMITTED: { label: "Soumis", badge: "pending" }, REVIEWED: { label: "Examiné", badge: "warning" },
-    RETURNED: { label: "Renvoyé", badge: "overdue" }, APPROVED: { label: "Approuvé", badge: "paid" }
-  };
+  const statusLabelMap = new Map(reportStatusOptions.map((option) => [option.value, option]));
   return {
     metrics: {
-      toReview: reports.filter((report) => report.status === "SUBMITTED").length,
-      approved: reports.filter((report) => report.status === "APPROVED").length,
-      covered: reports.reduce((total, report) => total + report.paymentCount + report.donationCount + report.buybackCount, 0),
-      processed: sumBig(reports.map((report) => report.collectedAmount + report.processedValue)),
-      corrections: reports.reduce((total, report) => total + report.correctionCount, 0)
+      toReview,
+      approved,
+      covered: (totals._sum.paymentCount ?? 0) + (totals._sum.donationCount ?? 0) + (totals._sum.buybackCount ?? 0),
+      processed: (totals._sum.collectedAmount ?? 0n) + (totals._sum.processedValue ?? 0n),
+      corrections: totals._sum.correctionCount ?? 0
     },
     reports: reports.map((report) => {
-      const state = statusLabelMap[report.status] ?? { label: report.status, badge: "draft" as BadgeStatus };
+      const state = statusLabelMap.get(report.status) ?? { label: report.status, badge: "draft" as BadgeStatus };
       return {
         id: report.id, period: `${formatDate(report.periodStart)} — ${formatDate(report.periodEnd)}`, agent: users.get(report.authorId) ?? "Agent Kōeki",
         payments: report.paymentCount, donationBuybacks: `${report.donationCount + report.buybackCount}`, processed: report.collectedAmount + report.processedValue,
-        statusLabel: state.label, badge: state.badge, canReview: canReview && report.status === "SUBMITTED"
+        statusLabel: state.label, badge: state.badge, canReview: canReview && report.status === "SUBMITTED" && report.authorId !== session.userId,
+        canEdit: canWrite && report.authorId === session.userId && (report.status === "DRAFT" || report.status === "RETURNED"),
+        createdAt: formatDateTime(report.createdAt), summary: report.summary, incidents: report.incidents, stockIssues: report.stockIssues, followUps: report.followUps
       };
-    })
+    }),
+    authors: reportAuthors.map(({ authorId }) => ({ id: authorId, name: users.get(authorId) ?? "Agent Kōeki" })).sort((a, b) => a.name.localeCompare(b.name, "fr")),
+    total, page: currentPage, pageCount
   };
 }
 

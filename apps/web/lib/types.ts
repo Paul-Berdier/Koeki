@@ -61,8 +61,17 @@ export interface StatisticsData {
 export interface EventRow { id: string; name: string; kindLabel: string; statusLabel: string; badge: BadgeStatus; period: string; resourceFocus: string | null; prize: bigint; rewardPoints: number; participants: number; winnerId: string | null; winner: string | null; isOpen: boolean }
 export interface EventsData { metrics: { open: number; finished: number; totalPrize: bigint; participants: number }; events: EventRow[] }
 
-export interface ReportRow { id: string; period: string; agent: string; payments: number; donationBuybacks: string; processed: bigint; statusLabel: string; badge: BadgeStatus; canReview: boolean }
-export interface ReportsData { metrics: { toReview: number; approved: number; covered: number; processed: bigint; corrections: number }; reports: ReportRow[] }
+export interface ReportRow {
+  id: string; period: string; agent: string; payments: number; donationBuybacks: string; processed: bigint;
+  statusLabel: string; badge: BadgeStatus; canReview: boolean; canEdit: boolean; createdAt: string;
+  summary: string; incidents: string | null; stockIssues: string | null; followUps: string | null;
+}
+export interface ReportsData {
+  metrics: { toReview: number; approved: number; covered: number; processed: bigint; corrections: number };
+  reports: ReportRow[];
+  authors: Array<{ id: string; name: string }>;
+  total: number; page: number; pageCount: number;
+}
 
 export interface AuditData { rows: Array<{ id: string; at: string; actor: string; action: string; entity: string; summary: string }>; actors: Array<{ id: string; name: string }>; total: number; page: number; pageCount: number }
 

@@ -122,10 +122,12 @@ export const demoEvents: EventsData = {
 export const demoReports: ReportsData = {
   metrics: { toReview: 2, approved: 6, covered: 84, processed: 347500n, corrections: 3 },
   reports: [
-    { id: "rep1", period: "28 juil. — 3 août", agent: "Kaemon Tori", payments: 14, donationBuybacks: "9", processed: 86400n, statusLabel: "Soumis", badge: "pending", canReview: false },
-    { id: "rep2", period: "28 juil. — 3 août", agent: "Sonemi Hakumei", payments: 19, donationBuybacks: "7", processed: 112800n, statusLabel: "Soumis", badge: "pending", canReview: false },
-    { id: "rep3", period: "21 — 27 juillet", agent: "Kaemon Tori", payments: 17, donationBuybacks: "8", processed: 94200n, statusLabel: "Approuvé", badge: "paid", canReview: false }
-  ]
+    { id: "rep1", period: "28 juil. — 3 août", agent: "Kaemon Tori", payments: 14, donationBuybacks: "9", processed: 86400n, statusLabel: "Soumis", badge: "pending", canReview: false, canEdit: false, createdAt: "3 août · 18:20", summary: "Activité régulière au comptoir et clôture de la période sans écart de caisse.", incidents: null, stockIssues: "Stock de cuivre à surveiller.", followUps: "Contrôler le réassort lors de la prochaine permanence." },
+    { id: "rep2", period: "28 juil. — 3 août", agent: "Sonemi Hakumei", payments: 19, donationBuybacks: "7", processed: 112800n, statusLabel: "Soumis", badge: "pending", canReview: false, canEdit: false, createdAt: "3 août · 17:45", summary: "Les opérations de la semaine ont été rapprochées avec le registre.", incidents: "Une correction de paiement a été enregistrée.", stockIssues: null, followUps: null },
+    { id: "rep3", period: "21 — 27 juillet", agent: "Kaemon Tori", payments: 17, donationBuybacks: "8", processed: 94200n, statusLabel: "Approuvé", badge: "paid", canReview: false, canEdit: false, createdAt: "27 juillet · 19:05", summary: "Période clôturée et approuvée sans action complémentaire.", incidents: null, stockIssues: null, followUps: null }
+  ],
+  authors: [{ id: "demo-kaemon", name: "Kaemon Tori" }, { id: "demo-sonemi", name: "Sonemi Hakumei" }],
+  total: 3, page: 1, pageCount: 1
 };
 
 export const demoAudit: AuditData = {
