@@ -47,7 +47,7 @@ test("equipment board becomes a compact card list on mobile", async ({ page }, t
 
 test("reports expose their readable content without horizontal overflow", async ({ page }, testInfo) => {
   await page.goto("/reports");
-  await expect(page.getByRole("heading", { name: "pour toi KON *keur*" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Historique des rapports" })).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".report-card")).toHaveCount(3);
   await expect(page.locator(".report-card").first().locator(".report-preview").getByText("Activité régulière au comptoir et clôture de la période sans écart de caisse.", { exact: true })).toBeVisible();
   await page.locator(".report-details summary").first().click();

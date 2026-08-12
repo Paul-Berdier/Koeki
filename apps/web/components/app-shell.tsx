@@ -43,16 +43,7 @@ export function AppShell({ children, shell, allowed }: { children: React.ReactNo
   useEffect(() => { setCollapsed(localStorage.getItem("koeki.nav") === "collapsed"); }, []);
   const toggleCollapsed = () => setCollapsed((current) => { const next = !current; localStorage.setItem("koeki.nav", next ? "collapsed" : "expanded"); return next; });
   const groups = navigation.map((group) => ({ ...group, items: group.items.filter((item) => allowed.includes(item.href)) })).filter((group) => group.items.length > 0);
-  const replayReportsSpectacle = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    const target = event.target as HTMLElement;
-    const anchor = target.closest<HTMLAnchorElement>("a[href]");
-    if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
-    if (anchor.dataset.reportsSpectacle !== "true") return;
-    const destination = new URL(anchor.href, window.location.href);
-    if (destination.origin === window.location.origin && destination.pathname === "/reports") window.dispatchEvent(new Event("koeki:reports-spectacle"));
-  };
-  return <div className={`app-shell${collapsed ? " nav-collapsed" : ""}`} onClickCapture={replayReportsSpectacle}>
+  return <div className={`app-shell${collapsed ? " nav-collapsed" : ""}`}>
     <a className="skip-link" href="#main">Aller au contenu</a>
     <button className="mobile-menu" onClick={() => setOpen(true)} aria-label="Ouvrir la navigation"><Menu /></button>
     {open && <button className="nav-backdrop" onClick={() => setOpen(false)} aria-label="Fermer la navigation" />}
@@ -71,7 +62,7 @@ export function AppShell({ children, shell, allowed }: { children: React.ReactNo
           {group.label && <p className="nav-label">{group.label}</p>}
           {group.items.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-            return <Link key={href} href={href} data-reports-spectacle={href === "/reports" ? "true" : undefined} className={active ? "active" : ""} title={label} onClick={() => setOpen(false)}>
+            return <Link key={href} href={href} className={active ? "active" : ""} title={label} onClick={() => setOpen(false)}>
               <Icon size={17} aria-hidden="true" /><span>{label}</span>
               {href === "/recouvrement" && shell.overdueCount > 0 && <b aria-label={`${shell.overdueCount} dossiers en retard`}>{shell.overdueCount}</b>}
             </Link>;
