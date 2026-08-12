@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CheckCircle2, Filter, Pencil, Undo2 } from "lucide-react";
 import { EmptyState, MoneyDisplay, StatusBadge } from "@koeki/ui";
 import { ModulePage } from "@/components/module-page";
+import { ReportSpectacle } from "@/components/report-spectacle";
 import { getReports, reportStatusOptions } from "@/lib/data";
 import { demoMode, hasPermission, requirePermission } from "@/lib/session";
 import { reviewReport } from "./actions";
@@ -37,7 +38,7 @@ function ReportsView({ data, filters, error, canReview, canWrite, canReadAll }: 
   const activeFilters = Boolean(filters.auteur || filters.statut || filters.du || filters.au);
   const pageQuery = (target: number) => `?${new URLSearchParams({ ...(filters.auteur ? { auteur: filters.auteur } : {}), ...(filters.statut ? { statut: filters.statut } : {}), ...(filters.du ? { du: filters.du } : {}), ...(filters.au ? { au: filters.au } : {}), page: String(target) })}`;
 
-  return <ModulePage eyebrow="Suivi des agents" title={canReadAll ? "Pour toi KON ♥" : "Mes rapports"} description={canReadAll ? "Historique complet des rapports accessibles — les brouillons privés des autres agents restent masqués." : "Consultez vos rapports et leur état de validation."}
+  return <><ReportSpectacle /><ModulePage eyebrow="Suivi des agents" title={canReadAll ? "pour toi KON *keur*" : "Mes rapports"} description={canReadAll ? "Historique complet des rapports accessibles — les brouillons privés des autres agents restent masqués." : "Consultez vos rapports et leur état de validation."}
     actionLabel={canWrite ? "Nouveau rapport" : undefined} actionHref="/reports/new" registerTitle={canReadAll ? "Historique complet des rapports" : "Registre courant"} registerDescription={`${data.total.toLocaleString("fr-FR")} rapport${data.total > 1 ? "s" : ""} ${activeFilters ? "sur la sélection" : "visible"}`} metrics={[
     { label: canReview ? "À examiner" : "Soumis", value: String(data.metrics.toReview), detail: canReview ? (data.metrics.toReview ? "En attente de votre décision" : "Rien en attente") : "En attente d’examen", tone: data.metrics.toReview ? "warn" : "good" },
     { label: "Approuvés", value: String(data.metrics.approved), detail: "Validés par un responsable", tone: "good" },
@@ -91,5 +92,5 @@ function ReportsView({ data, filters, error, canReview, canWrite, canReadAll }: 
       : <EmptyState title="Aucun rapport" description={activeFilters ? "Aucun rapport ne correspond à ces filtres." : "Créez un rapport de période : les totaux se rempliront automatiquement."} />}
 
     <footer className="table-footer"><span>Page {data.page} sur {data.pageCount}</span><div>{data.page > 1 ? <Link className="button button-ghost" href={pageQuery(data.page - 1)}>Précédent</Link> : <button className="button button-ghost" disabled>Précédent</button>}{data.page < data.pageCount ? <Link className="button button-ghost" href={pageQuery(data.page + 1)}>Suivant</Link> : <button className="button button-ghost" disabled>Suivant</button>}</div></footer>
-  </ModulePage>;
+  </ModulePage></>;
 }

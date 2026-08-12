@@ -620,6 +620,91 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .report-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 11px 16px; border-top: 1px solid var(--border); background: rgba(196,148,62,.035); }
 .report-actions .button { min-height: 34px; }
 
+/* Entrée spectaculaire de la page Rapports — animation CSS, compatible CSP. */
+.report-spectacle { position: fixed; z-index: 120; inset: 0; min-height: 100vh; min-height: 100dvh; overflow: hidden; contain: layout paint; pointer-events: none; isolation: isolate; animation: report-spectacle-stage 7.2s ease-in-out both; }
+.report-spectacle-sky { position: absolute; z-index: -2; inset: 0; background:
+  radial-gradient(circle at 50% 55%, rgba(115,42,67,.26), transparent 34%),
+  radial-gradient(circle at 20% 15%, rgba(196,148,62,.17), transparent 26%),
+  radial-gradient(circle at 80% 22%, rgba(151,73,48,.18), transparent 28%),
+  linear-gradient(180deg, rgba(5,4,9,.98), rgba(16,8,14,.94) 68%, rgba(28,15,9,.92));
+  animation: report-sky-pulse 7.2s ease-in-out both; }
+.report-spectacle-sky::before { content: ""; position: absolute; inset: 0; opacity: .42; background-image:
+  radial-gradient(circle, #fff 0 1px, transparent 1.6px),
+  radial-gradient(circle, var(--gold-300) 0 1px, transparent 1.7px);
+  background-position: 0 0, 31px 43px; background-size: 73px 73px, 97px 97px; animation: report-stars 5.8s ease-in-out both; }
+.report-spectacle-copy { position: absolute; z-index: 5; inset: 50% auto auto 50%; width: min(860px, calc(100vw - 32px)); transform: translate(-50%, -50%); color: var(--paper-50); text-align: center; text-shadow: 0 3px 24px rgba(0,0,0,.95); animation: report-copy-arrival 6.7s cubic-bezier(.2,.7,.2,1) both; }
+.report-spectacle-copy > span { display: block; color: var(--gold-300); font-size: clamp(14px, 1.4vw, 21px); font-weight: 800; text-transform: uppercase; letter-spacing: .28em; }
+.report-spectacle-copy > strong { display: block; margin: 4px 0 -4px; color: #ff557a; font-size: clamp(70px, 11vw, 170px); line-height: .95; filter: drop-shadow(0 0 14px rgba(255,70,112,.8)) drop-shadow(0 0 50px rgba(196,39,84,.45)); animation: report-heart-beat 1.05s ease-in-out .7s 5; }
+.report-spectacle-copy p { margin: 12px auto 0; color: #fff8e8; font: 700 clamp(20px, 3.1vw, 48px)/1.18 var(--font-display); letter-spacing: .015em; }
+.report-spectacle-copy p b { color: #ff6f91; font-family: inherit; filter: drop-shadow(0 0 8px rgba(255,73,116,.9)); }
+.report-fireworks { position: absolute; z-index: 1; inset: 0; }
+.report-firework { --firework-delay: .2s; --burst-scale: 1; position: absolute; width: 5px; height: 5px; transform: scale(var(--burst-scale)); }
+.report-firework::before { content: ""; position: absolute; inset: -7px; border-radius: 50%; background: #fff; box-shadow: 0 0 12px 5px #fff, 0 0 35px 13px var(--gold-300); opacity: 0; animation: report-burst-core 1.25s ease-out var(--firework-delay) both; }
+.report-spark { --spark-angle: 0deg; --spark-distance: 128px; --spark-color: #ffd966; position: absolute; left: 50%; top: 50%; width: clamp(12px, 1.35vw, 22px); height: 4px; margin: -2px 0 0 -2px; border-radius: 999px; background: linear-gradient(90deg, #fff, var(--spark-color) 38%, transparent); box-shadow: 0 0 8px 2px var(--spark-color); opacity: 0; transform-origin: 2px 50%; animation: report-spark-flight 1.55s cubic-bezier(.1,.55,.12,1) var(--firework-delay) both; }
+.report-spark-1 { --spark-angle: 0deg; --spark-color: #ffd85a; }
+.report-spark-2 { --spark-angle: 22.5deg; --spark-color: #ff5f86; --spark-distance: 108px; }
+.report-spark-3 { --spark-angle: 45deg; --spark-color: #fff2a6; --spark-distance: 142px; }
+.report-spark-4 { --spark-angle: 67.5deg; --spark-color: #ff914d; --spark-distance: 116px; }
+.report-spark-5 { --spark-angle: 90deg; --spark-color: #ffd85a; --spark-distance: 148px; }
+.report-spark-6 { --spark-angle: 112.5deg; --spark-color: #ff5f86; --spark-distance: 110px; }
+.report-spark-7 { --spark-angle: 135deg; --spark-color: #fff2a6; --spark-distance: 138px; }
+.report-spark-8 { --spark-angle: 157.5deg; --spark-color: #ff914d; --spark-distance: 119px; }
+.report-spark-9 { --spark-angle: 180deg; --spark-color: #ffd85a; --spark-distance: 151px; }
+.report-spark-10 { --spark-angle: 202.5deg; --spark-color: #ff5f86; --spark-distance: 106px; }
+.report-spark-11 { --spark-angle: 225deg; --spark-color: #fff2a6; --spark-distance: 140px; }
+.report-spark-12 { --spark-angle: 247.5deg; --spark-color: #ff914d; --spark-distance: 114px; }
+.report-spark-13 { --spark-angle: 270deg; --spark-color: #ffd85a; --spark-distance: 146px; }
+.report-spark-14 { --spark-angle: 292.5deg; --spark-color: #ff5f86; --spark-distance: 112px; }
+.report-spark-15 { --spark-angle: 315deg; --spark-color: #fff2a6; --spark-distance: 144px; }
+.report-spark-16 { --spark-angle: 337.5deg; --spark-color: #ff914d; --spark-distance: 118px; }
+.report-firework-1 { left: 14%; top: 24%; --firework-delay: .35s; --burst-scale: .86; }
+.report-firework-2 { left: 82%; top: 22%; --firework-delay: .7s; --burst-scale: 1.08; }
+.report-firework-3 { left: 29%; top: 47%; --firework-delay: 1.3s; --burst-scale: .72; }
+.report-firework-4 { left: 70%; top: 48%; --firework-delay: 1.65s; --burst-scale: .9; }
+.report-firework-5 { left: 50%; top: 16%; --firework-delay: 2.1s; --burst-scale: 1.12; }
+.report-firework-6 { left: 9%; top: 67%; --firework-delay: 2.75s; --burst-scale: .82; }
+.report-firework-7 { left: 89%; top: 66%; --firework-delay: 3.05s; --burst-scale: .92; }
+.report-firework-8 { left: 22%; top: 18%; --firework-delay: 3.75s; --burst-scale: 1.03; }
+.report-firework-9 { left: 77%; top: 17%; --firework-delay: 4.15s; --burst-scale: .78; }
+.report-firework-10 { left: 39%; top: 70%; --firework-delay: 4.65s; --burst-scale: .86; }
+.report-firework-11 { left: 62%; top: 69%; --firework-delay: 5.05s; --burst-scale: 1; }
+.report-confetti { --confetti-left: 10%; --confetti-delay: .5s; --confetti-color: var(--gold-300); position: absolute; left: var(--confetti-left); top: -8%; width: 9px; height: 19px; border-radius: 2px; background: var(--confetti-color); box-shadow: 0 0 8px var(--confetti-color); opacity: 0; animation: report-confetti-fall 5.4s cubic-bezier(.2,.7,.3,1) var(--confetti-delay) both; }
+.report-confetti-1, .report-confetti-13 { --confetti-left: 4%; --confetti-color: #ff577e; }
+.report-confetti-2, .report-confetti-14 { --confetti-left: 12%; --confetti-delay: .9s; }
+.report-confetti-3, .report-confetti-15 { --confetti-left: 20%; --confetti-delay: .35s; --confetti-color: #fff1a1; }
+.report-confetti-4, .report-confetti-16 { --confetti-left: 29%; --confetti-delay: 1.2s; --confetti-color: #ff884d; }
+.report-confetti-5, .report-confetti-17 { --confetti-left: 38%; --confetti-delay: .65s; }
+.report-confetti-6, .report-confetti-18 { --confetti-left: 47%; --confetti-delay: 1.5s; --confetti-color: #ff577e; }
+.report-confetti-7, .report-confetti-19 { --confetti-left: 56%; --confetti-delay: .45s; --confetti-color: #fff1a1; }
+.report-confetti-8, .report-confetti-20 { --confetti-left: 64%; --confetti-delay: 1.1s; }
+.report-confetti-9, .report-confetti-21 { --confetti-left: 72%; --confetti-delay: .75s; --confetti-color: #ff884d; }
+.report-confetti-10, .report-confetti-22 { --confetti-left: 81%; --confetti-delay: 1.35s; --confetti-color: #ff577e; }
+.report-confetti-11, .report-confetti-23 { --confetti-left: 89%; --confetti-delay: .55s; --confetti-color: #fff1a1; }
+.report-confetti-12, .report-confetti-24 { --confetti-left: 96%; --confetti-delay: 1s; }
+.report-confetti-13, .report-confetti-14, .report-confetti-15, .report-confetti-16, .report-confetti-17, .report-confetti-18, .report-confetti-19, .report-confetti-20, .report-confetti-21, .report-confetti-22, .report-confetti-23, .report-confetti-24 { animation-delay: calc(var(--confetti-delay) + 1.55s); }
+.report-spectacle-heart { position: absolute; color: #ff6186; font-size: clamp(24px, 4vw, 62px); opacity: 0; filter: drop-shadow(0 0 10px rgba(255,70,112,.8)); animation: report-floating-heart 3s ease-out both; }
+.heart-one { left: 17%; bottom: 7%; animation-delay: 1.2s; }
+.heart-two { right: 16%; bottom: 5%; animation-delay: 2s; }
+.heart-three { left: 35%; bottom: 0; animation-delay: 3.1s; }
+.heart-four { right: 34%; bottom: 2%; animation-delay: 4s; }
+@keyframes report-spectacle-stage { 0% { opacity: 0; visibility: visible; } 4%, 78% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
+@keyframes report-sky-pulse { 0% { filter: brightness(.35); } 15%, 72% { filter: brightness(1); } 100% { filter: brightness(.45); } }
+@keyframes report-stars { 0% { opacity: 0; transform: scale(1); } 18% { opacity: .48; } 70% { opacity: .75; transform: scale(1.06); } 100% { opacity: 0; transform: scale(1.1); } }
+@keyframes report-copy-arrival { 0%, 8% { opacity: 0; transform: translate(-50%, -42%) scale(.75); filter: blur(12px); } 18%, 72% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0); } 88%, 100% { opacity: 0; transform: translate(-50%, -56%) scale(1.07); filter: blur(5px); } }
+@keyframes report-heart-beat { 0%, 100% { transform: scale(.92); } 20% { transform: scale(1.16) rotate(-3deg); } 42% { transform: scale(.96); } 64% { transform: scale(1.11) rotate(3deg); } }
+@keyframes report-burst-core { 0%, 8% { opacity: 0; transform: scale(.05); } 12% { opacity: 1; transform: scale(1.1); } 33%, 100% { opacity: 0; transform: scale(2.8); } }
+@keyframes report-spark-flight { 0%, 8% { opacity: 0; transform: rotate(var(--spark-angle)) translateX(0) scaleX(.15); } 12% { opacity: 1; } 70% { opacity: .96; transform: rotate(var(--spark-angle)) translateX(var(--spark-distance)) scaleX(1); } 100% { opacity: 0; transform: rotate(var(--spark-angle)) translateX(calc(var(--spark-distance) + 36px)) rotate(9deg) scaleX(.12); } }
+@keyframes report-confetti-fall { 0% { opacity: 0; transform: translate3d(0,-8vh,0) rotate(0); } 8% { opacity: 1; } 35% { transform: translate3d(42px,35vh,0) rotate(210deg); } 70% { opacity: .9; transform: translate3d(-30px,78vh,0) rotate(520deg); } 100% { opacity: 0; transform: translate3d(22px,112vh,0) rotate(760deg); } }
+@keyframes report-floating-heart { 0% { opacity: 0; transform: translateY(0) scale(.4) rotate(-12deg); } 18% { opacity: .92; } 72% { opacity: .75; } 100% { opacity: 0; transform: translateY(-72vh) scale(1.25) rotate(15deg); } }
+@keyframes report-spectacle-reduced { 0% { opacity: 0; visibility: visible; } 14%, 78% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .report-spectacle { animation: report-spectacle-reduced 1.4s ease-in-out both; }
+  .report-spectacle-sky { animation: none; }
+  .report-spectacle-copy { animation: none; opacity: 1; }
+  .report-spectacle-copy > strong { animation: none; }
+  .report-fireworks, .report-spectacle-sky::before { display: none; }
+}
+
 /* ===========================================================================
    Pages hors shell : connexion, invitation, refus
    ========================================================================== */
@@ -732,7 +817,12 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .report-activity > span:last-child { grid-column: 1/-1; border-top: 1px solid var(--hairline); }
   .report-actions { align-items: stretch; flex-direction: column; }
   .report-actions form, .report-actions .button { width: 100%; }
+  .report-spectacle-copy { width: calc(100vw - 28px); }
+  .report-spectacle-copy p { font-size: clamp(22px, 8vw, 34px); }
+  .report-firework-3, .report-firework-4, .report-firework-6, .report-firework-7, .report-firework-10, .report-firework-11,
+  .report-confetti-13, .report-confetti-14, .report-confetti-15, .report-confetti-16, .report-confetti-17, .report-confetti-18,
+  .report-confetti-19, .report-confetti-20, .report-confetti-21, .report-confetti-22, .report-confetti-23, .report-confetti-24 { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  *:not(.report-spectacle):not(.report-spectacle *), *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

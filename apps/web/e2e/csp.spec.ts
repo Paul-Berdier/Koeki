@@ -46,3 +46,18 @@ test("equipment filters find the right ninja quickly", async ({ page }) => {
   await expect(page.locator(".equipment-row")).toHaveCount(1);
   await expect(page.getByText("Toshiro Makaze", { exact: true })).toBeVisible();
 });
+
+test("reports launch and replay the fireworks spectacle", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Rapports", exact: true }).click();
+  await expect(page).toHaveURL(/\/reports$/);
+  await expect(page.locator(".report-spectacle")).toBeVisible();
+  await expect(page.locator(".report-spectacle-copy").getByText("*keur* si c'est pas ce que tu veux alors j'ai R compris", { exact: true })).toBeVisible();
+  await expect(page.locator(".report-firework")).toHaveCount(11);
+
+  const firstRound = Number(await page.locator(".report-spectacle").getAttribute("data-round"));
+  await page.getByRole("link", { name: "Rapports", exact: true }).click();
+  await expect(page.locator(".report-spectacle")).toHaveAttribute("data-round", String(firstRound + 1));
+  await page.waitForTimeout(1_500);
+  await page.screenshot({ path: "test-results/reports-fireworks-replay.png" });
+});
