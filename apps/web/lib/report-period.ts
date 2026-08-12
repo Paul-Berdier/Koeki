@@ -49,6 +49,17 @@ function atParisTime(value: string, endOfDay: boolean) {
   return new Date(instant);
 }
 
+export function reportDayBoundary(value: string, endOfDay = false) {
+  return atParisTime(value, endOfDay);
+}
+
+export function normalizeReportHistoryRange(fromValue?: string, toValue?: string) {
+  const from = fromValue ? reportDayBoundary(fromValue) : undefined;
+  const to = toValue ? reportDayBoundary(toValue, true) : undefined;
+  if (from && to && from > to) throw new Error("La date de début doit précéder la date de fin");
+  return { from, to };
+}
+
 export function normalizeReportPeriod(startValue: string, endValue: string) {
   const start = atParisTime(startValue, false);
   const end = atParisTime(endValue, true);

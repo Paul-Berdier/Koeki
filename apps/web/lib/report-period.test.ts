@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatReportDate, isReportPeriodComplete, normalizeReportPeriod, shiftReportDate } from "./report-period";
+import { formatReportDate, isReportPeriodComplete, normalizeReportHistoryRange, normalizeReportPeriod, reportDayBoundary, shiftReportDate } from "./report-period";
 
 describe("report periods in Europe/Paris", () => {
   it("uses the Paris summer offset for complete civil days", () => {
@@ -23,6 +23,13 @@ describe("report periods in Europe/Paris", () => {
   it("formats persisted instants back to their Paris civil date", () => {
     expect(formatReportDate(new Date("2026-07-14T22:00:00.000Z"))).toBe("2026-07-15");
     expect(shiftReportDate("2026-03-01", -1)).toBe("2026-02-28");
+  });
+
+  it("normalizes history filter boundaries in Paris", () => {
+    expect(reportDayBoundary("2026-08-01").toISOString()).toBe("2026-07-31T22:00:00.000Z");
+    expect(reportDayBoundary("2026-08-31", true).toISOString()).toBe("2026-08-31T21:59:59.999Z");
+    expect(normalizeReportHistoryRange("2026-08-01").to).toBeUndefined();
+    expect(() => normalizeReportHistoryRange("2026-09-01", "2026-08-01")).toThrow("La date de début doit précéder la date de fin");
   });
 
   it("rejects invalid and reversed periods", () => {

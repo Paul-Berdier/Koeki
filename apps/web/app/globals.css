@@ -587,6 +587,9 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Rapports : résumé immédiatement lisible, contenu complet accessible à la demande. */
 .report-filter-bar { margin: 0; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.report-date-filter { display: inline-flex; align-items: center; gap: 7px; color: var(--sand-500); font-size: 11px; font-weight: 700; }
+.report-date-filter input { min-height: 38px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 7px 10px; color: var(--paper-100); background: rgba(0,0,0,.16); color-scheme: dark; }
+.report-date-filter input:focus { border-color: var(--gold-500); box-shadow: 0 0 0 3px rgba(196,148,62,.1); outline: 0; }
 .report-list { display: grid; gap: 12px; padding: 16px 18px 20px; }
 .report-card { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); background: rgba(0,0,0,.08); }
 .report-card-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 16px; border-bottom: 1px solid var(--hairline); }
@@ -721,6 +724,8 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .equipment-editor-slot { padding: 8px; }
   .equipment-editor-actions { position: sticky; bottom: 0; background: var(--ink-900); }
   .report-list { padding: 10px; }
+  .report-date-filter { flex: 1 1 calc(50% - 5px); }
+  .report-date-filter input { min-width: 0; width: 100%; }
   .report-card-header { align-items: flex-start; }
   .report-activity { grid-template-columns: 1fr 1fr; }
   .report-activity > span:nth-child(2) { border-right: 0; }

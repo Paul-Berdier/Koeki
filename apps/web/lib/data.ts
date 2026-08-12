@@ -3,6 +3,7 @@ import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
 import { allocatePayment, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, settlementTotals, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
+import { normalizeReportHistoryRange } from "./report-period";
 import { demoMode, hasPermission, roleLabels, type SessionInfo } from "./session";
 import type { AdminData, AuditData, CraftingData, DashboardData, EventsData, InventoryData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
 
@@ -495,7 +496,7 @@ export const reportStatusOptions = [
   { value: "APPROVED", label: "Approuvé", badge: "paid" }
 ] as const satisfies ReadonlyArray<{ value: string; label: string; badge: BadgeStatus }>;
 
-export interface ReportsFilterParams { auteur?: string | undefined; statut?: string | undefined }
+export interface ReportsFilterParams { auteur?: string | undefined; statut?: string | undefined; du?: string | undefined; au?: string | undefined }
 
 export async function getReports(session: SessionInfo, page = 1, filters: ReportsFilterParams = {}): Promise<ReportsData> {
   if (demoMode) return demoReports;
@@ -503,13 +504,15 @@ export async function getReports(session: SessionInfo, page = 1, filters: Report
   const pageSize = 12;
   const requestedPage = Number.isSafeInteger(page) && page > 0 ? page : 1;
   const status = reportStatusOptions.find((option) => option.value === filters.statut)?.value;
+  const { from, to } = normalizeReportHistoryRange(filters.du, filters.au);
   const canReadAll = hasPermission(session, "reports:read-all");
   const visibilityWhere: Prisma.AgentReportWhereInput = canReadAll
     ? { OR: [{ authorId: session.userId }, { status: { not: "DRAFT" } }] }
     : { authorId: session.userId };
   const filterWhere: Prisma.AgentReportWhereInput = {
     ...(filters.auteur ? { authorId: filters.auteur } : {}),
-    ...(status ? { status } : {})
+    ...(status ? { status } : {}),
+    ...(from || to ? { periodStart: { ...(to ? { lte: to } : {}) }, periodEnd: { ...(from ? { gte: from } : {}) } } : {})
   };
   const where: Prisma.AgentReportWhereInput = { AND: [visibilityWhere, filterWhere] };
   const canReview = hasPermission(session, "reports:review");
