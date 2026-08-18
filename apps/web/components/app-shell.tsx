@@ -5,9 +5,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BarChart3, BookOpenText, Boxes, ChevronLeft, ChevronRight, FileText, HandCoins, HeartHandshake,
-  LayoutDashboard, LogOut, Menu, PackageSearch, ScrollText, Settings, ShieldCheck, Trophy, UserCircle2, Users, X
+  LayoutDashboard, LogOut, Menu, MessageCircleQuestion, PackageSearch, ScrollText, Settings, ShieldCheck, Trophy, UserCircle2, Users, X
 } from "lucide-react";
 import type { ShellInfo } from "@/lib/types";
+
+const SUPPORT_DISCORD_URL = "https://discord.com/users/522551561591980073";
 
 /* Navigation groupée par métier — les entrées gardent leurs routes historiques,
    seules celles autorisées par le layout serveur sont rendues. */
@@ -70,6 +72,10 @@ export function AppShell({ children, shell, allowed }: { children: React.ReactNo
         </div>)}
       </nav>
       <div className="sidebar-footer">
+        <a className="support-link" href={SUPPORT_DISCORD_URL} target="_blank" rel="noreferrer" title="Contacter Personne sur Discord">
+          <span className="support-avatar"><MessageCircleQuestion size={16} aria-hidden="true" /></span>
+          <span><strong>Un problème ?</strong><small>Contacter Personne sur Discord</small></span>
+        </a>
         {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- route handler (NextAuth signout), pas une page */}
         <a href="/api/auth/signout" title={`${shell.userName} — se déconnecter`}><span className="agent-avatar">{shell.userName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span><span><strong>{shell.userName}</strong><small>{shell.userRoleLabel}</small></span><LogOut size={16} aria-hidden="true" /></a>
         <div className="secure-line"><ShieldCheck size={14} /> Session sécurisée</div>

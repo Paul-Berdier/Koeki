@@ -158,6 +158,9 @@ code { font-family: var(--font-mono); }
 .sidebar-footer strong, .sidebar-footer small { display: block; }
 .sidebar-footer strong { font-size: 12px; }
 .sidebar-footer small { margin-top: 2px; color: var(--sand-500); font-size: var(--text-caption); }
+.sidebar-footer .support-link { margin-bottom: 5px; border: 1px solid rgba(88,101,242,.28); background: rgba(88,101,242,.07); }
+.sidebar-footer .support-link:hover { border-color: rgba(123,135,255,.5); background: rgba(88,101,242,.13); }
+.support-avatar { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid rgba(123,135,255,.4); border-radius: 50%; background: rgba(88,101,242,.16); color: #b8c0ff; }
 .agent-avatar { width: 32px; height: 32px; flex: none; display: grid; place-items: center; background: linear-gradient(135deg, #453620, #241d15); border: 1px solid var(--border-strong); color: var(--gold-400); border-radius: 50%; font-size: 10px; font-weight: 700; }
 .secure-line { display: flex; align-items: center; gap: 6px; padding: 6px 9px 0; color: var(--olive-300); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
 
@@ -170,7 +173,7 @@ code { font-family: var(--font-mono); }
 .app-shell.nav-collapsed .brand-row > div:not(.brand-mark), .app-shell.nav-collapsed .rp-clock span,
 .app-shell.nav-collapsed .rp-clock small, .app-shell.nav-collapsed .rp-clock div,
 .app-shell.nav-collapsed .nav-label, .app-shell.nav-collapsed .sidebar nav a span,
-.app-shell.nav-collapsed .sidebar nav a b, .app-shell.nav-collapsed .sidebar-footer > a > span:not(.agent-avatar),
+.app-shell.nav-collapsed .sidebar nav a b, .app-shell.nav-collapsed .sidebar-footer > a > span:nth-child(2),
 .app-shell.nav-collapsed .sidebar-footer > a > svg, .app-shell.nav-collapsed .secure-line { display: none; }
 .app-shell.nav-collapsed .rp-clock { margin: 14px 10px 6px; padding: 8px 4px; grid-template-columns: 1fr; justify-items: center; }
 .app-shell.nav-collapsed .sidebar nav { padding: 4px 10px 10px; }
