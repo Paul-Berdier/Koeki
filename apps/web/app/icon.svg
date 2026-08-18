@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Kōeki">
+  <defs>
+    <radialGradient id="background" cx="50%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#2a2116" />
+      <stop offset="1" stop-color="#17140f" />
+    </radialGradient>
+    <linearGradient id="gold" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="416" y2="416">
+      <stop offset="0" stop-color="#e0bd69" />
+      <stop offset="1" stop-color="#a97327" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#background)" />
+  <rect x="126" y="126" width="260" height="260" rx="18" fill="#c4943e" fill-opacity=".06" stroke="url(#gold)" stroke-width="16" transform="rotate(45 256 256)" />
+  <circle cx="256" cy="256" r="72" fill="none" stroke="url(#gold)" stroke-width="14" />
+  <path d="M146 256h220" fill="none" stroke="url(#gold)" stroke-width="14" stroke-linecap="round" />
+  <circle cx="256" cy="256" r="25" fill="url(#gold)" />
+</svg>
