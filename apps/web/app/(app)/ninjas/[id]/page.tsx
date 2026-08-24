@@ -9,6 +9,7 @@ import { lateYearsLabel } from "@/lib/format";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { changeGrade, recordPayment, waiveAssessment } from "../actions";
 import { prisma } from "@koeki/database";
+import { parseExemptionPolicy } from "@koeki/domain";
 
 export default async function NinjaDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
@@ -25,9 +26,11 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const isOwner = ownProfile?.id === id;
   const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "audit:read") });
   if (!data) notFound();
+  const exemptionSetting = demoMode ? null : await prisma.appSetting.findUnique({ where: { key: "exemptionPolicy" } });
+  const exemptionPolicy = parseExemptionPolicy(exemptionSetting?.value);
   const isActive = data.lifecycleStatus === "ACTIVE";
   const gradeNeedsUpdate = isActive && data.grade.code === "UNKNOWN";
-  const donatable = !demoMode && canPay && isActive ? await prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }) : [];
+  const donatable = !demoMode && canPay && isActive && exemptionPolicy.weeklyTaxCoverageBps > 0 ? await prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }) : [];
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
@@ -37,7 +40,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
     {canPay && !isActive && <p className="notice" role="status">Ce dossier est {data.statusLabel.toLowerCase()} : son historique reste consultable, mais aucune nouvelle opération fiscale ne peut être enregistrée.</p>}
     {gradeNeedsUpdate && <p className="notice" role="alert"><strong>Grade à mettre à jour.</strong> La situation de paiement n’est pas à jour. Dès qu’un grade réel sera enregistré, la taxe de la semaine en cours sera créée automatiquement au bon montant.</p>}
     {canPay && isActive && <section className="panel stack-panel">
-      <SectionHeader title="Encaisser un règlement" description="Cochez les semaines réglées, puis ce que le joueur donne : des Ryō, des objets, ou les deux" />
+      <SectionHeader title="Encaisser un règlement" description={exemptionPolicy.weeklyTaxCoverageBps > 0 ? `Cochez explicitement les semaines concernées. Le crédit des objets couvre au plus ${(exemptionPolicy.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} % de chaque taxe.` : "Cochez explicitement les semaines concernées, puis saisissez les Ryō reçus. Les objets ne soldent actuellement aucune taxe."} />
       {settleable.length ? <form action={recordPayment} className="form-grid">
         <input type="hidden" name="ninjaId" value={data.id} />
         <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
@@ -45,15 +48,15 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
           <legend>Semaines à régler</legend>
           <div className="week-picker">
             {settleable.map((row) => <label key={row.id}>
-              <input type="checkbox" name="years" value={row.id} defaultChecked={row.badge === "overdue"} />
+              <input type="checkbox" name="years" value={row.id} />
               <span>RP {row.rpYear} <small>{row.period}</small> — {row.remaining > 0n ? <>reste <MoneyDisplay amount={row.remaining} />{row.penalties > 0n && <> (dont majorations <MoneyDisplay amount={row.penalties} />)</>}</> : "impayée (ancien registre)"}</span>
             </label>)}
           </div>
         </fieldset>
-        <SettlementItems resources={donatable.map((resource) => ({ id: resource.id, name: resource.name, label: `${resource.name}${resource.exemptionPerUnit > 0n ? ` — couvre ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/u` : ""}${resource.pointsPerUnit > 0 ? ` · ${resource.pointsPerUnit} pts/u` : ""}`, rate: Number(resource.exemptionPerUnit) }))} />
+        <SettlementItems taxCoverageBps={exemptionPolicy.weeklyTaxCoverageBps} resources={donatable.map((resource) => ({ id: resource.id, name: resource.name, label: `${resource.name}${resource.exemptionPerUnit > 0n ? ` — crédit ${new Intl.NumberFormat("fr-FR").format(Number(resource.exemptionPerUnit))} ¥/u` : ""}${resource.pointsPerUnit > 0 ? ` · ${resource.pointsPerUnit} pts/u` : ""}`, rate: Number(resource.exemptionPerUnit) }))} />
         <label>Référence (facultatif)<input type="text" name="reference" maxLength={120} placeholder="Arrangement, contexte…" /></label>
         <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Régler les semaines cochées</button></div>
-      </form> : <p className="notice" style={{ margin: 18 }}>{gradeNeedsUpdate ? "Renseignez d’abord le grade dans l’onglet Gestion : la semaine en cours sera alors facturée immédiatement." : <>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n ? " et sera couverte automatiquement par le crédit d’exonération" : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</>}</p>}
+      </form> : <p className="notice" style={{ margin: 18 }}>{gradeNeedsUpdate ? "Renseignez d’abord le grade dans l’onglet Gestion : la semaine en cours sera alors facturée immédiatement." : <>Rien à encaisser : aucune semaine ouverte. La prochaine taxe sera générée dimanche minuit{data.exemptionBalance > 0n && exemptionPolicy.weeklyTaxCoverageBps > 0 ? ` ; le crédit pourra en couvrir jusqu’à ${(exemptionPolicy.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} %` : ""}. Les dons et rachats hors taxes s’enregistrent depuis la page <Link href="/resources/transaction" className="text-link">Ressources</Link>.</>}</p>}
     </section>}
     <div className="duo-grid">
       <section className="panel">
@@ -130,7 +133,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
 
     <section className="metric-grid" aria-label="Situation fiscale">
       <MetricCard label="Dette totale" value={<MoneyDisplay amount={data.totalDebt} />} detail={data.totalDebt > 0n ? "Majorations comprises" : gradeNeedsUpdate ? "Grade à renseigner avant facturation" : "Aucune dette ouverte"} tone={data.totalDebt > 0n ? "danger" : gradeNeedsUpdate ? "warn" : "good"} />
-      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail="Gagné par les dons et rachats — couvre automatiquement les taxes ouvertes dès qu’il est crédité" tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
+      <MetricCard label="Crédit d’exonération" value={<MoneyDisplay amount={data.exemptionBalance} />} detail={`Entrées historiques +${data.exemptionGranted.toLocaleString("fr-FR")} ¥ · débits/corrections −${data.exemptionUsed.toLocaleString("fr-FR")} ¥ · application ${(exemptionPolicy.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} % max.`} tone={data.exemptionBalance > 0n ? "good" : "neutral"} />
       <MetricCard label="Retard" value={lateYearsLabel(data.lateYears)} detail={data.lateYears >= 2 ? "Dossier prioritaire" : "Sous surveillance normale"} tone={data.lateYears >= 2 ? "danger" : data.lateYears > 0 ? "warn" : "good"} />
       <MetricCard label="Points" value={<PointDisplay points={data.pointsBalance} />} detail="Solde explicable depuis le registre" tone="neutral" />
     </section>

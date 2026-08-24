@@ -9,7 +9,7 @@ interface Row { text: string; quantity: string }
 const formatRyo = (value: number) => new Intl.NumberFormat("fr-FR").format(value);
 const normalize = (value: string) => value.trim().toLowerCase();
 
-export function SettlementItems({ resources }: { resources: DonatableItem[] }) {
+export function SettlementItems({ resources, taxCoverageBps }: { resources: DonatableItem[]; taxCoverageBps: number }) {
   const [ryo, setRyo] = useState("0");
   const [rows, setRows] = useState<Row[]>([{ text: "", quantity: "" }]);
   const resolve = (text: string) => {
@@ -18,13 +18,12 @@ export function SettlementItems({ resources }: { resources: DonatableItem[] }) {
     return resources.find((resource) => normalize(resource.label) === query) ?? resources.find((resource) => normalize(resource.name) === query) ?? null;
   };
   const objectsTotal = rows.reduce((total, row) => total + (Number.parseInt(row.quantity, 10) || 0) * (resolve(row.text)?.rate ?? 0), 0);
-  const grandTotal = objectsTotal + (Number.parseInt(ryo, 10) || 0);
   const update = (index: number, patch: Partial<Row>) => setRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
   return <>
     <label>Ryō reçus<input type="number" name="amount" min={0} step={1} value={ryo} onChange={(event) => setRyo(event.target.value)} /></label>
-    <fieldset>
-      <legend>Objets donnés — tapez pour chercher, la couverture vient du barème de la base</legend>
+    {taxCoverageBps > 0 ? <fieldset>
+      <legend>Objets donnés — le crédit peut couvrir au maximum {(taxCoverageBps / 100).toLocaleString("fr-FR")} % de chaque taxe</legend>
       <datalist id="objets-registre">{resources.map((resource) => <option key={resource.id} value={resource.label} />)}</datalist>
       {rows.map((row, index) => {
         const matched = resolve(row.text);
@@ -38,7 +37,7 @@ export function SettlementItems({ resources }: { resources: DonatableItem[] }) {
         </div>;
       })}
       <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setRows([...rows, { text: "", quantity: "" }])}><Plus size={14} /> Ajouter un objet</button></div>
-    </fieldset>
-    <p className="notice" role="status" style={{ margin: 0 }} aria-live="polite">Objets donnés : <strong>{formatRyo(objectsTotal)} ¥</strong> · Couverture totale (Ryō + objets) : <strong>{formatRyo(grandTotal)} ¥</strong></p>
+    </fieldset> : <p className="notice" role="status" style={{ margin: 0 }}>Les objets ne peuvent pas régler une taxe tant que l’application du crédit d’exonération est à 0 %. Enregistrez les dons depuis la page Dons : leur crédit restera conservé sur le dossier.</p>}
+    <p className="notice" role="status" style={{ margin: 0 }} aria-live="polite">Ryō reçus : <strong>{formatRyo(Number.parseInt(ryo, 10) || 0)} ¥</strong>{taxCoverageBps > 0 && <> · Crédit nominal ajouté par les objets : <strong>{formatRyo(objectsTotal)} ¥</strong> · Son utilisation réelle est plafonnée à <strong>{(taxCoverageBps / 100).toLocaleString("fr-FR")} %</strong> du montant brut de chaque semaine cochée.</>}</p>
   </>;
 }

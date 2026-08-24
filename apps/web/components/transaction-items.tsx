@@ -12,7 +12,7 @@ const formatRyo = (value: number) => new Intl.NumberFormat("fr-FR").format(value
 const normalize = (value: string) => value.trim().toLowerCase();
 const warnStyle = { color: "var(--terracotta-300)", textTransform: "none", letterSpacing: "normal" } as const;
 
-export function TransactionItems({ ninjas, resources }: { ninjas: NinjaOption[]; resources: ResourceOption[] }) {
+export function TransactionItems({ ninjas, resources, taxCoverageBps }: { ninjas: NinjaOption[]; resources: ResourceOption[]; taxCoverageBps: number }) {
   const [type, setType] = useState<"DONATION" | "BUYBACK">("DONATION");
   const [ninjaText, setNinjaText] = useState("");
   const [rows, setRows] = useState<Row[]>([{ text: "", quantity: "", price: "" }]);
@@ -81,8 +81,9 @@ export function TransactionItems({ ninjas, resources }: { ninjas: NinjaOption[];
     {overMax.length > 0 && <p className="notice error" role="alert">Prix négocié au-dessus du catalogue : {overMax.join(", ")} — le prix catalogue est un maximum, on ne négocie qu’à la baisse.</p>}
     <p className="notice" role="status" style={{ margin: 0 }} aria-live="polite">
       {type === "BUYBACK"
-        ? <>Total à payer au ninja : <strong>{formatRyo(totals.payout)} ¥</strong> (prix négociés) — également crédité en exonération de taxe.</>
-        : <>Le ninja gagnera <strong>{formatRyo(totals.points)} point{totals.points > 1 ? "s" : ""}</strong> et <strong>{formatRyo(totals.exemption)} ¥</strong> d’exonération — le crédit couvre immédiatement ses taxes ouvertes.</>}
+        ? <>Total à payer au ninja : <strong>{formatRyo(totals.payout)} ¥</strong> (prix négociés) — également ajouté à son crédit d’exonération conservé.</>
+        : <>Le ninja gagnera <strong>{formatRyo(totals.points)} point{totals.points > 1 ? "s" : ""}</strong> et <strong>{formatRyo(totals.exemption)} ¥</strong> de crédit d’exonération conservé.</>}
+      {taxCoverageBps === 0 ? " Application aux taxes actuellement suspendue (0 %)." : ` Le crédit peut couvrir au plus ${(taxCoverageBps / 100).toLocaleString("fr-FR")} % de chaque taxe.`}
     </p>
     <div className="form-actions"><button className="button button-primary" type="submit"><HandCoins size={16} /> {type === "BUYBACK" ? "Enregistrer le rachat" : "Enregistrer le don"}</button></div>
   </>;

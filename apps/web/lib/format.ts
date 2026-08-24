@@ -38,4 +38,4 @@ export function weekPeriod(dueAt: Date) {
   const start = new Date(dueAt.getTime() - 604_800_000);
   return `du ${formatDate(start)} au ${formatDate(new Date(start.getTime() + 6 * 86_400_000))}`;
 }
-export function formatPercentBps(bps: number) { return `${(bps / 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`; }
+export function formatPercentBps(bps: number) { return `${(bps / 100).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} %`; }

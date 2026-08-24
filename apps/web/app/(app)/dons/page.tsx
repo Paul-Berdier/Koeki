@@ -7,6 +7,7 @@ import { getRpService } from "@/lib/data";
 import { formatDateTime } from "@/lib/format";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { prisma, type Prisma } from "@koeki/database";
+import { parseExemptionPolicy } from "@koeki/domain";
 import { declareOwnDonation, rejectDonation, validateDonation } from "./actions";
 
 const formatRyo = (value: number) => new Intl.NumberFormat("fr-FR").format(value);
@@ -40,15 +41,17 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
     ] }))
   };
   const itemsInclude = { include: { resource: { select: { name: true, pointsPerUnit: true, exemptionPerUnit: true } } } } as const;
-  const [profile, resources, pending, recent, cyclePoints, cycleDons, allNinjas] = await Promise.all([
+  const [profile, resources, pending, recent, cyclePoints, cycleDons, allNinjas, exemptionSetting] = await Promise.all([
     prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true, code: true, firstName: true, lastName: true, status: true } }),
     prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }),
     prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" }, include: { ninja: { select: { id: true, code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
     prisma.resourceTransaction.findMany({ where: registerWhere, orderBy: { createdAt: "desc" }, take: 100, include: { ninja: { select: { id: true, code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
     prisma.pointLedgerEntry.aggregate({ where: { eventType: "DONATION", points: { gt: 0 }, createdAt: { gte: since } }, _sum: { points: true } }),
     prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "VALIDATED", validatedAt: { gte: since } }, select: { id: true } }),
-    prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { firstName: true, lastName: true } })
+    prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { firstName: true, lastName: true } }),
+    prisma.appSetting.findUnique({ where: { key: "exemptionPolicy" } })
   ]);
+  const exemptionPolicy = parseExemptionPolicy(exemptionSetting?.value);
   const searchSuggestions = [...allNinjas.map((ninja) => `${ninja.firstName} ${ninja.lastName}`), ...resources.map((resource) => resource.name)];
   const [cycleExemption, grantedBySource] = await Promise.all([
     prisma.exemptionLedgerEntry.aggregate({ where: { sourceType: "ResourceTransaction", amount: { gt: 0 }, sourceId: { in: cycleDons.map((don) => don.id) } }, _sum: { amount: true } }),
@@ -68,7 +71,7 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
     return { id: resource.id, name: resource.name, label: detail ? `${resource.name} — ${detail}` : resource.name, points, rate };
   });
   return <div className="page-wrap">
-    <PageHeader eyebrow="Générosité du village" title="Dons" description="Chaque don rapporte des points de classement et un crédit d’exonération selon le barème du catalogue. Les ninjas déclarent, un agent valide, le registre garde tout."
+    <PageHeader eyebrow="Générosité du village" title="Dons" description="Chaque don rapporte des points et un crédit d’exonération conservé selon le barème. Son application actuelle aux taxes est paramétrée séparément."
       actions={canValidate ? <Link className="button button-primary" href="/resources/transaction">Enregistrer un don (agent)</Link> : undefined} />
     {declared && <p className="notice" role="status">Déclaration envoyée — reçu <code>{declared}</code>. Un agent doit la valider avant que les points et l’exonération soient crédités.</p>}
     {info && <p className="notice" role="status">{info}</p>}
@@ -76,20 +79,20 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
     <section className="metric-grid" aria-label="Dons du cycle">
       <MetricCard label={`Dons validés (année RP ${rpYear})`} value={String(cycleDons.length)} detail="Cycle en cours" />
       <MetricCard label="Points gagnés par dons" value={<PointDisplay points={cyclePoints._sum.points ?? 0} />} detail="Cycle en cours" tone="good" />
-      <MetricCard label="Exonération accordée" value={<MoneyDisplay amount={cycleExemption._sum.amount ?? 0n} />} detail="Crédit gagné par les dons du cycle" tone="good" />
+      <MetricCard label="Exonération accordée" value={<MoneyDisplay amount={cycleExemption._sum.amount ?? 0n} />} detail={`Crédit gagné et conservé · application ${(exemptionPolicy.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} % max./taxe`} tone="good" />
       <MetricCard label="En attente de validation" value={String(pending.length)} detail={pending.length ? "Déclarations à traiter" : "Aucune déclaration en attente"} tone={pending.length ? "warn" : "neutral"} />
     </section>
     <div className="detail-grid" style={{ alignItems: "start" }}>
       <section className="panel">
         {profile && profile.status === "ACTIVE" ? <>
-          <SectionHeader title="Déclarer mon don" description={`Au nom de ${profile.firstName} ${profile.lastName} (${profile.code}) — points et exonération crédités après validation par un agent`} />
+          <SectionHeader title="Déclarer mon don" description={`Au nom de ${profile.firstName} ${profile.lastName} (${profile.code}) — points et crédit d’exonération conservés après validation`} />
           <form action={declareOwnDonation} className="form-grid">
             <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
-            <DonationDeclaration resources={donatable} />
+            <DonationDeclaration resources={donatable} taxCoverageBps={exemptionPolicy.weeklyTaxCoverageBps} />
           </form>
         </> : <>
           <SectionHeader title="Déclarer mon don" description="Votre compte n’est lié à aucune fiche ninja" />
-          <p className="notice" style={{ margin: 18 }}>Pour déclarer un don, liez d’abord votre fiche depuis la page <Link href="/profil" className="text-link"><UserCircle2 size={14} /> Ma fiche</Link>. Vos dons seront alors crédités en points et en exonération de taxe.</p>
+          <p className="notice" style={{ margin: 18 }}>Pour déclarer un don, liez d’abord votre fiche depuis la page <Link href="/profil" className="text-link"><UserCircle2 size={14} /> Ma fiche</Link>. Vos dons seront crédités en points et dans votre solde d’exonération conservé.</p>
         </>}
       </section>
       {canValidate && <section className="panel">

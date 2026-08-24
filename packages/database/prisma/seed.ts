@@ -41,6 +41,7 @@ async function main() {
   await prisma.inventoryMovement.upsert({ where: { idempotencyKey: "seed-copper-opening" }, create: { resourceId: copper.id, type: "MANUAL_ADJUSTMENT", quantity: 82, agentId: admin.id, justification: "Stock initial fictif", idempotencyKey: "seed-copper-opening" }, update: {} });
   await prisma.inventoryMovement.upsert({ where: { idempotencyKey: "seed-fabric-opening" }, create: { resourceId: fabric.id, type: "MANUAL_ADJUSTMENT", quantity: 9, agentId: admin.id, justification: "Stock initial fictif", idempotencyKey: "seed-fabric-opening" }, update: {} });
   await prisma.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value: { latePenaltyPercentBps: null, latePenaltyBasis: "ORIGINAL_TAX", latePenaltyFrequencyRpYears: 1, maxPenaltyApplications: 4, maxAssessmentDebt: "32000", isPenaltyAutomationEnabled: false, isRateValidated: false } }, update: {} });
+  await prisma.appSetting.upsert({ where: { key: "exemptionPolicy" }, create: { key: "exemptionPolicy", value: { weeklyTaxCoverageBps: 0 } }, update: {} });
   await prisma.appSetting.upsert({ where: { key: "rpTime" }, create: { key: "rpTime", value: { realAnchorAt: "2026-01-05T00:00:00.000Z", rpAnchorYear: 20, realMillisecondsPerRpYear: 604800000, timezone: "Europe/Paris", fiscalYearStartOffsetMs: 0, dueDelayMs: 259200000 } }, update: {} });
   console.log("Kōeki demo seed complete", { ninjas: ninjas.size, grades: grades.size });
 }

@@ -11,7 +11,7 @@ const formatRyo = (value: number) => new Intl.NumberFormat("fr-FR").format(value
 const normalize = (value: string) => value.trim().toLowerCase();
 const warnStyle = { color: "var(--terracotta-300)", textTransform: "none", letterSpacing: "normal" } as const;
 
-export function DonationDeclaration({ resources }: { resources: DonatableResource[] }) {
+export function DonationDeclaration({ resources, taxCoverageBps }: { resources: DonatableResource[]; taxCoverageBps: number }) {
   const [rows, setRows] = useState<Row[]>([{ text: "", quantity: "" }]);
   const resolve = (text: string) => {
     const query = normalize(text);
@@ -42,7 +42,7 @@ export function DonationDeclaration({ resources }: { resources: DonatableResourc
       })}
       {rows.length < MAX_ROWS && <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setRows([...rows, { text: "", quantity: "" }])}><Plus size={14} /> Ajouter un objet</button></div>}
     </fieldset>
-    <p className="notice" role="status" style={{ margin: 0 }} aria-live="polite">Estimation : <strong>{formatRyo(totals.points)} point{totals.points > 1 ? "s" : ""}</strong> · <strong>{formatRyo(totals.exemption)} ¥</strong> d’exonération — crédités après validation par un agent.</p>
+    <p className="notice" role="status" style={{ margin: 0 }} aria-live="polite">Estimation : <strong>{formatRyo(totals.points)} point{totals.points > 1 ? "s" : ""}</strong> · <strong>{formatRyo(totals.exemption)} ¥</strong> de crédit conservé après validation. {taxCoverageBps === 0 ? "Son application aux taxes est actuellement suspendue." : `Il peut couvrir au plus ${(taxCoverageBps / 100).toLocaleString("fr-FR")} % de chaque taxe.`}</p>
     <div className="form-actions"><button className="button button-primary" type="submit"><HeartHandshake size={16} /> Déclarer ce don</button></div>
   </>;
 }

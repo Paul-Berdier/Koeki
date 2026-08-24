@@ -26,6 +26,7 @@ async function main() {
   for (const grade of grades.values()) await prisma.taxPolicyGradeRate.upsert({ where: { taxPolicyId_gradeId: { taxPolicyId: policy.id, gradeId: grade.id } }, create: { taxPolicyId: policy.id, gradeId: grade.id, amount: grade.amount }, update: {} });
   for (const [code, label] of categorySeed) await prisma.resourceCategory.upsert({ where: { code }, create: { code, label }, update: { label } });
   await prisma.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value: { latePenaltyPercentBps: null, latePenaltyBasis: "ORIGINAL_TAX", latePenaltyFrequencyRpYears: 1, maxPenaltyApplications: 4, maxAssessmentDebt: "32000", isPenaltyAutomationEnabled: false, isRateValidated: false } }, update: {} });
+  await prisma.appSetting.upsert({ where: { key: "exemptionPolicy" }, create: { key: "exemptionPolicy", value: { weeklyTaxCoverageBps: 0 } }, update: {} });
   // Cadence RP : 1 jour réel = 1 mois RP, 1 semaine réelle = 1 année RP. L'année bascule le
   // dimanche à minuit (Europe/Paris) — c'est aussi l'échéance de paiement (dueDelay = année entière).
   const sundayMidnightConfig = { realAnchorAt: "2026-01-04T23:00:00.000Z", rpAnchorYear: 20, realMillisecondsPerRpYear: 604800000, timezone: "Europe/Paris", fiscalYearStartOffsetMs: 0, dueDelayMs: 604800000 };

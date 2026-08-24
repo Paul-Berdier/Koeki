@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
+import { exemptionUse, planLegacySettlement } from "@koeki/domain";
 import { getRpService, loadNinjaFiscal } from "@/lib/data";
-import { awardPoints, grantExemption, isUniqueViolation, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { awardPoints, grantExemption, isUniqueViolation, loadExemptionPolicy, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { billCurrentWeekAfterGradeResolution } from "@/lib/grade-tax";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
 
@@ -387,6 +388,7 @@ export async function recordPayment(formData: FormData) {
       if (targets.length !== selected.length) throw new Error("VALIDATION:Semaine introuvable pour ce dossier");
       if (targets.some((target) => ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED"].includes(target.status))) throw new Error("VALIDATION:Une semaine cochée est déjà exonérée ou remise");
       if (targets.some((target) => target.remaining === 0n && target.status !== "OVERDUE")) throw new Error("VALIDATION:Une semaine cochée est déjà soldée");
+      const exemptionPolicy = await loadExemptionPolicy(tx);
 
       // Donated items become a validated donation (stock, points, credit) whose value covers the weeks.
       let donationValue = 0n;
@@ -413,39 +415,43 @@ export async function recordPayment(formData: FormData) {
 
       const debtTargets = targets.filter((target) => target.remaining > 0n);
       const legacyTargets = targets.filter((target) => target.remaining === 0n);
-      const debtTotal = debtTargets.reduce((total, target) => total + target.remaining, 0n);
       const potRyo = BigInt(amount);
-      if (legacyTargets.length && potRyo + donationValue < debtTotal) throw new Error(`VALIDATION:Couverture insuffisante — les semaines à dette cochées totalisent ${Number(debtTotal).toLocaleString("fr-FR")} ¥`);
       let donLeft = donationValue, ryoLeft = potRyo;
+      let legacyDebtAdded = 0n;
       const exemptionUses: Array<{ assessmentId: string; rpYear: number; amount: bigint }> = [];
       const allocations: Array<{ assessmentId: string; amount: bigint }> = [];
       for (const target of debtTargets) {
         let need = target.remaining;
-        const fromDon = donLeft < need ? donLeft : need;
+        const gross = target.original + target.penalties + target.adjustments;
+        const fromDon = exemptionUse({ availableCredit: donLeft, remainingDebt: need, gross, alreadyExempted: target.exemptions, coverageBps: exemptionPolicy.weeklyTaxCoverageBps });
         if (fromDon > 0n) { exemptionUses.push({ assessmentId: target.id, rpYear: target.rpYear, amount: fromDon }); donLeft -= fromDon; need -= fromDon; }
         const fromRyo = ryoLeft < need ? ryoLeft : need;
         if (fromRyo > 0n) { allocations.push({ assessmentId: target.id, amount: fromRyo }); ryoLeft -= fromRyo; need -= fromRyo; }
       }
       if (legacyTargets.length) {
-        const leftover = donLeft + ryoLeft;
-        const share = leftover / BigInt(legacyTargets.length);
-        let remainder = leftover % BigInt(legacyTargets.length);
-        for (const target of legacyTargets) {
-          let extra = share + (remainder > 0n ? 1n : 0n);
-          if (remainder > 0n) remainder -= 1n;
-          if (extra === 0n) continue;
-          await tx.taxAdjustment.create({ data: { assessmentId: target.id, type: "EXCEPTIONAL_DEBT", amount: extra, reason: `Régularisation ancien registre — semaine RP ${target.rpYear}`, createdById: session.userId } });
-          const fromDon = donLeft < extra ? donLeft : extra;
-          if (fromDon > 0n) { exemptionUses.push({ assessmentId: target.id, rpYear: target.rpYear, amount: fromDon }); donLeft -= fromDon; extra -= fromDon; }
-          if (extra > 0n) { allocations.push({ assessmentId: target.id, amount: extra }); ryoLeft -= extra; }
+        const rate = exemptionPolicy.weeklyTaxCoverageBps;
+        const plan = planLegacySettlement({ weeks: legacyTargets.length, ryo: ryoLeft, availableCredit: donLeft, coverageBps: rate });
+        if (!plan) {
+          if (rate < 10_000 && ryoLeft < BigInt(legacyTargets.length)) throw new Error(`VALIDATION:Les ${legacyTargets.length} semaines de l’ancien registre nécessitent au moins ${legacyTargets.length} Ryō au total avec le plafond actuel`);
+          throw new Error("VALIDATION:Le montant disponible ne permet pas d’affecter chaque semaine cochée");
+        }
+        for (const [index, target] of legacyTargets.entries()) {
+          const { ryo: fromRyo, credit: fromDon, debt: exceptionalDebt } = plan.lines[index]!;
+          await tx.taxAdjustment.create({ data: { assessmentId: target.id, type: "EXCEPTIONAL_DEBT", amount: exceptionalDebt, reason: `Régularisation ancien registre — semaine RP ${target.rpYear}`, createdById: session.userId } });
+          legacyDebtAdded += exceptionalDebt;
+          if (fromDon > 0n) { exemptionUses.push({ assessmentId: target.id, rpYear: target.rpYear, amount: fromDon }); donLeft -= fromDon; }
+          if (fromRyo > 0n) { allocations.push({ assessmentId: target.id, amount: fromRyo }); ryoLeft -= fromRyo; }
         }
       }
       if (ryoLeft > 0n) throw new Error("VALIDATION:Il reste des Ryō non affectés — réduisez le montant ou cochez d’autres semaines (le surplus d’objets, lui, reste en crédit)");
+      const touched = new Set([...allocations.map((entry) => entry.assessmentId), ...exemptionUses.map((entry) => entry.assessmentId)]);
+      const untouched = targets.filter((target) => !touched.has(target.id));
+      if (untouched.length) throw new Error(`VALIDATION:Aucun montant n’est affecté à ${untouched.length > 1 ? "certaines semaines cochées" : `la semaine RP ${untouched[0]!.rpYear}`} — décochez-les ou ajoutez des Ryō`);
 
       let paymentReceipt: string | null = null;
       if (potRyo > 0n) {
         paymentReceipt = await nextPaymentReceipt(tx);
-        const balanceBefore = assessments.reduce((total, assessment) => total + assessment.remaining, 0n);
+        const balanceBefore = assessments.reduce((total, assessment) => total + assessment.remaining, 0n) + legacyDebtAdded;
         const coveredByDonation = exemptionUses.reduce((total, entry) => total + entry.amount, 0n);
         const settled = potRyo + coveredByDonation;
         const payment = await tx.taxPayment.create({ data: {

@@ -24,6 +24,14 @@ test("ninjas use cards and a drawer menu on mobile", async ({ page }, testInfo) 
   await page.screenshot({ path: "test-results/ninjas-mobile.png", fullPage: true });
 });
 
+test("overdue tax weeks are never selected automatically", async ({ page }) => {
+  await page.goto("/ninjas/demo-58");
+  await expect(page.getByRole("heading", { name: "Araki Hoki" })).toBeVisible({ timeout: 30_000 });
+  const weeks = page.locator('.week-picker input[type="checkbox"]');
+  await expect(weeks).toHaveCount(2);
+  expect(await weeks.evaluateAll((inputs) => inputs.every((input) => !(input as HTMLInputElement).checked))).toBe(true);
+});
+
 test("equipment board stays readable without horizontal scrolling", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop-only assertion");
   await page.goto("/equipement");

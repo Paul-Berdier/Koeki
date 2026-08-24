@@ -101,15 +101,16 @@ export function summarizeWeekCompliance(statuses: string[]): WeekCompliance {
 
 export interface ExemptionFlow { granted: bigint; spent: bigint; outstanding: bigint }
 
-/** Exemption-credit economy: cycle inflow (positive entries), cycle outflow (negative
- *  entries, returned as a positive magnitude) and the all-time outstanding balance. */
-export function summarizeExemptionFlow(entries: Array<{ amount: bigint; createdAt: Date }>, since: Date): ExemptionFlow {
+/** Exemption-credit economy: cycle inflow, actual tax consumption and the
+ * all-time balance. Import corrections remain in the balance but are not
+ * misreported as tax consumption. */
+export function summarizeExemptionFlow(entries: Array<{ amount: bigint; createdAt: Date; sourceType: string }>, since: Date): ExemptionFlow {
   let granted = 0n, spent = 0n, outstanding = 0n;
   for (const entry of entries) {
     outstanding += entry.amount;
     if (entry.createdAt < since) continue;
     if (entry.amount > 0n) granted += entry.amount;
-    else spent -= entry.amount;
+    else if (entry.sourceType === "TaxAssessment" || entry.sourceType === "TaxSettlement") spent -= entry.amount;
   }
   return { granted, spent, outstanding };
 }

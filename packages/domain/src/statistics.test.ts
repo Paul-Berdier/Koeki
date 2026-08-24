@@ -149,10 +149,10 @@ describe("exemption flow", () => {
   const day = (iso: string) => new Date(iso);
   it("separates cycle inflow and outflow while the outstanding balance stays all-time", () => {
     const flow = summarizeExemptionFlow([
-      { amount: 5_000n, createdAt: day("2026-07-01T00:00:00Z") },
-      { amount: 3_000n, createdAt: day("2026-08-03T00:00:00Z") },
-      { amount: -2_000n, createdAt: day("2026-08-04T00:00:00Z") },
-      { amount: -500n, createdAt: day("2026-06-01T00:00:00Z") }
+      { amount: 5_000n, createdAt: day("2026-07-01T00:00:00Z"), sourceType: "Import" },
+      { amount: 3_000n, createdAt: day("2026-08-03T00:00:00Z"), sourceType: "ResourceTransaction" },
+      { amount: -2_000n, createdAt: day("2026-08-04T00:00:00Z"), sourceType: "TaxAssessment" },
+      { amount: -500n, createdAt: day("2026-06-01T00:00:00Z"), sourceType: "TaxSettlement" }
     ], day("2026-08-02T00:00:00Z"));
     expect(flow.granted).toBe(3_000n);
     expect(flow.spent).toBe(2_000n);
@@ -160,5 +160,11 @@ describe("exemption flow", () => {
   });
   it("returns zeros on an empty ledger", () => {
     expect(summarizeExemptionFlow([], day("2026-08-02T00:00:00Z"))).toEqual({ granted: 0n, spent: 0n, outstanding: 0n });
+  });
+
+  it("keeps an import correction in the balance without calling it tax consumption", () => {
+    expect(summarizeExemptionFlow([
+      { amount: -700n, createdAt: day("2026-08-04T00:00:00Z"), sourceType: "Import" }
+    ], day("2026-08-02T00:00:00Z"))).toEqual({ granted: 0n, spent: 0n, outstanding: -700n });
   });
 });

@@ -19,6 +19,18 @@ interface TaxEntry { id: number; ninjaId: number; sunday: string; paid: boolean 
 const loadJson = <T>(file: string): T => JSON.parse(readFileSync(join(__dirname, "..", "data", "import", file), "utf8")) as T;
 const codeBase = (name: string) => name.normalize("NFD").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
 
+async function importCoverageBps(tx: Prisma.TransactionClient) {
+  const setting = await tx.appSetting.findUnique({ where: { key: "exemptionPolicy" } });
+  const raw = (setting?.value as { weeklyTaxCoverageBps?: unknown } | null)?.weeklyTaxCoverageBps;
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= 0 && raw <= 10_000 ? raw : 0;
+}
+
+function importExemptionUse(balance: bigint, gross: bigint, coverageBps: number) {
+  if (balance <= 0n || gross <= 0n || coverageBps <= 0) return 0n;
+  const ceiling = (gross * BigInt(coverageBps)) / 10_000n;
+  return balance < ceiling ? balance : ceiling;
+}
+
 async function importCore() {
   if (await prisma.appSetting.findUnique({ where: { key: FLAG } })) { console.log("import-legacy : déjà appliqué — rien à faire"); return; }
   const [genin, categories, systemUser] = await Promise.all([
@@ -344,6 +356,7 @@ async function setAllGradesGeninConfirmed() {
     }
     // Rebill the current week at the new grade (same guardrails as updateTaxRates).
     let rebilled = 0, exempted = 0;
+    const coverageBps = await importCoverageBps(tx);
     const year = await tx.taxYear.findUnique({ where: { rpYear } });
     if (year) {
       const untouched = await tx.taxAssessment.findMany({ where: {
@@ -363,7 +376,8 @@ async function setAllGradesGeninConfirmed() {
         if (already) continue;
         const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
         if (balance <= 0n) continue;
-        const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+        const use = importExemptionUse(balance, assessment.originalAmount, coverageBps);
+        if (use <= 0n) continue;
         await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${rpYear}` } });
         await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
         if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID" } });
@@ -535,6 +549,7 @@ async function mergeKvExport20260807() {
 
     // Current week again: with correct balances, spend available credit on whoever still owes.
     let covered = 0;
+    const coverageBps = await importCoverageBps(tx);
     if (year) {
       const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
       for (const assessment of fresh) {
@@ -542,7 +557,8 @@ async function mergeKvExport20260807() {
         if (already) continue;
         const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
         if (balance <= 0n) continue;
-        const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+        const use = importExemptionUse(balance, assessment.originalAmount, coverageBps);
+        if (use <= 0n) continue;
         await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${currentRpYear}` } });
         await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
         if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
@@ -692,14 +708,16 @@ async function fixExplicitGrades20260807() {
           await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
           advanceSettled++;
         }
-        // Whoever still owes is covered by their available credit, oldest rule as usual.
+        // Whoever still owes is covered only up to the current administrative ceiling.
+        const coverageBps = await importCoverageBps(tx);
         const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
         for (const assessment of fresh) {
           const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
           if (already) continue;
           const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
           if (balance <= 0n) continue;
-          const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+          const use = importExemptionUse(balance, assessment.originalAmount, coverageBps);
+          if (use <= 0n) continue;
           await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${currentRpYear}` } });
           await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
           if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
@@ -863,13 +881,15 @@ async function applyJoninBoard20260809() {
           await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
           advanceSettled++;
         }
+        const coverageBps = await importCoverageBps(tx);
         const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
         for (const assessment of fresh) {
           const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
           if (already) continue;
           const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
           if (balance <= 0n) continue;
-          const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
+          const use = importExemptionUse(balance, assessment.originalAmount, coverageBps);
+          if (use <= 0n) continue;
           await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${currentRpYear}` } });
           await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
           if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });

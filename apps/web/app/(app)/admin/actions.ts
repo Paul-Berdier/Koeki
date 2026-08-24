@@ -4,9 +4,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@koeki/database";
-import { createInvitationToken } from "@koeki/domain";
+import { createInvitationToken, EXEMPTION_POLICY_SETTING_KEY } from "@koeki/domain";
 import { getRpService } from "@/lib/data";
-import { isUniqueViolation, writeAudit } from "@/lib/finance";
+import { autoCoverOpenTaxes, isUniqueViolation, writeAudit } from "@/lib/finance";
 import { hasPermission, requireWriteAccess } from "@/lib/session";
 
 const invitationSchema = z.object({
@@ -158,11 +158,64 @@ export async function updateApprovalThreshold(formData: FormData) {
   redirect("/admin");
 }
 
+const exemptionPolicyFormSchema = z.object({
+  coveragePercent: z.string().trim()
+    .min(1, "Le taux d’application est obligatoire")
+    .transform((value) => Number(value.replace(",", ".")))
+    .pipe(z.number().finite().min(0, "Le taux minimum est 0 %").max(100, "Le taux maximum est 100 %"))
+    .transform((value) => Math.round(value * 100))
+});
+
+export async function updateExemptionPolicy(formData: FormData) {
+  const session = await requireWriteAccess("settings:manage");
+  const parsed = exemptionPolicyFormSchema.safeParse({ coveragePercent: formData.get("coveragePercent") });
+  if (!parsed.success) redirect(`/admin?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Taux d’exonération invalide")}`);
+  const value = { weeklyTaxCoverageBps: parsed.data!.coveragePercent };
+  let covered = 0n;
+  let coveredNinjas = 0;
+  await prisma.$transaction(async (tx) => {
+    // Global order for credit consumers: NinjaProfile rows, then AppSetting.
+    // Locking every active ninja also drains transactions using the old rate
+    // before the administrative change can commit.
+    const ninjas = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "NinjaProfile"
+      WHERE "status" = 'ACTIVE'
+      ORDER BY "id"
+      FOR UPDATE
+    `;
+    const previous = await tx.appSetting.findUnique({ where: { key: EXEMPTION_POLICY_SETTING_KEY } });
+    const updated = await tx.appSetting.upsert({
+      where: { key: EXEMPTION_POLICY_SETTING_KEY },
+      create: { key: EXEMPTION_POLICY_SETTING_KEY, value, updatedById: session.userId },
+      update: { value, version: { increment: 1 }, updatedById: session.userId }
+    });
+    if (value.weeklyTaxCoverageBps > 0) {
+      for (const ninja of ninjas) {
+        const used = await autoCoverOpenTaxes(tx, ninja.id, session.userId, `policy-change:v${updated.version}`);
+        if (used > 0n) { covered += used; coveredNinjas++; }
+      }
+    }
+    await writeAudit(tx, {
+      actorId: session.userId,
+      action: "EXEMPTION_POLICY_UPDATED",
+      entityType: "AppSetting",
+      entityId: EXEMPTION_POLICY_SETTING_KEY,
+      reason: `Part maximale d’une taxe couverte par le crédit : ${(value.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} % — soldes ninja conservés${covered > 0n ? `, ${covered.toLocaleString("fr-FR")} ¥ appliqués sur ${coveredNinjas} dossier(s)` : ""}`,
+      previousValues: previous?.value ?? undefined,
+      newValues: { ...value, appliedExistingCredit: String(covered), affectedNinjas: coveredNinjas }
+    });
+  }, { timeout: 180_000, maxWait: 15_000 });
+  const message = value.weeklyTaxCoverageBps === 0
+    ? "Application du crédit suspendue à 0 % — tous les soldes d’exonération sont conservés"
+    : `Application du crédit réglée à ${(value.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} % par semaine${covered > 0n ? ` — ${covered.toLocaleString("fr-FR")} ¥ appliqués sur ${coveredNinjas} dossier(s) ouvert(s)` : " — crédits conservés, aucune dette ouverte supplémentaire couverte"}`;
+  redirect(`/admin?info=${encodeURIComponent(message)}`);
+}
+
 /** Publishes a new weekly-tax scale (one amount per grade, historized as a new policy
  *  version) and immediately rebills the current RP week at the new amounts. Lines already
  *  touched (payments, exemptions, penalties, adjustments) and the old register's
- *  advance-paid weeks are left untouched; regenerated taxes are auto-covered by any
- *  exemption credit, like every Sunday. */
+ *  advance-paid weeks are left untouched; regenerated taxes apply at most the
+ *  administratively configured share of available exemption credit. */
 export async function updateTaxRates(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
   const back = (message: string): never => redirect(`/admin?erreur=${encodeURIComponent(message)}`);
@@ -213,17 +266,10 @@ export async function updateTaxRates(formData: FormData) {
         originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > new Date() ? "UPCOMING" as const : "DUE" as const
       })), skipDuplicates: true });
       rebilled = result.count;
-      const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, taxPolicyId: policy.id, ninja: { status: "ACTIVE" }, originalAmount: { gt: 0 } }, select: { id: true, ninjaId: true, originalAmount: true } });
+      const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, taxPolicyId: policy.id, ninja: { status: "ACTIVE" }, originalAmount: { gt: 0 } }, select: { id: true, ninjaId: true } });
       for (const assessment of fresh) {
-        const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
-        if (already) continue;
-        const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
-        if (balance <= 0n) continue;
-        const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
-        await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe année RP ${rpYear}` } });
-        await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: session.userId } });
-        if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID" } });
-        exempted++;
+        const covered = await autoCoverOpenTaxes(tx, assessment.ninjaId, session.userId, `policy:${policy.id}`);
+        if (covered > 0n) exempted++;
       }
     }
     await writeAudit(tx, { actorId: session.userId, action: "TAX_POLICY_UPDATED", entityType: "TaxPolicy", entityId: policy.id, reason: `Barème v${version} publié — semaine RP ${rpYear} refacturée (${rebilled} taxes régénérées, ${exempted} couvertes par crédit)`, newValues: Object.fromEntries(grades.map((grade) => [grade.label, Number(rates.get(grade.id))])) });
@@ -291,17 +337,10 @@ export async function billCurrentWeek() {
       originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: year.dueAt, status: year.dueAt > new Date() ? "UPCOMING" as const : "DUE" as const
     })), skipDuplicates: true });
     created = result.count;
-    const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, ninja: { status: "ACTIVE" }, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true, originalAmount: true } });
+    const fresh = await tx.taxAssessment.findMany({ where: { taxYearId: year.id, ninja: { status: "ACTIVE" }, originalAmount: { gt: 0 }, status: { in: ["UPCOMING", "DUE"] } }, select: { id: true, ninjaId: true } });
     for (const assessment of fresh) {
-      const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
-      if (already) continue;
-      const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
-      if (balance <= 0n) continue;
-      const use = balance < assessment.originalAmount ? balance : assessment.originalAmount;
-      await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe semaine RP ${rpYear}` } });
-      await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: session.userId } });
-      if (use >= assessment.originalAmount) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID" } });
-      exempted++;
+      const covered = await autoCoverOpenTaxes(tx, assessment.ninjaId, session.userId, `manual-billing:${rpYear}`);
+      if (covered > 0n) exempted++;
     }
     const marker = { lastRpYear: rpYear, at: new Date().toISOString() };
     await tx.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value: marker }, update: { value: marker, version: { increment: 1 } } });

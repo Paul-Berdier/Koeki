@@ -39,7 +39,7 @@ export const demoNinjas: NinjasData = {
 export const demoNinjaDetail: NinjaDetailData = {
   id: "demo-58", code: "NIN-000058", name: "Araki Hoki", alias: null, clan: "Hoki", lifecycleStatus: "ACTIVE", statusLabel: "Actif", diedAt: null,
   grade: { code: "JONIN", label: "Jonin" }, grades: [{ id: "g1", code: "JONIN", label: "Jonin" }],
-  hasLinkedUser: false, notes: null, totalDebt: 32000n, lateYears: 2, nextDue: "Dépassée", pointsBalance: 2000, exemptionBalance: 12400n,
+  hasLinkedUser: false, notes: null, totalDebt: 32000n, lateYears: 2, nextDue: "Dépassée", pointsBalance: 2000, exemptionBalance: 12400n, exemptionGranted: 20400n, exemptionUsed: 8000n,
   assessments: [
     { id: "a47", rpYear: 47, period: "du 21/07 au 27/07", gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 18000n, remaining: 7000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" },
     { id: "a46", rpYear: 46, period: "du 14/07 au 20/07", gradeLabel: "Jonin", original: 25000n, penalties: 0n, adjustments: 0n, exemptions: 0n, paid: 0n, remaining: 25000n, statusLabel: "En retard", badge: "overdue", dueAt: "—" }
@@ -145,6 +145,7 @@ export const demoAdmin: AdminData = {
   gradeRates: [],
   currentWeek: { rpYear: 48, period: "du 03 août au 09 août", lines: 7, billable: 5, activeNinjas: 7, gradesToUpdate: 0 },
   approval: { amount: "50000", isValidated: false },
+  exemption: { weeklyTaxCoverageBps: 0 },
   policy: { name: "Barème initial", version: 1, rateCount: 10 },
   rpTimeLabel: "1 semaine réelle = 1 année RP",
   invitations: [

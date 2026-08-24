@@ -27,18 +27,18 @@ export default async function DashboardPage() {
       actions={<>{canWriteReports ? <Link className="button button-ghost" href="/reports/new"><ReceiptText size={17} /> Nouveau rapport</Link> : canReadReports ? <Link className="button button-ghost" href="/reports"><ReceiptText size={17} /> Voir les rapports</Link> : null}<Link className="button button-primary" href="/ninjas"><Plus size={17} /> Enregistrer</Link></>} />
     {!ownProfile && <p className="notice" role="status">Bienvenue à la Kōeki ! Vous n’avez pas encore de fiche ninja : <Link href="/profil" className="text-link">enregistrez votre identité de shinobi</Link> pour lier vos taxes, points et opérations à votre compte.</p>}
 
-    <ZoneTitle title="Revenus de Suna" detail={`Année RP ${data.rpYear} — Ryō encaissés et taxes couvertes par les dons`} />
+    <ZoneTitle title="Revenus de Suna" detail={`Année RP ${data.rpYear} — Ryō encaissés et exonérations déjà appliquées`} />
     <section className="metric-grid" aria-label="Revenus fiscaux">
       <MetricCard label="Taxes attendues" value={<MoneyDisplay amount={data.expected} />} detail="Montant brut appelé ce cycle" />
-      <MetricCard label="Encaissées (Ryō)" value={<MoneyDisplay amount={data.collected} />} detail={`${rate} des taxes réglées, dons compris`} tone="good" />
-      <MetricCard label="Couvert par dons" value={<MoneyDisplay amount={data.exempted} />} detail="Crédit d’exonération consommé" tone="good" />
+      <MetricCard label="Encaissées (Ryō)" value={<MoneyDisplay amount={data.collected} />} detail={`${rate} des taxes soldées, exonérations appliquées comprises`} tone="good" />
+      <MetricCard label="Exonérations appliquées" value={<MoneyDisplay amount={data.exempted} />} detail="Historique du crédit consommé" tone="good" />
       <MetricCard label="Dette à recouvrer" value={<MoneyDisplay amount={data.debt} />} detail={`${data.overdueNinjas} ninja${data.overdueNinjas > 1 ? "s" : ""} nécessitent un suivi`} tone={data.debt > 0n ? "danger" : "good"} />
     </section>
 
     <div className="dashboard-grid">
       <section className="panel recovery-panel">
         <SectionHeader title="Recouvrement fiscal" description="Progression des encaissements par année RP" action={<Link href="/statistics" className="text-link">Détails <ArrowRight size={15} /></Link>} />
-        <div className="recovery-summary"><div><span>Taux actuel</span><strong>{rate}</strong></div><div><span>Attendu</span><MoneyDisplay amount={data.expected} /></div><div><span>Encaissé</span><MoneyDisplay amount={data.collected} /></div><div><span>Couvert par dons</span><MoneyDisplay amount={data.exempted} /></div></div>
+        <div className="recovery-summary"><div><span>Taux actuel</span><strong>{rate}</strong></div><div><span>Attendu</span><MoneyDisplay amount={data.expected} /></div><div><span>Encaissé</span><MoneyDisplay amount={data.collected} /></div><div><span>Exonérations appliquées</span><MoneyDisplay amount={data.exempted} /></div></div>
         {data.recoveryByYear.length > 0 ? <div className="bar-chart" role="img" aria-label={`Taux de recouvrement par année RP : ${data.recoveryByYear.map((entry) => `année ${entry.rpYear} ${entry.percent} %`).join(", ")}`}>
           {data.recoveryByYear.map((entry) => <div key={entry.rpYear}><span style={{ height: `${Math.max(3, entry.percent)}%` }}><i>{entry.percent}%</i></span><small>RP {entry.rpYear}</small></div>)}
         </div> : <EmptyState title="Aucune taxe générée" description="Lancez la génération annuelle depuis le worker pour ouvrir l’exercice." />}

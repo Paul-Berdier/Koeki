@@ -1,7 +1,22 @@
 import { Prisma, type PointEventType, type TaxAssessmentStatus } from "@koeki/database";
-import { calculatePoints, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema } from "@koeki/domain";
+import {
+  calculatePoints, createRpTimeService, defaultRpTimeConfig, deriveTaxAssessmentStatus,
+  EXEMPTION_POLICY_SETTING_KEY, exemptionUse, parseExemptionPolicy, rpTimeConfigSchema
+} from "@koeki/domain";
 
 export type Tx = Prisma.TransactionClient;
+
+export async function loadExemptionPolicy(tx: Tx) {
+  // Every credit consumer locks NinjaProfile first, then retains this shared
+  // setting lock until commit. An administrative switch to 0 therefore waits
+  // for older consumers and no old-rate debit can commit after that switch.
+  const rows = await tx.$queryRaw<Array<{ value: Prisma.JsonValue }>>`
+    SELECT "value" FROM "AppSetting"
+    WHERE "key" = ${EXEMPTION_POLICY_SETTING_KEY}
+    FOR SHARE
+  `;
+  return parseExemptionPolicy(rows[0]?.value);
+}
 
 const DECIMAL_SCALE = 10_000;
 const POSTGRES_INT_MIN = -2_147_483_648;
@@ -85,7 +100,7 @@ export async function activePrice(tx: Tx, resourceId: string) {
 
 /** Applies the side effects of a VALIDATED resource transaction: stock movements, points
  *  (per-unit scale plus any active rule for donations, rules only for buybacks) and
- *  tax-exemption credit, which immediately covers any open tax week. Shared by
+ *  tax-exemption credit, whose use on open taxes follows the administrative ceiling. Shared by
  *  agent-recorded flows and ninja self-declarations. */
 export async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }>, actorId: string) {
   for (const item of items) await tx.inventoryMovement.create({ data: {
@@ -104,16 +119,18 @@ export async function applyValidatedTransaction(tx: Tx, transaction: { id: strin
   return { points, exemption, covered };
 }
 
-/** Spends the ninja's available exemption credit on their open taxes, oldest week first —
- *  called whenever credit is granted, so a mid-week don covers the already-billed week
- *  without waiting for Sunday. The first application on an assessment uses the plain
+/** Applies the allowed share of the ninja's credit to open taxes, oldest week first.
+ * At 0 %, credit is retained without any tax write. The first application uses the plain
  *  assessment id as ledger source (the weekly job's idempotency check relies on it);
  *  top-ups on a partially covered week get a suffixed source so the unique constraint
  *  never blocks completing it. */
 export async function autoCoverOpenTaxes(tx: Tx, ninjaId: string, grantedById: string, sourceKey: string): Promise<bigint> {
   // All credit spenders take the same lifecycle lock before reading the wallet.
-  // Besides blocking post-mortem coverage, this serialises concurrent donations.
+  // Besides blocking post-mortem coverage, this serialises concurrent donations
+  // and establishes the global Ninja -> AppSetting lock order.
   if (!await lockActiveNinja(tx, ninjaId)) return 0n;
+  const policy = await loadExemptionPolicy(tx);
+  if (policy.weeklyTaxCoverageBps <= 0) return 0n;
   let balance = await exemptionBalance(tx, ninjaId);
   if (balance <= 0n) return 0n;
   const rpSetting = await tx.appSetting.findUnique({ where: { key: "rpTime" } });
@@ -129,12 +146,16 @@ export async function autoCoverOpenTaxes(tx: Tx, ninjaId: string, grantedById: s
   for (const assessment of open) {
     if (balance <= 0n) break;
     const paid = sum(assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").map((entry) => entry.amount));
-    const remaining = assessment.originalAmount + sum(assessment.penalties.map((entry) => entry.amount)) + sum(assessment.adjustments.map((entry) => entry.amount)) - sum(assessment.exemptions.map((entry) => entry.amount)) - paid;
+    const gross = assessment.originalAmount + sum(assessment.penalties.map((entry) => entry.amount)) + sum(assessment.adjustments.map((entry) => entry.amount));
+    const alreadyExempted = sum(assessment.exemptions.map((entry) => entry.amount));
+    const remaining = gross - alreadyExempted - paid;
     if (remaining <= 0n) continue;
-    const use = balance < remaining ? balance : remaining;
+    const use = exemptionUse({ availableCredit: balance, remainingDebt: remaining, gross, alreadyExempted, coverageBps: policy.weeklyTaxCoverageBps });
+    if (use <= 0n) continue;
     const first = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
     await tx.exemptionLedgerEntry.create({ data: { ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: first ? `${assessment.id}:${sourceKey}` : assessment.id, reason: "Exonération automatique (crédit de dons/rachats)" } });
     await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById } });
+    await writeAudit(tx, { actorId: grantedById, action: "TAX_AUTO_EXEMPTED", entityType: "TaxAssessment", entityId: assessment.id, reason: `${use.toLocaleString("fr-FR")} ¥ de crédit appliqués (plafond ${(policy.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} %)` });
     balance -= use;
     used += use;
     await refreshAssessmentStatus(tx, assessment.id, currentRpYear);
@@ -185,10 +206,24 @@ export async function refreshAssessmentStatus(tx: Tx, assessmentId: string, curr
   if (frozen.includes(assessment.status)) return assessment.status;
   const sum = (values: bigint[]) => values.reduce((total, value) => total + value, 0n);
   const paid = sum(assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").map((entry) => entry.amount));
-  const gross = assessment.originalAmount + sum(assessment.penalties.map((entry) => entry.amount)) + sum(assessment.adjustments.map((entry) => entry.amount)) - sum(assessment.exemptions.map((entry) => entry.amount));
+  const penalties = sum(assessment.penalties.map((entry) => entry.amount));
+  const adjustments = sum(assessment.adjustments.map((entry) => entry.amount));
+  const exempted = sum(assessment.exemptions.map((entry) => entry.amount));
+  const gross = assessment.originalAmount + penalties + adjustments - exempted;
   const remaining = gross - paid > 0n ? gross - paid : 0n;
+  const preserveLegacyOverdue = assessment.status === "OVERDUE" && assessment.gradeCodeSnapshot === "ANCIEN" && assessment.originalAmount === 0n
+    && penalties === 0n && adjustments === 0n && exempted === 0n && paid === 0n;
   const now = new Date();
-  const status: TaxAssessmentStatus = remaining === 0n ? "PAID" : assessment.dueAt < now ? "OVERDUE" : paid > 0n ? "PARTIALLY_PAID" : assessment.taxYear.rpYear > currentRpYear ? "UPCOMING" : "DUE";
+  const status = deriveTaxAssessmentStatus({
+    storedStatus: assessment.status,
+    remaining,
+    settled: paid + exempted,
+    preserveLegacyOverdue,
+    dueAt: assessment.dueAt,
+    now,
+    assessmentRpYear: assessment.taxYear.rpYear,
+    currentRpYear
+  }) as TaxAssessmentStatus;
   if (status !== assessment.status) await tx.taxAssessment.update({ where: { id: assessmentId }, data: { status, version: { increment: 1 } } });
   return status;
 }

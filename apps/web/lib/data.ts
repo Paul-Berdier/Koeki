@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
-import { allocatePayment, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, settlementTotals, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
+import { allocatePayment, assessmentSettlementBreakdown, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, deriveTaxAssessmentStatus, parseExemptionPolicy, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, settlementTotals, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
 import { normalizeReportHistoryRange } from "./report-period";
@@ -57,12 +57,20 @@ function computeAssessment(assessment: {
   const paid = sumBig(assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").map((entry) => entry.amount));
   const gross = assessment.originalAmount + penalties + adjustments;
   const remaining = EXCLUDED.includes(assessment.status) ? 0n : gross - exemptions - paid > 0n ? gross - exemptions - paid : 0n;
-  // A zero-amount assessment stored as OVERDUE is legacy history ("semaine impayée" of the old register): keep it visible as late.
-  const status: TaxAssessmentStatus = EXCLUDED.includes(assessment.status) ? assessment.status
-    : remaining === 0n ? (assessment.status === "OVERDUE" && paid === 0n && gross - exemptions <= 0n ? "OVERDUE" : "PAID")
-    : assessment.dueAt < now ? "OVERDUE"
-    : paid > 0n ? "PARTIALLY_PAID"
-    : assessment.taxYear.rpYear > currentRpYear ? "UPCOMING" : "DUE";
+  // Only a truly empty zero-priced OVERDUE line is legacy history. A normal tax
+  // settled entirely by credit must still become PAID.
+  const preserveLegacyOverdue = assessment.status === "OVERDUE" && assessment.gradeCodeSnapshot === "ANCIEN" && assessment.originalAmount === 0n
+    && penalties === 0n && adjustments === 0n && exemptions === 0n && paid === 0n;
+  const status = deriveTaxAssessmentStatus({
+    storedStatus: assessment.status,
+    remaining,
+    settled: paid + exemptions,
+    preserveLegacyOverdue,
+    dueAt: assessment.dueAt,
+    now,
+    assessmentRpYear: assessment.taxYear.rpYear,
+    currentRpYear
+  }) as TaxAssessmentStatus;
   return { id: assessment.id, rpYear: assessment.taxYear.rpYear, gradeCode: assessment.gradeCodeSnapshot, gradeLabel: assessment.gradeLabelSnapshot, original: assessment.originalAmount, penalties, adjustments, exemptions, paid, remaining, dueAt: assessment.dueAt, status };
 }
 
@@ -230,9 +238,13 @@ export async function loadNinjaFiscal(ninjaId: string, client: Pick<typeof prism
 
 export function buildDebtLines(assessments: AssessmentAggregate[]): Array<DebtLine & { label: string }> {
   return assessments.filter((assessment) => assessment.remaining > 0n).sort((a, b) => a.rpYear - b.rpYear).flatMap((assessment) => {
-    const unpaidPenalties = assessment.penalties > assessment.paid ? assessment.penalties - assessment.paid : 0n;
-    const penaltyRemaining = unpaidPenalties < assessment.remaining ? unpaidPenalties : assessment.remaining;
-    const principalRemaining = assessment.remaining - penaltyRemaining;
+    const { remainingPenalty: penaltyRemaining, remainingPrincipal: principalRemaining } = assessmentSettlementBreakdown({
+      original: assessment.original,
+      penalties: assessment.penalties,
+      adjustments: assessment.adjustments,
+      exemptions: assessment.exemptions,
+      paid: assessment.paid
+    });
     const lines: Array<DebtLine & { label: string }> = [];
     if (penaltyRemaining > 0n) lines.push({ id: `${assessment.id}:PENALTY`, assessmentId: assessment.id, rpYear: assessment.rpYear, kind: "PENALTY", remaining: ryo(penaltyRemaining), label: `Majoration année ${assessment.rpYear}` });
     if (principalRemaining > 0n) lines.push({ id: `${assessment.id}:PRINCIPAL`, assessmentId: assessment.id, rpYear: assessment.rpYear, kind: "PRINCIPAL", remaining: ryo(principalRemaining), label: `Taxe année ${assessment.rpYear}` });
@@ -246,13 +258,14 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
   const ninja = aggregates.find((entry) => entry.id === id);
   if (!ninja) return null;
   const currentRpYear = (await getRpService()).currentRpYear();
-  const [grades, entries, payments, transactions, linked, exemption] = await Promise.all([
+  const [grades, entries, payments, transactions, linked, exemptionGrantedRow, exemptionDebitedRow] = await Promise.all([
     prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } }),
     prisma.pointLedgerEntry.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.taxPayment.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     prisma.resourceTransaction.findMany({ where: { ninjaId: id }, orderBy: { createdAt: "desc" }, take: 12 }),
     ninjaHasLinkedUser(id),
-    prisma.exemptionLedgerEntry.aggregate({ where: { ninjaId: id }, _sum: { amount: true } })
+    prisma.exemptionLedgerEntry.aggregate({ where: { ninjaId: id, amount: { gt: 0n } }, _sum: { amount: true } }),
+    prisma.exemptionLedgerEntry.aggregate({ where: { ninjaId: id, amount: { lt: 0n } }, _sum: { amount: true } })
   ]);
   const debtLines = buildDebtLines(ninja.assessments);
   const preview = options.previewAmount && options.previewAmount > 0n
@@ -263,12 +276,15 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
     ...transactions.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, label: transaction.type === "BUYBACK" ? "Rachat de ressources" : "Don", amount: transaction.totalAmount, createdAt: transaction.createdAt, statusLabel: transaction.status === "VALIDATED" ? "Validée" : "À valider", badge: (transaction.status === "VALIDATED" ? "paid" : "pending") as BadgeStatus }))
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 12).map(({ createdAt, ...row }) => ({ ...row, at: formatDate(createdAt) }));
   const lifecycle = ninjaLifecycle(ninja.status);
+  const exemptionGranted = exemptionGrantedRow._sum.amount ?? 0n;
+  const exemptionUsed = -(exemptionDebitedRow._sum.amount ?? 0n);
   return {
     id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, clan: ninja.clan,
     lifecycleStatus: ninja.status, statusLabel: lifecycle?.label ?? "Actif", diedAt: ninja.diedAt ? formatDate(ninja.diedAt) : null,
     grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
     hasLinkedUser: linked, notes: options.canSeeNotes ? ninja.notes : null,
-    totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points, exemptionBalance: exemption._sum.amount ?? 0n,
+    totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points,
+    exemptionBalance: exemptionGranted - exemptionUsed, exemptionGranted, exemptionUsed,
     assessments: [...ninja.assessments]
       // Current week first, then history newest-first, then weeks paid in advance last:
       // an agent works on today, not on next December's prepaid lines.
@@ -436,7 +452,7 @@ export async function getStatistics(): Promise<StatisticsData> {
     prisma.resourceTransaction.findMany({ where: { status: "VALIDATED", createdAt: { gte: since } }, include: { items: { include: { resource: true } } } }),
     prisma.pointLedgerEntry.aggregate({ where: { createdAt: { gte: since }, points: { gt: 0 } }, _sum: { points: true } }),
     prisma.pointLedgerEntry.groupBy({ by: ["ninjaId"], where: { createdAt: { gte: since }, points: { gt: 0 } }, _sum: { points: true } }),
-    prisma.exemptionLedgerEntry.findMany({ select: { amount: true, createdAt: true } })
+    prisma.exemptionLedgerEntry.findMany({ select: { amount: true, createdAt: true, sourceType: true } })
   ]);
   const agentActivity = new Map<string, AgentActivity>();
   const activityOf = (userId: string) => { const entry = agentActivity.get(userId) ?? { name: users.get(userId) ?? "Agent Kōeki", payments: 0, collected: 0n, donations: 0, buybacks: 0 }; agentActivity.set(userId, entry); return entry; };
@@ -591,9 +607,10 @@ export async function getAdmin(): Promise<AdminData> {
   if (demoMode) return demoAdmin;
   const service = await getRpService();
   const currentRpYear = service.currentRpYear();
-  const [penaltySetting, approvalSetting, rpSetting, policy, allGrades, invitations, users, roles, freeNinjas, activeNinjas, gradesToUpdate, currentYear] = await Promise.all([
+  const [penaltySetting, approvalSetting, exemptionSetting, rpSetting, policy, allGrades, invitations, users, roles, freeNinjas, activeNinjas, gradesToUpdate, currentYear] = await Promise.all([
     prisma.appSetting.findUnique({ where: { key: "latePenalty" } }),
     prisma.appSetting.findUnique({ where: { key: "approvalThreshold" } }),
+    prisma.appSetting.findUnique({ where: { key: "exemptionPolicy" } }),
     prisma.appSetting.findUnique({ where: { key: "rpTime" } }),
     prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
     prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } }),
@@ -611,6 +628,7 @@ export async function getAdmin(): Promise<AdminData> {
   ]) : [0, 0];
   const penalty = penaltySetting?.value as { latePenaltyPercentBps?: number | null; latePenaltyBasis?: string; maxPenaltyApplications?: number; maxAssessmentDebt?: string; isPenaltyAutomationEnabled?: boolean; isRateValidated?: boolean } | undefined;
   const approval = approvalSetting?.value as { amount?: string; isValidated?: boolean } | undefined;
+  const exemption = parseExemptionPolicy(exemptionSetting?.value);
   const rp = rpSetting ? rpTimeConfigSchema.safeParse(rpSetting.value) : null;
   const rpLabel = rp?.success ? `${Math.round(rp.data.realMillisecondsPerRpYear / 86_400_000)} jours réels = 1 année RP` : "1 semaine réelle = 1 année RP";
   const invitationStatus = (invitation: { status: string; expiresAt: Date }): { label: string; badge: BadgeStatus } =>
@@ -624,6 +642,7 @@ export async function getAdmin(): Promise<AdminData> {
       basis: penalty?.latePenaltyBasis ?? "ORIGINAL_TAX", maxApplications: penalty?.maxPenaltyApplications ?? 4, maxDebt: penalty?.maxAssessmentDebt ?? "32000"
     },
     approval: { amount: approval?.amount ?? "50000", isValidated: approval?.isValidated ?? false },
+    exemption: { weeklyTaxCoverageBps: exemption.weeklyTaxCoverageBps },
     gradeRates: allGrades.map((grade) => ({ gradeId: grade.id, label: grade.label, amount: Number(policy?.rates.find((rate) => rate.gradeId === grade.id)?.amount ?? 0n) })),
     currentWeek: { rpYear: currentRpYear, period: weekPeriod(service.dueAt(currentRpYear)), lines, billable, activeNinjas, gradesToUpdate },
     policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,

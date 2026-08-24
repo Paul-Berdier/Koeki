@@ -5,7 +5,7 @@ import { EmptyState, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getAdmin } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
 import { demoMode, hasPermission, requireSession, roleLabels } from "@/lib/session";
-import { billCurrentWeek, createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updatePenaltySettings, updateTaxRates, updateUserRoles } from "./actions";
+import { billCurrentWeek, createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updateExemptionPolicy, updatePenaltySettings, updateTaxRates, updateUserRoles } from "./actions";
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
@@ -77,7 +77,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           </form>}
         </section>
         <section className="panel">
-          <SectionHeader title="Barème hebdomadaire par grade" description="Publier un nouveau barème refacture immédiatement la semaine en cours pour tous les ninjas (les paiements déjà enregistrés sont préservés, le crédit d’exonération s’applique automatiquement)" />
+          <SectionHeader title="Barème hebdomadaire par grade" description={`Publier un nouveau barème refacture immédiatement la semaine en cours. Les paiements sont préservés ; le crédit d’exonération est plafonné à ${formatPercentBps(data.exemption.weeklyTaxCoverageBps)} par semaine.`} />
           {canWrite ? <form action={updateTaxRates} className="form-grid">
             {data.gradeRates.map((rate) => <div className="form-row" key={rate.gradeId} style={{ gridTemplateColumns: "1fr 140px", alignItems: "center" }}>
               <span style={{ fontSize: 12 }}>{rate.label}</span>
@@ -86,6 +86,14 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             </div>)}
             <div className="form-actions"><button className="button button-primary" type="submit">Publier le barème et refacturer la semaine</button></div>
           </form> : <p className="notice" style={{ margin: 18 }}>Mode démonstration : édition désactivée.</p>}
+        </section>
+        <section className="panel" id="exemption-panel">
+          <SectionHeader title="Application du crédit d’exonération" description="Plafond par taxe hebdomadaire — les barèmes, crédits acquis et historiques restent toujours conservés" />
+          {canWrite ? <form action={updateExemptionPolicy} className="form-grid">
+            <label>Part maximale d’une taxe couverte (%)<input type="number" name="coveragePercent" min={0} max={100} step={0.01} required defaultValue={data.exemption.weeklyTaxCoverageBps / 100} /></label>
+            <p className="notice" style={{ margin: 0 }} role="status">À 0 %, les dons et rachats continuent d’ajouter le montant d’exonération au dossier du ninja, mais aucun crédit ne réduit ses taxes. Les semaines déjà couvertes restent inchangées.</p>
+            <div className="form-actions"><StatusBadge status={data.exemption.weeklyTaxCoverageBps === 0 ? "draft" : "paid"}>{data.exemption.weeklyTaxCoverageBps === 0 ? "Suspendue" : formatPercentBps(data.exemption.weeklyTaxCoverageBps)}</StatusBadge><button className="button button-ghost" type="submit">Enregistrer</button></div>
+          </form> : <div className="mini-list"><div><span>Part appliquée par semaine</span><strong>{formatPercentBps(data.exemption.weeklyTaxCoverageBps)}</strong></div></div>}
         </section>
         <section className="panel" id="penalty-panel">
           <SectionHeader title="Majorations de retard" description="Aucune automatisation sans taux validé" />

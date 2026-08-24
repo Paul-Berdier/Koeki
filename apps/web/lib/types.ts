@@ -19,7 +19,7 @@ export interface NinjaDetailData {
   id: string; code: string; name: string; alias: string | null; clan: string | null; lifecycleStatus: string; statusLabel: string; diedAt: string | null;
   grade: { code: string; label: string }; grades: Array<{ id: string; code: string; label: string }>;
   hasLinkedUser: boolean; notes: string | null;
-  totalDebt: bigint; lateYears: number; nextDue: string; pointsBalance: number; exemptionBalance: bigint;
+  totalDebt: bigint; lateYears: number; nextDue: string; pointsBalance: number; exemptionBalance: bigint; exemptionGranted: bigint; exemptionUsed: bigint;
   assessments: AssessmentRow[];
   pointEntries: Array<{ id: string; at: string; label: string; points: number; reason: string | null }>;
   operations: Array<{ id: string; receipt: string; label: string; amount: bigint; at: string; statusLabel: string; badge: BadgeStatus }>;
@@ -80,6 +80,7 @@ export interface AdminData {
   gradeRates: Array<{ gradeId: string; label: string; amount: number }>;
   currentWeek: { rpYear: number; period: string; lines: number; billable: number; activeNinjas: number; gradesToUpdate: number };
   approval: { amount: string; isValidated: boolean };
+  exemption: { weeklyTaxCoverageBps: number };
   policy: { name: string; version: number; rateCount: number } | null;
   rpTimeLabel: string;
   invitations: Array<{ id: string; role: string; ninja: string | null; statusLabel: string; badge: BadgeStatus; createdAt: string; expiresAt: string; canRevoke: boolean }>;

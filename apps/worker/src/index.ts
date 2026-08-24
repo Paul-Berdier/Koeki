@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma, type Prisma } from "@koeki/database";
-import { calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, rpTimeConfigSchema, ryo } from "@koeki/domain";
+import { assessmentSettlementBreakdown, calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, deriveTaxAssessmentStatus, exemptionUse, parseExemptionPolicy, rpTimeConfigSchema, ryo } from "@koeki/domain";
 
 const isUniqueViolation = (error: unknown) => (error as { code?: string } | null)?.code === "P2002";
 
@@ -90,10 +90,12 @@ async function generateTaxes() {
   return { command: "taxes:generate", rpYear, ...generation, exempted };
 }
 
-/** The exemption credit is not a manual payment method: it is deducted automatically
- *  from each Sunday's tax while the balance lasts. Idempotent via the ledger's unique
- *  (sourceType, sourceId) — one automatic deduction per assessment. */
+/** Applies stored exemption credit only up to the administrative weekly ceiling.
+ * At 0 % it performs no write; nominal ninja balances remain untouched. */
 async function autoApplyExemptions(rpYear: number) {
+  const policySetting = await prisma.appSetting.findUnique({ where: { key: "exemptionPolicy" } });
+  const policy = parseExemptionPolicy(policySetting?.value);
+  if (policy.weeklyTaxCoverageBps <= 0) return 0;
   const systemUser = await prisma.user.findFirst({ where: { roles: { some: { role: { code: "SUPER_ADMIN" } } } }, orderBy: { createdAt: "asc" } });
   if (!systemUser) return 0;
   const assessments = await prisma.taxAssessment.findMany({
@@ -106,27 +108,45 @@ async function autoApplyExemptions(rpYear: number) {
       const committed = await prisma.$transaction(async (tx) => {
         const ninja = await lockNinja(tx, candidate.ninjaId);
         if (ninja?.status !== "ACTIVE") return false;
+        const lockedSettings = await tx.$queryRaw<Array<{ value: Prisma.JsonValue; version: number }>>`
+          SELECT "value", "version" FROM "AppSetting" WHERE "key" = 'exemptionPolicy' FOR SHARE
+        `;
+        const lockedPolicy = parseExemptionPolicy(lockedSettings[0]?.value);
+        if (lockedPolicy.weeklyTaxCoverageBps <= 0) return false;
         const assessment = await tx.taxAssessment.findFirst({
           where: { id: candidate.id, ninjaId: candidate.ninjaId, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID", "OVERDUE"] } },
           include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } } }
         });
         if (!assessment) return false;
-        const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+        const first = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
+        const ledgerSourceId = first ? `${assessment.id}:worker:v${lockedSettings[0]?.version ?? 1}` : assessment.id;
+        const already = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: ledgerSourceId } } });
         if (already) return false;
         const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
         if (balance <= 0n) return false;
         const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
         const gross = assessment.originalAmount
           + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n)
-          + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n)
-          - assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
-        const remaining = gross - paid;
+          + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
+        const alreadyExempted = assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
+        const remaining = gross - alreadyExempted - paid;
         if (remaining <= 0n) return false;
-        const use = balance < remaining ? balance : remaining;
-        await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: assessment.id, reason: `Exonération automatique — taxe année RP ${rpYear}` } });
+        const use = exemptionUse({ availableCredit: balance, remainingDebt: remaining, gross, alreadyExempted, coverageBps: lockedPolicy.weeklyTaxCoverageBps });
+        if (use <= 0n) return false;
+        await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: ledgerSourceId, reason: `Exonération automatique — taxe année RP ${rpYear}` } });
         await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
-        if (use >= remaining) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
-        await tx.auditLog.create({ data: { action: "TAX_AUTO_EXEMPTED", entityType: "TaxAssessment", entityId: assessment.id, requestId: randomUUID(), reason: `${use.toLocaleString("fr-FR")} ¥ de crédit d’exonération appliqués automatiquement (année RP ${rpYear})` } });
+        const status = deriveTaxAssessmentStatus({
+          storedStatus: assessment.status,
+          remaining: remaining - use,
+          settled: paid + alreadyExempted + use,
+          preserveLegacyOverdue: false,
+          dueAt: assessment.dueAt,
+          now: new Date(),
+          assessmentRpYear: rpYear,
+          currentRpYear: rpYear
+        });
+        if (status !== assessment.status) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status, version: { increment: 1 } } });
+        await tx.auditLog.create({ data: { action: "TAX_AUTO_EXEMPTED", entityType: "TaxAssessment", entityId: assessment.id, requestId: randomUUID(), reason: `${use.toLocaleString("fr-FR")} ¥ de crédit appliqués (année RP ${rpYear}, plafond ${(lockedPolicy.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} %)` } });
         return true;
       });
       if (committed) applied++;
@@ -140,7 +160,7 @@ async function applyPenalties() {
   const config = setting?.value as { latePenaltyPercentBps?: number; latePenaltyBasis?: "ORIGINAL_TAX"|"REMAINING_PRINCIPAL"|"CURRENT_DEBT"; latePenaltyFrequencyRpYears?: number; maxPenaltyApplications?: number; maxAssessmentDebt?: string; isPenaltyAutomationEnabled?: boolean; isRateValidated?: boolean } | undefined;
   if (!config?.isPenaltyAutomationEnabled || !config.isRateValidated || !config.latePenaltyPercentBps) return { command: "penalties:apply", created: 0, disabled: true };
   const service = await rpService();
-  const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } }, include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true } });
+  const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, originalAmount: { gt: 0 }, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } }, include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true, exemptions: true } });
   let created = 0;
   for (const candidate of assessments) {
     try {
@@ -148,18 +168,31 @@ async function applyPenalties() {
         const ninja = await lockNinja(tx, candidate.ninjaId);
         if (ninja?.status !== "ACTIVE") return false;
         const assessment = await tx.taxAssessment.findFirst({
-          where: { id: candidate.id, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } },
-          include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true }
+          where: { id: candidate.id, originalAmount: { gt: 0 }, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } },
+          include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true, exemptions: true }
         });
         if (!assessment) return false;
         const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
         const adjustments = assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
         const penaltyTotal = assessment.penalties.reduce((sum, item) => sum + item.amount, 0n);
-        const remainingPrincipal = assessment.originalAmount > paid ? assessment.originalAmount - paid : 0n;
-        const currentDebt = remainingPrincipal + penaltyTotal + adjustments;
+        const exempted = assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
+        const { currentDebt, remainingPrincipal } = assessmentSettlementBreakdown({
+          original: assessment.originalAmount,
+          penalties: penaltyTotal,
+          adjustments,
+          exemptions: exempted,
+          paid
+        });
+        // Never manufacture a penalty on a ledger-balanced tax whose stored status
+        // merely lagged behind its latest payment/exemption entry.
+        if (currentDebt <= 0n) {
+          if (assessment.status !== "PAID") await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
+          return false;
+        }
+        const basisAmount = config.latePenaltyBasis === "REMAINING_PRINCIPAL" ? remainingPrincipal : config.latePenaltyBasis === "CURRENT_DEBT" ? currentDebt : assessment.originalAmount;
         const decision = calculateNextPenalty({ originalTax: ryo(assessment.originalAmount), remainingPrincipal: ryo(remainingPrincipal), currentDebt: ryo(currentDebt < 0n ? 0n : currentDebt), appliedPenaltyIndexes: assessment.penalties.map((item) => item.applicationIndex), completeLateYears: service.completeLateYears(assessment.dueAt) }, { latePenaltyPercentBps: config.latePenaltyPercentBps!, latePenaltyBasis: config.latePenaltyBasis ?? "ORIGINAL_TAX", latePenaltyFrequencyRpYears: config.latePenaltyFrequencyRpYears ?? 1, maxPenaltyApplications: config.maxPenaltyApplications ?? 4, maxAssessmentDebt: ryo(config.maxAssessmentDebt ?? "32000"), isPenaltyAutomationEnabled: true, isRateValidated: true });
         if (!decision || decision.amount === 0n) return false;
-        await tx.taxPenalty.create({ data: { assessmentId: assessment.id, applicationIndex: decision.index, rpYearApplied: service.currentRpYear(), percentBps: config.latePenaltyPercentBps!, basis: config.latePenaltyBasis ?? "ORIGINAL_TAX", basisAmount: assessment.originalAmount, amount: decision.amount } });
+        await tx.taxPenalty.create({ data: { assessmentId: assessment.id, applicationIndex: decision.index, rpYearApplied: service.currentRpYear(), percentBps: config.latePenaltyPercentBps!, basis: config.latePenaltyBasis ?? "ORIGINAL_TAX", basisAmount, amount: decision.amount } });
         return true;
       });
       if (committed) created++;
@@ -173,7 +206,7 @@ const assessmentStatusLabels: Record<string, string> = { DUE: "à payer", OVERDU
 
 async function sendReminders() {
   const overdueCandidates = await prisma.taxAssessment.findMany({
-    where: { ninja: { status: "ACTIVE" }, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE"] }, originalAmount: { gt: 0 } },
+    where: { ninja: { status: "ACTIVE" }, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID"] }, originalAmount: { gt: 0 } },
     select: { id: true, ninjaId: true }
   });
   let swept = 0;
@@ -181,7 +214,22 @@ async function sendReminders() {
     const updated = await prisma.$transaction(async (tx) => {
       const ninja = await lockNinja(tx, candidate.ninjaId);
       if (ninja?.status !== "ACTIVE") return false;
-      const result = await tx.taxAssessment.updateMany({ where: { id: candidate.id, ninjaId: candidate.ninjaId, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE"] }, originalAmount: { gt: 0 } }, data: { status: "OVERDUE" } });
+      const assessment = await tx.taxAssessment.findFirst({
+        where: { id: candidate.id, ninjaId: candidate.ninjaId, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID"] } },
+        include: { penalties: true, adjustments: true, exemptions: true, allocations: { include: { payment: { select: { status: true } } } } }
+      });
+      if (!assessment) return false;
+      const paid = assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").reduce((sum, entry) => sum + entry.amount, 0n);
+      const remaining = assessment.originalAmount
+        + assessment.penalties.reduce((sum, entry) => sum + entry.amount, 0n)
+        + assessment.adjustments.reduce((sum, entry) => sum + entry.amount, 0n)
+        - assessment.exemptions.reduce((sum, entry) => sum + entry.amount, 0n)
+        - paid;
+      if (remaining <= 0n) {
+        await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
+        return false;
+      }
+      const result = await tx.taxAssessment.updateMany({ where: { id: candidate.id, ninjaId: candidate.ninjaId, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID"] }, originalAmount: { gt: 0 } }, data: { status: "OVERDUE", version: { increment: 1 } } });
       return result.count === 1;
     });
     if (updated) swept++;
