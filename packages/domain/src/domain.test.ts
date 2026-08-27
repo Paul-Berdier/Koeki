@@ -29,6 +29,24 @@ describe("report permissions", () => {
   });
 });
 
+describe("value management permissions", () => {
+  it("reserves settings:manage to managers and super-administrators", () => {
+    expect(can("SUPER_ADMIN", "settings:manage")).toBe(true);
+    expect(can("KOEKI_MANAGER", "settings:manage")).toBe(true);
+    expect(can("ECONOMIC_AGENT", "settings:manage")).toBe(false);
+    expect(can("AUDITOR", "settings:manage")).toBe(false);
+    expect(can("NINJA", "settings:manage")).toBe(false);
+  });
+
+  it("keeps daily operations open to economic agents", () => {
+    expect(can("ECONOMIC_AGENT", "inventory:write")).toBe(true);
+    expect(can("ECONOMIC_AGENT", "payments:write")).toBe(true);
+    expect(can("ECONOMIC_AGENT", "ninjas:write")).toBe(true);
+    expect(can("ECONOMIC_AGENT", "taxes:write")).toBe(true);
+    expect(can("ECONOMIC_AGENT", "reports:write")).toBe(true);
+  });
+});
+
 describe("initial tax policy", () => {
   it("uses the exact configured grade rates", () => {
     expect(INITIAL_GRADE_RATES.GENIN_CONFIRMED).toBe(10_000n);

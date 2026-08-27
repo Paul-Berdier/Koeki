@@ -10,6 +10,8 @@ Les sessions sont en base, HttpOnly, Secure en production, SameSite=Lax, limité
 
 Les rôles sont `SUPER_ADMIN`, `KOEKI_MANAGER`, `ECONOMIC_AGENT`, `NINJA`, `AUDITOR`. Les permissions sont définies dans `packages/domain/src/permissions.ts` et doivent être vérifiées dans chaque commande serveur. Le masquage d’une action dans l’interface ne remplace jamais ce contrôle.
 
+La modification des barèmes (`settings:manage` : points et exonération par ressource, prix du catalogue, taux de taxe, pénalités, événements, recettes, administration) est réservée aux responsables Kōeki et super-administrateurs. Les agents économiques conservent uniquement les opérations quotidiennes : transactions, paiements, dossiers ninjas, stocks et rapports.
+
 ## Défense en profondeur
 
 - CSP, anti-framing, `nosniff`, politique de référent et permissions navigateur ;
