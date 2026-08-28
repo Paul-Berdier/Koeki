@@ -4,6 +4,7 @@ import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { PageHeader, SectionHeader } from "@koeki/ui";
 import { demoMode, requirePermission } from "@/lib/session";
 import { deleteResource, updateResource } from "../../actions";
+import { activePrice } from "@/lib/finance";
 import { prisma } from "@koeki/database";
 
 export default async function EditResourcePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -11,13 +12,14 @@ export default async function EditResourcePage({ params, searchParams }: { param
   const { id } = await params;
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;
-  const [resource, categories] = demoMode ? [null, []] : await Promise.all([
+  const [resource, categories, currentPrice] = demoMode ? [null, [], null] : await Promise.all([
     prisma.resource.findUnique({ where: { id } }),
-    prisma.resourceCategory.findMany({ orderBy: { label: "asc" } })
+    prisma.resourceCategory.findMany({ orderBy: { label: "asc" } }),
+    activePrice(prisma, id)
   ]);
   if (!demoMode && !resource) notFound();
   return <div className="page-wrap">
-    <PageHeader eyebrow={resource ? `Ressource ${resource.code}` : "Mode démonstration"} title="Modifier la ressource" description="Le prix se modifie depuis le catalogue (motif obligatoire, historique conservé)."
+    <PageHeader eyebrow={resource ? `Ressource ${resource.code}` : "Mode démonstration"} title="Modifier la ressource" description="Un changement de prix exige un motif et alimente l’historique du catalogue."
       actions={<Link className="button button-ghost" href="/resources"><ArrowLeft size={17} /> Catalogue</Link>} />
     {error && <p className="notice error" role="alert">{error}</p>}
     {demoMode || !resource ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : <>
@@ -30,6 +32,10 @@ export default async function EditResourcePage({ params, searchParams }: { param
         <div className="form-row">
           <label>Points par unité donnée<input type="number" name="pointsPerUnit" min={0} step={1} defaultValue={resource.pointsPerUnit} /></label>
           <label>Exonération par unité donnée (Ryō)<input type="number" name="exemptionPerUnit" min={0} step={1} defaultValue={Number(resource.exemptionPerUnit)} /></label>
+        </div>
+        <div className="form-row">
+          <label>Prix unitaire (Ryō)<input type="number" name="price" min={0} step={1} defaultValue={currentPrice === null ? "" : Number(currentPrice)} /></label>
+          <label>Motif du changement de prix<input type="text" name="priceReason" maxLength={300} placeholder="Obligatoire si le prix change" /></label>
         </div>
         <label>Description<input type="text" name="description" maxLength={500} defaultValue={resource.description ?? ""} /></label>
         <div className="form-row">

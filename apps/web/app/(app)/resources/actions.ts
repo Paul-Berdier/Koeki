@@ -152,22 +152,45 @@ export async function createResource(formData: FormData) {
   redirect("/resources");
 }
 
-const updateResourceSchema = resourceSchema.extend({ resourceId: z.string().min(1), isActive: z.literal("on").optional() });
+const updateResourceSchema = resourceSchema.extend({
+  resourceId: z.string().min(1),
+  isActive: z.literal("on").optional(),
+  price: z.preprocess((value) => (value === null || value === "" ? undefined : value), z.coerce.number().int("Prix invalide (entier en Ryō)").min(0, "Prix invalide").max(MAX_UNIT_PRICE, `Prix maximum : ${MAX_UNIT_PRICE.toLocaleString("fr-FR")} Ryō`).optional()),
+  priceReason: z.string().trim().max(300).optional()
+});
 
 export async function updateResource(formData: FormData) {
   const session = await requireWriteAccess("settings:manage");
   const parsed = updateResourceSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect(`/resources?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
-  const { resourceId, isActive, ...data } = parsed.data!;
-  if (data.criticalStock > data.minimumStock) redirect(`/resources?erreur=${encodeURIComponent("Le seuil critique doit être inférieur ou égal au seuil bas")}`);
+  const { resourceId, isActive, price, priceReason, ...data } = parsed.data!;
+  const back = (message: string): never => redirect(`/resources/${resourceId}/modifier?erreur=${encodeURIComponent(message)}`);
+  if (data.criticalStock > data.minimumStock) back("Le seuil critique doit être inférieur ou égal au seuil bas");
   const previous = await prisma.resource.findUnique({ where: { id: resourceId } });
   if (!previous) redirect("/resources?erreur=Ressource%20introuvable");
-  await prisma.$transaction(async (tx) => {
-    await tx.resource.update({ where: { id: resourceId }, data: { name: data.name, categoryId: data.categoryId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: BigInt(data.exemptionPerUnit), isActive: isActive === "on" } });
-    await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_UPDATED", entityType: "Resource", entityId: resourceId,
-      previousValues: { name: previous!.name, minimumStock: Number(previous!.minimumStock), criticalStock: Number(previous!.criticalStock), pointsPerUnit: previous!.pointsPerUnit, exemptionPerUnit: Number(previous!.exemptionPerUnit), isActive: previous!.isActive },
-      newValues: { name: data.name, minimumStock: data.minimumStock, criticalStock: data.criticalStock, pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: data.exemptionPerUnit, isActive: isActive === "on" } });
-  });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.resource.update({ where: { id: resourceId }, data: { name: data.name, categoryId: data.categoryId, description: data.description, demand: data.demand, minimumStock: new Prisma.Decimal(data.minimumStock), criticalStock: new Prisma.Decimal(data.criticalStock), pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: BigInt(data.exemptionPerUnit), isActive: isActive === "on" } });
+      await writeAudit(tx, { actorId: session.userId, action: "RESOURCE_UPDATED", entityType: "Resource", entityId: resourceId,
+        previousValues: { name: previous!.name, minimumStock: Number(previous!.minimumStock), criticalStock: Number(previous!.criticalStock), pointsPerUnit: previous!.pointsPerUnit, exemptionPerUnit: Number(previous!.exemptionPerUnit), isActive: previous!.isActive },
+        newValues: { name: data.name, minimumStock: data.minimumStock, criticalStock: data.criticalStock, pointsPerUnit: data.pointsPerUnit, exemptionPerUnit: data.exemptionPerUnit, isActive: isActive === "on" } });
+      if (price !== undefined) {
+        const current = await activePrice(tx, resourceId);
+        const changed = current === null ? price > 0 : BigInt(price) !== current;
+        if (changed) {
+          if (!priceReason || priceReason.length < 3) throw new Error("VALIDATION:Un motif d’au moins 3 caractères est obligatoire pour changer le prix");
+          const now = new Date();
+          await tx.resourcePriceHistory.updateMany({ where: { resourceId, effectiveTo: null }, data: { effectiveTo: now } });
+          await tx.resourcePriceHistory.create({ data: { resourceId, pricePerUnit: BigInt(price), effectiveFrom: now, createdById: session.userId } });
+          await writeAudit(tx, { actorId: session.userId, action: "PRICE_UPDATED", entityType: "Resource", entityId: resourceId, reason: priceReason, previousValues: { pricePerUnit: current === null ? null : Number(current) }, newValues: { pricePerUnit: price } });
+        }
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
+    if (isUniqueViolation(error)) back("Un autre prix vient d’être enregistré");
+    throw error;
+  }
   redirect("/resources");
 }
 
