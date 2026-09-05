@@ -24,6 +24,6 @@ export default defineConfig({
     { name: "desktop", testIgnore: /mobile/, use: { ...devices["Desktop Chrome"], javaScriptEnabled: false, viewport: { width: 1440, height: 900 } } },
     { name: "mobile", testMatch: /(visual|inventory)\.spec\.ts/, use: { ...devices["iPhone 13"], browserName: "chromium", javaScriptEnabled: false, viewport: { width: 390, height: 844 } } },
     // Client-side behaviour of the inventory register (search, filters, drawer) needs JavaScript.
-    { name: "interactive", testMatch: /inventory\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } }
+    { name: "interactive", testMatch: /(inventory|ninjas-search)\.spec\.ts/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } }
   ]
 });

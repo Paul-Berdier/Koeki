@@ -186,13 +186,13 @@ export async function getDashboard(session?: SessionInfo): Promise<DashboardData
   };
 }
 
-export async function getNinjas(params: { q?: string | undefined; grade?: string | undefined; statut?: string | undefined; page?: number | undefined }): Promise<NinjasData> {
+/** Rows of the register for a grade / situation. The free-text search is applied in the browser
+ *  (see components/ninja-register.tsx), so every dossier of the selection is returned. */
+export async function getNinjas(params: { grade?: string | undefined; statut?: string | undefined }): Promise<NinjasData> {
   if (demoMode) return demoNinjas;
   const [aggregates, users, grades] = await Promise.all([loadNinjaAggregates(), getUserNames(), prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })]);
-  const query = params.q?.trim().toLowerCase();
   const registry = aggregates.filter((ninja) => ninja.status !== "ARCHIVED");
   let rows = params.statut === "archived" ? aggregates.filter((ninja) => ninja.status === "ARCHIVED") : registry;
-  if (query) rows = rows.filter((ninja) => [`${ninja.firstName} ${ninja.lastName}`, ninja.code, ninja.alias ?? ""].some((value) => value.toLowerCase().includes(query)));
   if (params.grade) rows = rows.filter((ninja) => ninja.gradeCode === params.grade);
   if (params.statut === "deceased") rows = rows.filter((ninja) => ninja.status === "DECEASED");
   else if (params.statut === "inactive") rows = rows.filter((ninja) => ninja.status === "INACTIVE");
