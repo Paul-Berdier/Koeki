@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, KeyRound, Pencil } from "lucide-react";
+import { ArrowLeft, ArrowRight, KeyRound, Pencil } from "lucide-react";
 import { EmptyState, GradeBadge, MetricCard, MoneyDisplay, NinjaAvatar, PageHeader, PointDisplay, SectionHeader, StatusBadge } from "@koeki/ui";
 import { DetailTabs } from "@/components/detail-tabs";
 import { SettlementItems } from "@/components/settlement-items";
 import { getNinjaDetail } from "@/lib/data";
+import { getNinjaInventoryHistory } from "@/lib/inventory-data";
 import { lateYearsLabel } from "@/lib/format";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { changeGrade, recordPayment, waiveAssessment } from "../actions";
@@ -26,11 +27,12 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const isOwner = ownProfile?.id === id;
   const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "audit:read") });
   if (!data) notFound();
+  const inventory = hasPermission(session, "inventory:read") ? await getNinjaInventoryHistory(id) : null;
   const exemptionSetting = demoMode ? null : await prisma.appSetting.findUnique({ where: { key: "exemptionPolicy" } });
   const exemptionPolicy = parseExemptionPolicy(exemptionSetting?.value);
   const isActive = data.lifecycleStatus === "ACTIVE";
   const gradeNeedsUpdate = isActive && data.grade.code === "UNKNOWN";
-  const donatable = !demoMode && canPay && isActive && exemptionPolicy.weeklyTaxCoverageBps > 0 ? await prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }) : [];
+  const donatable = !demoMode && canPay && isActive && exemptionPolicy.weeklyTaxCoverageBps > 0 ? await prisma.resource.findMany({ where: { isActive: true, category: { code: { not: "TREASURY" } } }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }) : [];
   const receipt = typeof query.recu === "string" ? query.recu : null;
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
@@ -117,10 +119,17 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
     </section>}
   </div>;
 
+  const resourcesTab = inventory ? <section className="panel stack-panel">
+    <SectionHeader title="Ressources" description={`${inventory.totals.donations} don${inventory.totals.donations > 1 ? "s" : ""} · ${inventory.totals.buybacks} rachat${inventory.totals.buybacks > 1 ? "s" : ""} · ${inventory.totals.taken} sortie${inventory.totals.taken > 1 ? "s" : ""} prise${inventory.totals.taken > 1 ? "s" : ""} · ${inventory.totals.returned} remise${inventory.totals.returned > 1 ? "s" : ""}`} action={<Link href={`/inventory/movements?ninja=${data.id}`} className="text-link">Journal complet <ArrowRight size={15} /></Link>} />
+    {inventory.rows.length ? <div className="table-scroll"><table><thead><tr><th>Date</th><th>Opération</th><th>Ressource</th><th className="num">Quantité</th><th>Enregistré par</th><th>Motif</th></tr></thead><tbody>{inventory.rows.map((row) => <tr key={row.id}><td>{row.atLabel}</td><td>{row.typeLabel}</td><td><Link className="ninja-record-link" href={`/inventory/${row.resourceId}`}><strong>{row.resourceName}</strong></Link></td><td className={`num ${row.direction === "out" ? "negative" : "positive"}`}>{row.quantityLabel}</td><td>{row.agent}</td><td style={{ whiteSpace: "normal" }}>{row.reason}</td></tr>)}</tbody></table></div>
+      : <EmptyState title="Aucune ressource" description="Les dons, rachats, ressources prises et remises de ce ninja apparaîtront ici." />}
+  </section> : null;
+
   const tabs = [
     { id: "apercu", label: "Aperçu", content: overviewTab },
     { id: "taxes", label: "Semaines fiscales", count: data.assessments.length, content: taxesTab },
     { id: "operations", label: "Opérations", count: data.operations.length, content: operationsTab },
+    ...(resourcesTab ? [{ id: "ressources", label: "Ressources", count: inventory!.rows.length, content: resourcesTab }] : []),
     ...(canWrite ? [{ id: "gestion", label: "Gestion", content: adminTab }] : [])
   ];
 

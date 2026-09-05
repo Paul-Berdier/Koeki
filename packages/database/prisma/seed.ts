@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, RoleCode, TaxAssessmentStatus } from "@prisma/client";
+import { seedInventoryReferential } from "./inventory-seed";
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "postgresql://koeki:koeki@127.0.0.1:5432/koeki?schema=public" }) });
 const gradeSeed = [
@@ -38,8 +39,13 @@ async function main() {
   const copper = await prisma.resource.upsert({ where: { code: "RES-CUI-01" }, create: { code: "RES-CUI-01", name: "Minerai de cuivre", categoryId: mineral.id, minimumStock: 25, criticalStock: 10 }, update: {} });
   const fabric = await prisma.resource.upsert({ where: { code: "RES-TIS-03" }, create: { code: "RES-TIS-03", name: "Tissu renforcé", categoryId: textile.id, minimumStock: 20, criticalStock: 12 }, update: {} });
   for (const [resource, price] of [[copper, 180n], [fabric, 320n]] as const) await prisma.resourcePriceHistory.upsert({ where: { resourceId_effectiveFrom: { resourceId: resource.id, effectiveFrom: new Date("2026-01-01T00:00:00Z") } }, create: { resourceId: resource.id, pricePerUnit: price, effectiveFrom: new Date("2026-01-01T00:00:00Z"), createdById: admin.id }, update: {} });
-  await prisma.inventoryMovement.upsert({ where: { idempotencyKey: "seed-copper-opening" }, create: { resourceId: copper.id, type: "MANUAL_ADJUSTMENT", quantity: 82, agentId: admin.id, justification: "Stock initial fictif", idempotencyKey: "seed-copper-opening" }, update: {} });
-  await prisma.inventoryMovement.upsert({ where: { idempotencyKey: "seed-fabric-opening" }, create: { resourceId: fabric.id, type: "MANUAL_ADJUSTMENT", quantity: 9, agentId: admin.id, justification: "Stock initial fictif", idempotencyKey: "seed-fabric-opening" }, update: {} });
+  // Demo opening stocks: a first count creates an INITIAL_BALANCE line and marks the resource as counted.
+  for (const [resource, quantity, key] of [[copper, 82, "seed-copper-opening"], [fabric, 9, "seed-fabric-opening"]] as const) {
+    const existing = await prisma.inventoryMovement.findUnique({ where: { idempotencyKey: key } });
+    if (!existing) await prisma.inventoryMovement.create({ data: { resourceId: resource.id, type: "INITIAL_BALANCE", quantity, agentId: admin.id, reason: "Inventaire initial fictif", sourceType: "Seed", idempotencyKey: key } });
+    await prisma.resource.update({ where: { id: resource.id }, data: { inventoryStatus: "COUNTED", lastCountedAt: new Date() } });
+  }
+  await seedInventoryReferential(prisma, admin.id);
   await prisma.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value: { latePenaltyPercentBps: null, latePenaltyBasis: "ORIGINAL_TAX", latePenaltyFrequencyRpYears: 1, maxPenaltyApplications: 4, maxAssessmentDebt: "32000", isPenaltyAutomationEnabled: false, isRateValidated: false } }, update: {} });
   await prisma.appSetting.upsert({ where: { key: "exemptionPolicy" }, create: { key: "exemptionPolicy", value: { weeklyTaxCoverageBps: 0 } }, update: {} });
   await prisma.appSetting.upsert({ where: { key: "rpTime" }, create: { key: "rpTime", value: { realAnchorAt: "2026-01-05T00:00:00.000Z", rpAnchorYear: 20, realMillisecondsPerRpYear: 604800000, timezone: "Europe/Paris", fiscalYearStartOffsetMs: 0, dueDelayMs: 259200000 } }, update: {} });

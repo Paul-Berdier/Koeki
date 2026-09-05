@@ -1,6 +1,7 @@
 // Production bootstrap: reference data only — no fictional ninjas, taxes or stocks.
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, RoleCode } from "@prisma/client";
+import { seedInventoryReferential } from "./inventory-seed";
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "postgresql://koeki:koeki@127.0.0.1:5432/koeki?schema=public" }) });
 const gradeSeed = [
@@ -25,6 +26,13 @@ async function main() {
   const policy = await prisma.taxPolicy.upsert({ where: { name_version: { name: "Barème initial", version: 1 } }, create: { name: "Barème initial", version: 1, effectiveFromRpYear: 1, isActive: true }, update: {} });
   for (const grade of grades.values()) await prisma.taxPolicyGradeRate.upsert({ where: { taxPolicyId_gradeId: { taxPolicyId: policy.id, gradeId: grade.id } }, create: { taxPolicyId: policy.id, gradeId: grade.id, amount: grade.amount }, update: {} });
   for (const [code, label] of categorySeed) await prisma.resourceCategory.upsert({ where: { code }, create: { code, label }, update: { label } });
+  // Inventory referential: units, inventory categories and the initial catalog (idempotent,
+  // aligns the old-register names on stable codes without touching quantities).
+  const inventory = await prisma.$transaction(async (tx) => {
+    // Two replicas may start together during a Railway deployment: one aligns, the other waits.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714424)`;
+    return seedInventoryReferential(tx, admin.id);
+  }, { timeout: 120_000, maxWait: 30_000 });
   await prisma.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value: { latePenaltyPercentBps: null, latePenaltyBasis: "ORIGINAL_TAX", latePenaltyFrequencyRpYears: 1, maxPenaltyApplications: 4, maxAssessmentDebt: "32000", isPenaltyAutomationEnabled: false, isRateValidated: false } }, update: {} });
   await prisma.appSetting.upsert({ where: { key: "exemptionPolicy" }, create: { key: "exemptionPolicy", value: { weeklyTaxCoverageBps: 0 } }, update: {} });
   // Cadence RP : 1 jour réel = 1 mois RP, 1 semaine réelle = 1 année RP. L'année bascule le
@@ -46,6 +54,6 @@ async function main() {
     const existing = await prisma.pointRule.findFirst({ where: { name: rule.name } });
     if (!existing) await prisma.pointRule.create({ data: { name: rule.name, eventType: rule.eventType, mode: rule.mode, fixedPoints: "fixedPoints" in rule ? rule.fixedPoints : null, amountStep: "amountStep" in rule ? rule.amountStep : null, pointsPerStep: "pointsPerStep" in rule ? rule.pointsPerStep : null, startsAt: new Date("2026-01-01T00:00:00Z"), isActive: false } });
   }
-  console.log("Kōeki production bootstrap complete", { roles: roles.size, grades: grades.size });
+  console.log("Kōeki production bootstrap complete", { roles: roles.size, grades: grades.size, inventoryCreated: inventory.created, inventoryAligned: inventory.aligned });
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

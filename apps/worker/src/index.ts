@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { prisma, type Prisma } from "@koeki/database";
-import { assessmentSettlementBreakdown, calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, deriveTaxAssessmentStatus, exemptionUse, parseExemptionPolicy, rpTimeConfigSchema, ryo } from "@koeki/domain";
+import { assessmentSettlementBreakdown, calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, deriveStockState, deriveTaxAssessmentStatus, exemptionUse, parseExemptionPolicy, rpTimeConfigSchema, ryo } from "@koeki/domain";
 
 const isUniqueViolation = (error: unknown) => (error as { code?: string } | null)?.code === "P2002";
 
@@ -265,10 +265,9 @@ async function checkInventory() {
   const alerts: Array<{ resource: string; stock: number; level: string }> = [];
   for (const resource of resources) {
     const stock = stocks.get(resource.id) ?? 0;
-    // A zero threshold means "not configured" — never alert on it.
-    const critical = Number(resource.criticalStock);
-    const minimum = Number(resource.minimumStock);
-    const level = critical > 0 && stock <= critical ? "critical" : minimum > 0 && stock <= minimum ? "low" : null;
+    // Single threshold rule shared with the register (a never-counted resource never alerts).
+    const state = deriveStockState({ inventoryStatus: resource.inventoryStatus, quantity: stock, minimumStock: Number(resource.minimumStock), criticalStock: Number(resource.criticalStock) });
+    const level = state === "CRITICAL" || state === "OUT_OF_STOCK" ? "critical" : state === "LOW" ? "low" : null;
     if (!level) continue;
     alerts.push({ resource: resource.code, stock, level });
     const already = await prisma.auditLog.findFirst({ where: { action: "INVENTORY_ALERT", entityType: "Resource", entityId: resource.id, createdAt: { gte: startOfDay } } });
@@ -298,7 +297,31 @@ async function refreshStats() {
   return { command: "stats:refresh", ...value };
 }
 
-const commands: Record<string, () => Promise<unknown>> = { "taxes:generate": generateTaxes, "penalties:apply": applyPenalties, "reminders:send": sendReminders, "inventory:check": checkInventory, "stats:refresh": refreshStats };
+/** Ledger truth (SUM of movements) versus the cached Resource.currentQuantity. A mismatch is
+ *  reported to managers and audited once a day — never corrected silently (see docs/INVENTORY.md). */
+async function reconcileInventory() {
+  const mismatches = await prisma.$queryRaw<Array<{ id: string; code: string; name: string; ledger: number; cache: number }>>`
+    SELECT r."id", r."code", r."name", COALESCE(SUM(m."quantity"), 0)::float8 AS "ledger", r."currentQuantity"::float8 AS "cache"
+    FROM "Resource" r
+    LEFT JOIN "InventoryMovement" m ON m."resourceId" = r."id"
+    GROUP BY r."id", r."code", r."name", r."currentQuantity"
+    HAVING COALESCE(SUM(m."quantity"), 0) <> r."currentQuantity"
+    ORDER BY r."name"
+  `;
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  const managers = mismatches.length ? await prisma.user.findMany({ where: { revokedAt: null, roles: { some: { role: { code: { in: ["SUPER_ADMIN", "KOEKI_MANAGER"] } } } } }, select: { id: true } }) : [];
+  let alerted = 0;
+  for (const row of mismatches) {
+    const already = await prisma.auditLog.findFirst({ where: { action: "INVENTORY_RECONCILIATION_MISMATCH", entityType: "Resource", entityId: row.id, createdAt: { gte: startOfDay } } });
+    if (already) continue;
+    await prisma.auditLog.create({ data: { action: "INVENTORY_RECONCILIATION_MISMATCH", entityType: "Resource", entityId: row.id, requestId: randomUUID(), reason: `${row.code} : ledger ${row.ledger} ≠ stock affiché ${row.cache}`, newValues: { ledger: row.ledger, cache: row.cache } } });
+    for (const manager of managers) await prisma.notification.create({ data: { userId: manager.id, title: `Inventaire incohérent : ${row.name}`, body: `La somme des mouvements (${row.ledger}) diffère du stock affiché (${row.cache}). Vérifiez et réalignez depuis la page Inventaire.` } });
+    alerted++;
+  }
+  return { command: "inventory:reconcile", mismatches: mismatches.map((row) => ({ code: row.code, ledger: row.ledger, cache: row.cache })), alerted };
+}
+
+const commands: Record<string, () => Promise<unknown>> = { "taxes:generate": generateTaxes, "penalties:apply": applyPenalties, "reminders:send": sendReminders, "inventory:check": checkInventory, "inventory:reconcile": reconcileInventory, "stats:refresh": refreshStats };
 async function main() {
   const command = process.argv[2] ?? "all";
   const selected = command === "all" ? Object.values(commands) : [commands[command]];

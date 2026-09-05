@@ -15,7 +15,7 @@ export default async function ResourceTransactionPage({ searchParams }: { search
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const [ninjas, resources, prices, exemptionSetting] = demoMode ? [[], [], [], null] : await Promise.all([
     prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, code: true, firstName: true, lastName: true } }),
-    prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }),
+    prisma.resource.findMany({ where: { isActive: true, category: { code: { not: "TREASURY" } } }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }),
     prisma.resourcePriceHistory.findMany({ where: { effectiveFrom: { lte: new Date() }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: new Date() } }] }, orderBy: { effectiveFrom: "desc" } }),
     prisma.appSetting.findUnique({ where: { key: "exemptionPolicy" } })
   ]);

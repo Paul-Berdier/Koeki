@@ -36,8 +36,9 @@ export async function declareOwnDonation(formData: FormData) {
       if (!await lockActiveNinja(tx, profile!.id)) throw new Error("VALIDATION:Votre dossier ninja n’est plus actif");
       const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint }> = [];
       for (const line of lines) {
-        const resource = await tx.resource.findUnique({ where: { id: line.resourceId } });
+        const resource = await tx.resource.findUnique({ where: { id: line.resourceId }, include: { category: true } });
         if (!resource || !resource.isActive) throw new Error("VALIDATION:Objet inconnu ou inactif");
+        if (resource.category.code === "TREASURY") throw new Error(`VALIDATION:${resource.name} est de la trésorerie, pas un objet à donner`);
         const unitPrice = (await activePrice(tx, line.resourceId)) ?? 0n;
         items.push({ resourceId: line.resourceId, quantity: line.quantity, unitPrice, lineTotal: scaledTimes(line.quantity, unitPrice) });
       }

@@ -7,6 +7,7 @@ import { exemptionUse, planLegacySettlement } from "@koeki/domain";
 import { getRpService, loadNinjaFiscal } from "@/lib/data";
 import { awardPoints, grantExemption, isUniqueViolation, loadExemptionPolicy, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { billCurrentWeekAfterGradeResolution } from "@/lib/grade-tax";
+import { lockResources, recordMovement } from "@/lib/inventory-ledger";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
 
 const createNinjaSchema = z.object({
@@ -299,14 +300,14 @@ export async function deleteNinja(formData: FormData) {
         where: { id: ninjaId as string },
         include: {
           equipment: { select: { id: true } },
-          _count: { select: { assessments: true, payments: true, pointEntries: true, resourceTransactions: true, invitations: true, exemptionEntries: true, eventsWon: true } }
+          _count: { select: { assessments: true, payments: true, pointEntries: true, resourceTransactions: true, invitations: true, exemptionEntries: true, eventsWon: true, inventoryMovements: true } }
         }
       });
       if (!ninja) return null;
       if (ninja.status === "ARCHIVED") throw new Error("VALIDATION:Ce dossier est déjà archivé");
       const counts = ninja._count;
       const hasHistory = Boolean(ninja.userId || ninja.equipment)
-        || counts.assessments + counts.payments + counts.pointEntries + counts.resourceTransactions + counts.invitations + counts.exemptionEntries + counts.eventsWon > 0;
+        || counts.assessments + counts.payments + counts.pointEntries + counts.resourceTransactions + counts.invitations + counts.exemptionEntries + counts.eventsWon + counts.inventoryMovements > 0;
       if (hasHistory) {
         const archivedFromStatus = ninja.status === "ACTIVE" || ninja.status === "DECEASED" ? ninja.status : "INACTIVE";
         await tx.invitation.updateMany({ where: { ninjaProfileId: ninja.id, status: "PENDING" }, data: { status: "REVOKED", revokedAt: new Date() } });
@@ -396,8 +397,9 @@ export async function recordPayment(formData: FormData) {
       if (items.length) {
         const lines: Array<{ resourceId: string; quantity: number; exemptionPerUnit: bigint; unitPrice: bigint; pointsPerUnit: number }> = [];
         for (const item of items) {
-          const resource = await tx.resource.findUnique({ where: { id: item.resourceId } });
+          const resource = await tx.resource.findUnique({ where: { id: item.resourceId }, include: { category: true } });
           if (!resource || !resource.isActive) throw new Error("VALIDATION:Objet inconnu ou inactif");
+          if (resource.category.code === "TREASURY") throw new Error(`VALIDATION:${resource.name} est de la trésorerie, pas un objet à donner`);
           lines.push({ resourceId: item.resourceId, quantity: item.quantity, exemptionPerUnit: resource.exemptionPerUnit, unitPrice: resource.exemptionPerUnit, pointsPerUnit: resource.pointsPerUnit });
           donationValue += scaledTimes(item.quantity, resource.exemptionPerUnit);
         }
@@ -407,7 +409,9 @@ export async function recordPayment(formData: FormData) {
           totalAmount: donationValue, idempotencyKey: `${idempotencyKey}:don`, validatedAt: new Date()
         } });
         await tx.resourceTransactionItem.createMany({ data: lines.map((line) => ({ transactionId: transaction.id, resourceId: line.resourceId, quantity: new Prisma.Decimal(line.quantity), unitPriceSnapshot: line.unitPrice, lineTotal: scaledTimes(line.quantity, line.exemptionPerUnit) })) });
-        for (const line of lines) await tx.inventoryMovement.create({ data: { resourceId: line.resourceId, type: "DONATION_IN", quantity: new Prisma.Decimal(line.quantity), unitCost: line.unitPrice, transactionId: transaction.id, agentId: session.userId, justification: `Reçu ${donationReceipt}`, idempotencyKey: `${idempotencyKey}:don:${line.resourceId}` } });
+        // Stock through the single ledger writer: the ninja settling the tax is the giver.
+        await lockResources(tx, lines.map((line) => line.resourceId));
+        for (const line of lines) await recordMovement(tx, { resourceId: line.resourceId, type: "DONATION_IN", quantity: new Prisma.Decimal(line.quantity), unitCost: line.unitPrice, transactionId: transaction.id, agentId: session.userId, counterparty: { type: "NINJA", ninjaId }, reason: `Don ${donationReceipt} (règlement de taxe)`, idempotencyKey: `${idempotencyKey}:don:${line.resourceId}` });
         const donationPoints = await awardPoints(tx, { ninjaId, eventType: "DONATION", amount: donationValue, sourceType: "ResourceTransaction", sourceId: transaction.id, basePoints: lines.reduce((total, line) => total + line.quantity * line.pointsPerUnit, 0) });
         if (donationPoints > 0) await tx.resourceTransaction.update({ where: { id: transaction.id }, data: { totalPoints: donationPoints } });
         await grantExemption(tx, { ninjaId, amount: donationValue, sourceType: "ResourceTransaction", sourceId: transaction.id, reason: `Don ${donationReceipt}` });

@@ -12,6 +12,8 @@ Les rôles sont `SUPER_ADMIN`, `KOEKI_MANAGER`, `ECONOMIC_AGENT`, `NINJA`, `AUDI
 
 La modification des barèmes (`settings:manage` : points et exonération par ressource, prix du catalogue, taux de taxe, pénalités, événements, recettes, administration) est réservée aux responsables Kōeki et super-administrateurs. Les agents économiques conservent uniquement les opérations quotidiennes : transactions, paiements, dossiers ninjas, stocks et rapports.
 
+L’inventaire est découpé en `inventory:read`, `inventory:write`, `inventory:count`, `inventory:adjust`, `inventory:catalog` et `inventory:export` (voir `INVENTORY_PERMISSIONS.md`). Un agent économique enregistre des entrées et sorties ; comptages, ajustements, corrections, override de stock négatif et catalogue relèvent des responsables. Les lignes du ledger de stock sont immuables au niveau de la base (trigger) : une erreur se corrige par contre-écriture liée.
+
 ## Défense en profondeur
 
 - CSP, anti-framing, `nosniff`, politique de référent et permissions navigateur ;

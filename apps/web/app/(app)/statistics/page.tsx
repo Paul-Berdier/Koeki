@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { EmptyState, MoneyDisplay, PageHeader, PointDisplay, SectionHeader, ZoneTitle } from "@koeki/ui";
-import { getStatistics } from "@/lib/data";
+import { getRpService, getStatistics } from "@/lib/data";
+import { getInventoryAgentActivity } from "@/lib/inventory-data";
 import { formatPercentBps } from "@/lib/format";
 import { hasPermission, requireSession } from "@/lib/session";
 
@@ -9,6 +10,8 @@ export default async function StatisticsPage() {
   const session = await requireSession();
   if (!hasPermission(session, "payments:write") && !hasPermission(session, "audit:read")) redirect("/access-denied");
   const data = await getStatistics();
+  const service = await getRpService();
+  const inventoryActivity = hasPermission(session, "inventory:read") ? await getInventoryAgentActivity(service.startOfRpYear(service.currentRpYear())) : [];
   const rate = formatPercentBps(data.rateBps);
   const ringPercent = Math.round(data.rateBps / 100);
   return <div className="page-wrap">
@@ -33,6 +36,7 @@ export default async function StatisticsPage() {
     <ZoneTitle title="Agents et ressources" detail="Travail du service et flux du comptoir" />
     <div className="dashboard-grid stats-grid">
       <section className="panel"><SectionHeader title="Activité des agents" description="Score composite : volume et montants, jamais l’argent seul" />{data.agents.length ? <><div className="agent-scores">{data.agents.map((agent) => <article key={agent.name}><span className="agent-avatar">{agent.initials}</span><div><strong>{agent.name}</strong><small>{agent.payments} paiement{agent.payments > 1 ? "s" : ""} · {agent.donations} don{agent.donations > 1 ? "s" : ""} · {agent.buybacks} rachat{agent.buybacks > 1 ? "s" : ""} · <MoneyDisplay amount={agent.collected} compact /></small><i><b style={{ width: `${Math.max(2, agent.score)}%` }} /></i></div><em>{agent.score}</em></article>)}</div><p className="chart-summary">Le score combine volume d’opérations (60 %) et montants traités (40 %) ; aucune comparaison n’est fondée uniquement sur les encaissements.</p></> : <EmptyState title="Aucune activité" description="Les opérations enregistrées ce cycle alimenteront ces scores." />}</section>
+      <section className="panel"><SectionHeader title="Traçabilité des stocks par agent" description="Mouvements enregistrés ce cycle — un indicateur d’activité, jamais une sanction" />{inventoryActivity.length ? <div className="table-scroll"><table className="agent-trace-table"><thead><tr><th>Agent</th><th className="num">Mouvements</th><th className="num">Entrées</th><th className="num">Sorties</th><th className="num">Comptages</th><th className="num">Ajustements</th><th className="num">Corrections</th><th className="num">Lignes annulées</th></tr></thead><tbody>{inventoryActivity.map((agent) => <tr key={agent.id}><td><Link className="ninja-record-link" href={`/inventory/movements?agent=${agent.id}`}><strong>{agent.name}</strong></Link></td><td className="num">{agent.movements}</td><td className="num positive">{agent.entries}</td><td className="num negative">{agent.exits}</td><td className="num">{agent.counts}</td><td className="num">{agent.adjustments}</td><td className="num">{agent.corrections}</td><td className={`num ${agent.reversed ? "negative" : "muted"}`}>{agent.reversed}</td></tr>)}</tbody></table></div> : <EmptyState title="Aucun mouvement" description="Les entrées, sorties et comptages du cycle apparaîtront ici." />}</section>
       <section className="panel"><SectionHeader title="Ressources les plus traitées" description="Dons et rachats validés ce cycle" />{data.topResources.length ? <div className="mini-list">{data.topResources.map((resource) => <div key={`${resource.name}-${resource.typeLabel}`}><span><strong>{resource.name}</strong><small>{resource.typeLabel}</small></span><strong>{resource.quantity.toLocaleString("fr-FR")}</strong></div>)}</div> : <EmptyState title="Aucune transaction" description="Les dons et rachats validés apparaîtront ici." />}</section>
     </div>
   </div>;

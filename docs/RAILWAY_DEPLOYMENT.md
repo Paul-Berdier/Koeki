@@ -60,6 +60,10 @@ Ce bootstrap crée uniquement les référentiels : rôles, grades, barème initi
 
 `pnpm db:seed` reste réservé au développement local : il crée les données fictives de démonstration.
 
+## 4 ter. Inventaire (migration `0016_inventory_traceability`)
+
+Le premier `pnpm start:prod` après cette version applique une migration **additive** (unités, alias, colonnes de traçabilité, sessions de comptage, triggers) et remplit les instantanés avant / après de tous les mouvements existants, puis le bootstrap aligne le catalogue initial de l’inventaire par nom (`T1` → `Plan T1`, `Chakra Métal` → `Pièces Chakra`, `Ryo` → `Ryōs`, anciens noms et codes conservés en alias, audit `RESOURCE_ALIGNED`). Aucune quantité n’est modifiée : toutes les ressources restent « Non inventorié » jusqu’au premier comptage réalisé depuis **Inventaire → Comptages → Initialiser l’inventaire**. Vérifications après déploiement : `/inventory` s’ouvre, `pnpm worker inventory:reconcile` ne signale aucun écart, le registre d’audit contient les lignes `RESOURCE_ALIGNED`.
+
 ## 4 bis. Première invitation
 
 Toujours dans une commande ponctuelle sur `koeki-web` :
@@ -95,6 +99,7 @@ pnpm worker taxes:generate
 pnpm worker penalties:apply
 pnpm worker reminders:send
 pnpm worker inventory:check
+pnpm worker inventory:reconcile
 pnpm worker stats:refresh
 ```
 

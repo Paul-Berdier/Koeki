@@ -19,8 +19,28 @@ export function assessmentBadge(status: TaxAssessmentStatus): BadgeStatus {
 const dateFormat = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", timeZone: "Europe/Paris" });
 const dateTimeFormat = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
 
+const fullDateTimeFormat = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+const fullDateFormat = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris" });
+
 export function formatDate(date: Date | null | undefined) { return date ? dateFormat.format(date) : "—"; }
 export function formatDateTime(date: Date | null | undefined) { return date ? dateTimeFormat.format(date) : "—"; }
+/** 05/09/2026 14:32 — the unambiguous form used by the inventory register. */
+export function formatFullDateTime(date: Date | null | undefined) { return date ? fullDateTimeFormat.format(date).replace(",", "") : "—"; }
+export function formatFullDate(date: Date | null | undefined) { return date ? fullDateFormat.format(date) : "—"; }
+
+/** "il y a 2 h", "hier", "il y a 3 j", then the full date. */
+export function relativeDay(date: Date | null | undefined, now = new Date()) {
+  if (!date) return "—";
+  const minutes = Math.max(0, Math.round((now.getTime() - date.getTime()) / 60_000));
+  if (minutes < 1) return "à l’instant";
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "hier";
+  if (days < 14) return `il y a ${days} j`;
+  return fullDateFormat.format(date);
+}
 
 export function relativeTime(date: Date, now = new Date()) {
   const minutes = Math.max(0, Math.round((now.getTime() - date.getTime()) / 60_000));

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { isUniqueViolation, lockResources, parseFourDecimal, writeAudit } from "@/lib/finance";
+import { recordMovement } from "@/lib/inventory-ledger";
 import { requireWriteAccess } from "@/lib/session";
 
 const MAX_CRAFT_COST = 100_000_000;
@@ -21,6 +22,8 @@ export async function executeCraft(formData: FormData) {
       const recipe = await tx.craftRecipe.findUnique({ where: { id: recipeId }, include: { ingredients: { include: { resource: true } }, outputs: true } });
       if (!recipe || recipe.status !== "ACTIVE") throw new Error("VALIDATION:Recette inconnue ou inactive");
       if (!recipe.ingredients.length) throw new Error("VALIDATION:Cette recette n’a aucun ingrédient défini");
+      // All recipe resources are locked up front in sorted order; the ledger writer then
+      // re-checks each ingredient on locked state and refuses any negative stock.
       const resourceIds = [...recipe.ingredients.map((ingredient) => ingredient.resourceId), ...recipe.outputs.map((output) => output.resourceId)];
       const locked = await lockResources(tx, resourceIds);
       if (locked.size !== new Set(resourceIds).size) throw new Error("VALIDATION:Une ressource de la recette est introuvable");
@@ -31,14 +34,15 @@ export async function executeCraft(formData: FormData) {
         if (stock.lessThan(needed)) throw new Error(`VALIDATION:Stock insuffisant de ${ingredient.resource.name} (${needed.toString()} requis, ${stock.toString()} disponible)`);
       }
       const execution = await tx.craftExecution.create({ data: { recipeId, quantity, status: "CONFIRMED", confirmedById: session.userId, idempotencyKey } });
-      for (const ingredient of recipe.ingredients) await tx.inventoryMovement.create({ data: {
+      const reason = `Fabrication ${recipe.code} ×${quantity}`;
+      for (const ingredient of recipe.ingredients) await recordMovement(tx, {
         resourceId: ingredient.resourceId, type: "CRAFT_CONSUMPTION", quantity: ingredient.quantity.mul(quantity).negated(),
-        craftExecutionId: execution.id, agentId: session.userId, justification: `Fabrication ${recipe.code} ×${quantity}`, idempotencyKey: `${idempotencyKey}:in:${ingredient.resourceId}`
-      } });
-      for (const output of recipe.outputs) await tx.inventoryMovement.create({ data: {
+        craftExecutionId: execution.id, agentId: session.userId, reason, notes: recipe.name, idempotencyKey: `${idempotencyKey}:in:${ingredient.resourceId}`
+      });
+      for (const output of recipe.outputs) await recordMovement(tx, {
         resourceId: output.resourceId, type: "CRAFT_OUTPUT", quantity: output.quantity.mul(quantity),
-        craftExecutionId: execution.id, agentId: session.userId, justification: `Fabrication ${recipe.code} ×${quantity}`, idempotencyKey: `${idempotencyKey}:out:${output.resourceId}`
-      } });
+        craftExecutionId: execution.id, agentId: session.userId, reason, notes: recipe.name, idempotencyKey: `${idempotencyKey}:out:${output.resourceId}`
+      });
       await writeAudit(tx, { actorId: session.userId, action: "CRAFT_EXECUTED", entityType: "CraftExecution", entityId: execution.id, reason: `${recipe.name} ×${quantity}`, newValues: { recipeCode: recipe.code, quantity } });
       return `${recipe.code} ×${quantity}`;
     });

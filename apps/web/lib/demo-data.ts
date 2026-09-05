@@ -1,5 +1,5 @@
 import type {
-  AdminData, AuditData, CraftingData, DashboardData, EventsData, InventoryData, NinjaDetailData, NinjaRow, NinjasData,
+  AdminData, AuditData, CraftingData, DashboardData, EventsData, NinjaDetailData, NinjaRow, NinjasData,
   RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData
 } from "./types";
 
@@ -58,26 +58,12 @@ export const demoResources: ResourcesData = {
   metrics: { buybackTotal: 67400n, buybackCount: 23, donationValue: 22400n, donationCount: 9, activeCount: 42, totalCount: 48 },
   categories: [{ code: "MINERALS", label: "Minerais" }, { code: "TEXTILES", label: "Textiles" }, { code: "WOOD", label: "Bois" }],
   resources: [
-    { id: "r1", code: "RES-CUI-01", name: "Minerai de cuivre", category: "Minerais", points: 10, exemption: 1000n, price: 180n, stock: 82, badge: "paid", stateLabel: "Disponible", demand: "NONE" },
-    { id: "r2", code: "RES-TIS-03", name: "Tissu renforcé", category: "Textiles", points: 10, exemption: 1000n, price: 320n, stock: 9, badge: "overdue", stateLabel: "Critique", demand: "NEEDED" },
-    { id: "r3", code: "RES-BOI-02", name: "Bois d’aulne", category: "Bois", points: 5, exemption: 800n, price: 95n, stock: 14, badge: "warning", stateLabel: "Stock bas", demand: "CRITICAL" },
-    { id: "r4", code: "RES-HER-08", name: "Herbe du désert", category: "Herboristerie", points: 2, exemption: 10n, price: 60n, stock: 143, badge: "paid", stateLabel: "Disponible", demand: "NONE" }
+    { id: "r1", code: "RES-CUI-01", name: "Minerai de cuivre", category: "Minerais", unit: "unité", unitDecimals: 0, points: 10, exemption: 1000n, price: 180n, stock: 82, counted: true, badge: "paid", stateLabel: "Disponible", demand: "NONE" },
+    { id: "r2", code: "RES-TIS-03", name: "Tissu renforcé", category: "Textiles", unit: "unité", unitDecimals: 0, points: 10, exemption: 1000n, price: 320n, stock: 9, counted: true, badge: "overdue", stateLabel: "Critique", demand: "NEEDED" },
+    { id: "r3", code: "RES-BOI-02", name: "Bois d’aulne", category: "Bois", unit: "unité", unitDecimals: 0, points: 5, exemption: 800n, price: 95n, stock: 14, counted: true, badge: "warning", stateLabel: "Stock bas", demand: "CRITICAL" },
+    { id: "r4", code: "RES-HER-08", name: "Herbe du désert", category: "Herboristerie", unit: "unité", unitDecimals: 0, points: 2, exemption: 10n, price: 60n, stock: 143, counted: true, badge: "paid", stateLabel: "Disponible", demand: "NONE" }
   ],
   pendingApprovals: []
-};
-
-export const demoInventory: InventoryData = {
-  metrics: { stockValue: 418200n, movementsToday: 18, inToday: 12, outToday: 6, criticalCount: 3, lowCount: 1 },
-  alerts: [
-    { id: "r2", name: "Tissu renforcé", stock: 9, level: "critical", threshold: 12 },
-    { id: "r3", name: "Bois d’aulne", stock: 14, level: "low", threshold: 20 },
-    { id: "r5", name: "Sable siliceux", stock: 4, level: "critical", threshold: 8 }
-  ],
-  movements: [
-    { id: "m1", at: "13:12", resource: "Minerai de cuivre", type: "Rachat", quantity: 12, agent: "Sonemi H.", justification: "BUY-2026-000067" },
-    { id: "m2", at: "11:47", resource: "Tissu renforcé", type: "Consommation atelier", quantity: -3, agent: "Kaemon T.", justification: "Fabrication REC-ARM-014" }
-  ],
-  resources: [{ id: "r1", name: "Minerai de cuivre", stock: 82 }, { id: "r2", name: "Tissu renforcé", stock: 9 }]
 };
 
 export const demoCrafting: CraftingData = {

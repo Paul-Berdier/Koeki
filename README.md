@@ -37,6 +37,7 @@ pnpm worker taxes:generate
 pnpm worker penalties:apply
 pnpm worker reminders:send
 pnpm worker inventory:check
+pnpm worker inventory:reconcile
 pnpm worker stats:refresh
 pnpm worker all
 ```
@@ -56,4 +57,6 @@ pnpm worker all
 
 Les Ryō sont des entiers (`BigInt`). Les écritures validées sont corrigées par contre-écriture. Le navigateur ne détermine jamais un prix, un solde, une allocation ou une pénalité définitive. Les invitations sont à usage unique et seul leur hash poivré est stocké.
 
-Consulter [l’architecture](docs/ARCHITECTURE.md), [la sécurité](docs/SECURITY.md) et [le déploiement Railway](docs/RAILWAY_DEPLOYMENT.md).
+Consulter [l’architecture](docs/ARCHITECTURE.md), [la sécurité](docs/SECURITY.md), [l’inventaire](docs/INVENTORY.md) et [le déploiement Railway](docs/RAILWAY_DEPLOYMENT.md).
+
+Les tests d’intégration de l’inventaire (`pnpm test`) créent une base jetable `koeki_test` sur le PostgreSQL local (`DATABASE_URL_TEST` pour la changer) et s’ignorent si aucun serveur ne répond.

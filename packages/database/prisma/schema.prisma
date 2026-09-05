@@ -101,6 +101,35 @@ enum InventoryMovementType {
   TRANSFER_IN
   TRANSFER_OUT
   LOSS
+  INITIAL_BALANCE
+  IN
+  OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  RETURN_IN
+  REVERSAL
+  OTHER
+}
+
+enum InventoryStatus {
+  NOT_INVENTORIED
+  COUNTED
+}
+
+enum CounterpartyType {
+  NINJA
+  EXTERNAL
+}
+
+enum StocktakeKind {
+  INITIAL
+  COUNT
+}
+
+enum StocktakeStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
 }
 
 enum CraftStatus {
@@ -270,6 +299,7 @@ model NinjaProfile {
   eventsWon            Event[]
   exemptionEntries     ExemptionLedgerEntry[]
   equipment            NinjaEquipment?
+  inventoryMovements   InventoryMovement[]    @relation("MovementCounterparty")
 
   @@index([lastName, firstName])
   @@index([currentGradeId, status])
@@ -491,31 +521,72 @@ model ResourceCategory {
   id        String     @id @default(cuid())
   code      String     @unique
   label     String
+  sortOrder Int        @default(100)
   resources Resource[]
 }
 
-// Everything is counted in plain units — no per-resource unit of measure.
+// Unit of measure of a resource (unité, kg, Ryō…). `decimals` bounds the precision
+// accepted for quantities: 0 means whole numbers only.
+model ResourceUnit {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  label     String
+  decimals  Int        @default(0)
+  sortOrder Int        @default(100)
+  isActive  Boolean    @default(true)
+  resources Resource[]
+}
+
+// Search alias ("Iron" → Fer, "T1" → Plan T1). Case-insensitive lookups.
+model ResourceAlias {
+  id         String   @id @default(cuid())
+  resourceId String
+  alias      String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, alias])
+  @@index([alias])
+}
+
+// Stock is never edited directly: `currentQuantity` is a cache of SUM(movements) refreshed in
+// the same transaction as every movement (see apps/web/lib/inventory-ledger.ts). A resource stays
+// NOT_INVENTORIED until its first physical count, whatever its movement history says.
 model Resource {
   id                String                    @id @default(cuid())
   code              String                    @unique
   name              String
   description       String?
   categoryId        String
+  // Defaulted at database level so a previous application revision can still insert rows
+  // during a rolling deployment; the bootstrap seeds the "unit-unite" row.
+  unitId            String                    @default("unit-unite")
   minimumStock      Decimal                   @db.Decimal(20, 4)
   criticalStock     Decimal                   @db.Decimal(20, 4)
   isActive          Boolean                   @default(true)
+  inventoryStatus   InventoryStatus           @default(NOT_INVENTORIED)
+  currentQuantity   Decimal                   @default(0) @db.Decimal(20, 4)
+  lastMovementAt    DateTime?
+  lastCountedAt     DateTime?
   // Village demand level: NONE, NEEDED or CRITICAL ("Besoin primaire").
   demand            String                    @default("NONE")
   // Tax-exemption credit granted per donated unit.
   exemptionPerUnit  BigInt                    @default(0)
   // Ranking points granted per donated unit.
   pointsPerUnit     Int                       @default(0)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @default(now()) @updatedAt
   category          ResourceCategory          @relation(fields: [categoryId], references: [id])
+  unit              ResourceUnit              @relation(fields: [unitId], references: [id])
+  aliases           ResourceAlias[]
   prices            ResourcePriceHistory[]
   transactionItems  ResourceTransactionItem[]
   movements         InventoryMovement[]
+  stocktakeEntries  StocktakeEntry[]
   recipeIngredients CraftRecipeIngredient[]
   recipeOutputs     CraftRecipeOutput[]
+
+  @@index([categoryId, isActive])
+  @@index([inventoryStatus])
 }
 
 model ResourcePriceHistory {
@@ -559,23 +630,78 @@ model ResourceTransactionItem {
   resource             Resource            @relation(fields: [resourceId], references: [id])
 }
 
+// Immutable stock ledger line. `quantity` is signed (positive = entry, negative = exit);
+// `quantityBefore` / `quantityAfter` snapshot the resource stock around the line.
+// The counterparty (who gave / who took) is always distinct from the agent who recorded
+// the line (`agentId`). A validated line is never deleted: a mistake is fixed by a REVERSAL
+// line pointing to the original through `reversedMovementId`.
 model InventoryMovement {
-  id               String                @id @default(cuid())
-  resourceId       String
-  type             InventoryMovementType
-  quantity         Decimal               @db.Decimal(20, 4)
-  unitCost         BigInt?
-  transactionId    String?
-  craftExecutionId String?
-  agentId          String
-  justification    String
-  idempotencyKey   String                @unique
-  occurredAt       DateTime              @default(now())
-  resource         Resource              @relation(fields: [resourceId], references: [id])
-  transaction      ResourceTransaction?  @relation(fields: [transactionId], references: [id])
-  craftExecution   CraftExecution?       @relation(fields: [craftExecutionId], references: [id])
+  id                  String                @id @default(cuid())
+  resourceId          String
+  type                InventoryMovementType
+  quantity            Decimal               @db.Decimal(20, 4)
+  quantityBefore      Decimal?              @db.Decimal(20, 4)
+  quantityAfter       Decimal?              @db.Decimal(20, 4)
+  unitCost            BigInt?
+  transactionId       String?
+  craftExecutionId    String?
+  agentId             String
+  counterpartyType    CounterpartyType?
+  counterpartyNinjaId String?
+  counterpartyLabel   String?
+  // Business reason of the line ("Fabrication", "Reçu DON-2026-000012"…). Column kept under its
+  // historical name so older application revisions keep inserting during a rolling deployment.
+  reason              String                @map("justification")
+  notes               String?
+  sourceType          String?
+  sourceId            String?
+  reversedMovementId  String?               @unique
+  idempotencyKey      String                @unique
+  occurredAt          DateTime              @default(now())
+  resource            Resource              @relation(fields: [resourceId], references: [id])
+  transaction         ResourceTransaction?  @relation(fields: [transactionId], references: [id])
+  craftExecution      CraftExecution?       @relation(fields: [craftExecutionId], references: [id])
+  counterpartyNinja   NinjaProfile?         @relation("MovementCounterparty", fields: [counterpartyNinjaId], references: [id])
+  reversedMovement    InventoryMovement?    @relation("MovementReversal", fields: [reversedMovementId], references: [id])
+  reversal            InventoryMovement?    @relation("MovementReversal")
+  stocktakeEntry      StocktakeEntry?
 
   @@index([resourceId, occurredAt])
+  @@index([occurredAt])
+  @@index([agentId, occurredAt])
+  @@index([counterpartyNinjaId, occurredAt])
+  @@index([type, occurredAt])
+}
+
+// Physical count campaign. OPEN while the review of differences is pending, COMPLETED once
+// every difference has produced its adjustment movement, CANCELLED if abandoned.
+model StocktakeSession {
+  id          String           @id @default(cuid())
+  kind        StocktakeKind    @default(COUNT)
+  status      StocktakeStatus  @default(OPEN)
+  startedById String
+  startedAt   DateTime         @default(now())
+  completedAt DateTime?
+  notes       String?
+  entries     StocktakeEntry[]
+
+  @@index([status, startedAt])
+}
+
+model StocktakeEntry {
+  id                   String             @id @default(cuid())
+  sessionId            String
+  resourceId           String
+  expectedQuantity     Decimal            @db.Decimal(20, 4)
+  countedQuantity      Decimal            @db.Decimal(20, 4)
+  difference           Decimal            @db.Decimal(20, 4)
+  adjustmentMovementId String?            @unique
+  session              StocktakeSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  resource             Resource           @relation(fields: [resourceId], references: [id])
+  adjustmentMovement   InventoryMovement? @relation(fields: [adjustmentMovementId], references: [id])
+
+  @@unique([sessionId, resourceId])
+  @@index([resourceId])
 }
 
 model CraftRecipe {

@@ -29,19 +29,12 @@ export interface NinjaDetailData {
 export interface RecoveryRow { id: string; name: string; code: string; debt: bigint; legacyWeeks: number; due: string; agent: string }
 export interface RecoveryData { metrics: { priorityDebt: bigint; priorityCount: number; averageLate: string; totalDebt: bigint; unassigned: number }; rows: RecoveryRow[] }
 
-export interface ResourceRow { id: string; code: string; name: string; category: string; points: number; exemption: bigint; price: bigint; stock: number; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }
+export interface ResourceRow { id: string; code: string; name: string; category: string; unit: string; unitDecimals: number; points: number; exemption: bigint; price: bigint; stock: number; counted: boolean; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }
 export interface ResourcesData {
   metrics: { buybackTotal: bigint; buybackCount: number; donationValue: bigint; donationCount: number; activeCount: number; totalCount: number };
   categories: Array<{ code: string; label: string }>;
   resources: ResourceRow[];
   pendingApprovals: Array<{ id: string; receipt: string; ninjaId: string; ninja: string; total: bigint; at: string }>;
-}
-
-export interface InventoryData {
-  metrics: { stockValue: bigint; movementsToday: number; inToday: number; outToday: number; criticalCount: number; lowCount: number };
-  alerts: Array<{ id: string; name: string; stock: number; level: "critical" | "low"; threshold: number }>;
-  movements: Array<{ id: string; at: string; resource: string; type: string; quantity: number; agent: string; justification: string }>;
-  resources: Array<{ id: string; name: string; stock: number }>;
 }
 
 export interface RecipeRow { id: string; code: string; name: string; category: string; minimumGrade: string | null; cost: bigint; craftable: number; ingredients: Array<{ name: string; quantity: number }>; output: string | null; duration: string; version: number }

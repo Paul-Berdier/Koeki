@@ -26,4 +26,8 @@ Chaque commande financière suit : validation Zod → permission serveur → tra
 
 ## Modèle principal
 
-Identité : `User`, `Account`, `Session`, `Invitation`, `Role`, `UserRole`. Ninjas : `NinjaProfile`, `NinjaGrade`, `NinjaGradeHistory`. Fiscalité : `TaxPolicy`, `TaxPolicyGradeRate`, `TaxYear`, `TaxAssessment`, `TaxPenalty`, `TaxPayment`, `TaxPaymentAllocation`, `TaxAdjustment`, `TaxExemption`. Registres : points, ressources, prix, transactions, stocks, recettes, exécutions, rapports, notifications, audits et idempotence.
+Identité : `User`, `Account`, `Session`, `Invitation`, `Role`, `UserRole`. Ninjas : `NinjaProfile`, `NinjaGrade`, `NinjaGradeHistory`. Fiscalité : `TaxPolicy`, `TaxPolicyGradeRate`, `TaxYear`, `TaxAssessment`, `TaxPenalty`, `TaxPayment`, `TaxPaymentAllocation`, `TaxAdjustment`, `TaxExemption`. Inventaire : `ResourceCategory`, `ResourceUnit`, `Resource`, `ResourceAlias`, `InventoryMovement` (ledger, source de vérité du stock), `StocktakeSession`, `StocktakeEntry`. Registres : points, prix, transactions, recettes, exécutions, rapports, notifications, audits et idempotence.
+
+## Cohérence des stocks
+
+Toute écriture de stock passe par `apps/web/lib/inventory-ledger.ts` (verrou de ligne, somme du ledger, refus du négatif, ligne immuable avec avant/après, contrepartie et agent). Des triggers PostgreSQL maintiennent le cache `Resource.currentQuantity`, remplissent les instantanés pour un écrivain ancien et interdisent la modification ou la suppression d’une ligne validée. Voir `docs/INVENTORY_TRACEABILITY.md`.

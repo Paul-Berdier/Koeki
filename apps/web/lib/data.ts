@@ -1,11 +1,11 @@
 import { cache } from "react";
 import { prisma, type Prisma, type TaxAssessmentStatus } from "@koeki/database";
-import { allocatePayment, assessmentSettlementBreakdown, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, deriveTaxAssessmentStatus, parseExemptionPolicy, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, settlementTotals, simulateCraft, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine } from "@koeki/domain";
-import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoInventory, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
+import { allocatePayment, assessmentSettlementBreakdown, buildAgentScores, buildAmountBars, buildNinjaLeaderboard, buildTopResources, createRpTimeService, defaultRpTimeConfig, deriveStockState, deriveTaxAssessmentStatus, parseExemptionPolicy, rateBps, rateDeltaBps, rpTimeConfigSchema, ryo, settlementTotals, simulateCraft, stockStateLabels, summarizeExemptionFlow, summarizeWeekCompliance, type AgentActivity, type DebtLine, type StockState } from "@koeki/domain";
+import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
 import { normalizeReportHistoryRange } from "./report-period";
 import { demoMode, hasPermission, roleLabels, type SessionInfo } from "./session";
-import type { AdminData, AuditData, CraftingData, DashboardData, EventsData, InventoryData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
+import type { AdminData, AuditData, CraftingData, DashboardData, EventsData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
 
 const sumBig = (values: bigint[]) => values.reduce((total, value) => total + value, 0n);
 const EXCLUDED: TaxAssessmentStatus[] = ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED", "DRAFT"];
@@ -13,10 +13,6 @@ const EXCLUDED: TaxAssessmentStatus[] = ["EXEMPT", "WAIVED", "SUSPENDED", "CANCE
 export const pointEventLabels: Record<string, string> = {
   TAX_PAYMENT: "Paiement de taxe", ON_TIME_PAYMENT: "Paiement dans les délais", EARLY_PAYMENT: "Paiement anticipé", REGULARIZATION: "Régularisation",
   DONATION: "Don", RESOURCE_SALE: "Vente de ressources", SPECIAL_EVENT: "Événement spécial", MANUAL_ADJUSTMENT: "Ajustement manuel", REVERSAL: "Écriture inverse"
-};
-export const movementTypeLabels: Record<string, string> = {
-  DONATION_IN: "Don", BUYBACK_IN: "Rachat", CRAFT_CONSUMPTION: "Consommation atelier", CRAFT_OUTPUT: "Production atelier",
-  MANUAL_ADJUSTMENT: "Ajustement", TRANSFER_IN: "Transfert entrant", TRANSFER_OUT: "Transfert sortant", LOSS: "Perte"
 };
 
 export const getRpService = cache(async () => {
@@ -27,7 +23,7 @@ export const getRpService = cache(async () => {
 
 // Privacy: never surface Discord account names — a linked ninja identity always wins,
 // unlinked accounts fall back to their account name (link a fiche to hide it).
-const getUserNames = cache(async () => {
+export const getUserNames = cache(async () => {
   const users = await prisma.user.findMany({ select: { id: true, name: true, ninjaProfile: { select: { firstName: true, lastName: true } } } });
   return new Map(users.map((user) => [user.id, user.ninjaProfile ? `${user.ninjaProfile.firstName} ${user.ninjaProfile.lastName}`.trim() : user.name ?? "Agent Kōeki"]));
 });
@@ -334,7 +330,7 @@ export interface ResourceFilterParams { q?: string | undefined; categorie?: stri
 
 export async function getResources(canApprove: boolean, params: ResourceFilterParams = {}): Promise<ResourcesData> {
   if (demoMode) return demoResources;
-  const [service, prices, stocks, resources, categories] = await Promise.all([getRpService(), activePriceMap(), stockMap(), prisma.resource.findMany({ include: { category: true }, orderBy: { name: "asc" } }), prisma.resourceCategory.findMany({ orderBy: { label: "asc" } })]);
+  const [service, prices, stocks, resources, categories] = await Promise.all([getRpService(), activePriceMap(), stockMap(), prisma.resource.findMany({ include: { category: true, unit: true }, orderBy: { name: "asc" } }), prisma.resourceCategory.findMany({ orderBy: [{ sortOrder: "asc" }, { label: "asc" }] })]);
   const since = service.startOfRpYear(service.currentRpYear());
   const [buybacks, donations, pending] = await Promise.all([
     prisma.resourceTransaction.findMany({ where: { type: "BUYBACK", status: "VALIDATED", createdAt: { gte: since } }, select: { totalAmount: true } }),
@@ -356,46 +352,18 @@ export async function getResources(canApprove: boolean, params: ResourceFilterPa
     categories: categories.map((category) => ({ code: category.code, label: category.label })),
     resources: filtered.map((resource) => {
       const stock = stocks.get(resource.id) ?? 0;
-      const critical = Number(resource.criticalStock) > 0 && stock <= Number(resource.criticalStock);
-      const low = Number(resource.minimumStock) > 0 && stock <= Number(resource.minimumStock);
+      const state = deriveStockState({ inventoryStatus: resource.inventoryStatus, quantity: stock, minimumStock: Number(resource.minimumStock), criticalStock: Number(resource.criticalStock) });
+      const stateBadge: Record<StockState, BadgeStatus> = { NOT_INVENTORIED: "draft", OUT_OF_STOCK: "overdue", CRITICAL: "overdue", LOW: "warning", NORMAL: "paid" };
       return {
-        id: resource.id, code: resource.code, name: resource.name, category: resource.category.label,
+        id: resource.id, code: resource.code, name: resource.name, category: resource.category.label, unit: resource.unit.label, unitDecimals: resource.unit.decimals,
         points: resource.pointsPerUnit, exemption: resource.exemptionPerUnit,
-        price: prices.get(resource.id) ?? 0n, stock,
-        badge: (!resource.isActive ? "draft" : critical ? "overdue" : low ? "warning" : "paid") as BadgeStatus,
-        stateLabel: !resource.isActive ? "Inactive" : critical ? "Critique" : low ? "Stock bas" : "Disponible",
+        price: prices.get(resource.id) ?? 0n, stock, counted: resource.inventoryStatus === "COUNTED" || stocks.has(resource.id),
+        badge: (!resource.isActive ? "draft" : stateBadge[state]) as BadgeStatus,
+        stateLabel: !resource.isActive ? "Inactive" : stockStateLabels[state],
         demand: (resource.demand === "CRITICAL" || resource.demand === "NEEDED" ? resource.demand : "NONE") as "NONE" | "NEEDED" | "CRITICAL"
       };
     }),
     pendingApprovals: pending.map((transaction) => ({ id: transaction.id, receipt: transaction.receiptNumber, ninjaId: transaction.ninja.id, ninja: `${transaction.ninja.firstName} ${transaction.ninja.lastName}`, total: transaction.totalAmount, at: formatDate(transaction.createdAt) }))
-  };
-}
-
-export async function getInventory(): Promise<InventoryData> {
-  if (demoMode) return demoInventory;
-  const [prices, stocks, resources, users] = await Promise.all([activePriceMap(), stockMap(), prisma.resource.findMany({ where: { isActive: true }, orderBy: { name: "asc" } }), getUserNames()]);
-  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-  const [today, latest] = await Promise.all([
-    prisma.inventoryMovement.findMany({ where: { occurredAt: { gte: startOfDay } }, select: { quantity: true } }),
-    prisma.inventoryMovement.findMany({ orderBy: { occurredAt: "desc" }, take: 12, include: { resource: true } })
-  ]);
-  const alerts = resources.flatMap((resource): InventoryData["alerts"] => {
-    const stock = stocks.get(resource.id) ?? 0;
-    const critical = Number(resource.criticalStock);
-    const minimum = Number(resource.minimumStock);
-    if (critical > 0 && stock <= critical) return [{ id: resource.id, name: resource.name, stock, level: "critical", threshold: critical }];
-    if (minimum > 0 && stock <= minimum) return [{ id: resource.id, name: resource.name, stock, level: "low", threshold: minimum }];
-    return [];
-  }).sort((a, b) => (a.level === b.level ? 0 : a.level === "critical" ? -1 : 1));
-  return {
-    metrics: {
-      stockValue: sumBig(resources.map((resource) => BigInt(Math.max(0, Math.round(stocks.get(resource.id) ?? 0))) * (prices.get(resource.id) ?? 0n))),
-      movementsToday: today.length, inToday: today.filter((movement) => Number(movement.quantity) > 0).length, outToday: today.filter((movement) => Number(movement.quantity) < 0).length,
-      criticalCount: alerts.filter((alert) => alert.level === "critical").length, lowCount: alerts.filter((alert) => alert.level === "low").length
-    },
-    alerts,
-    movements: latest.map((movement) => ({ id: movement.id, at: formatDateTime(movement.occurredAt), resource: movement.resource.name, type: movementTypeLabels[movement.type] ?? movement.type, quantity: Number(movement.quantity), agent: shortName(users.get(movement.agentId) ?? "Système"), justification: movement.justification })),
-    resources: resources.map((resource) => ({ id: resource.id, name: resource.name, stock: stocks.get(resource.id) ?? 0 }))
   };
 }
 
@@ -573,7 +541,7 @@ export const auditCategories: Record<string, { label: string; prefixes: string[]
   finances: { label: "Finances (paiements, dons, rachats, prix)", prefixes: ["PAYMENT", "BUYBACK", "DONATION", "PRICE"] },
   ninjas: { label: "Ninjas (dossiers, grades)", prefixes: ["NINJA", "GRADE"] },
   acces: { label: "Accès (invitations, comptes)", prefixes: ["INVITATION", "USER"] },
-  stock: { label: "Stocks et catalogue", prefixes: ["INVENTORY", "RESOURCE", "CRAFT", "RECIPE"] },
+  stock: { label: "Stocks et catalogue", prefixes: ["INVENTORY", "RESOURCE", "STOCKTAKE", "CATEGORY", "UNIT", "CRAFT", "RECIPE"] },
   config: { label: "Configuration et événements", prefixes: ["PENALTY", "APPROVAL", "EVENT"] },
   rapports: { label: "Rapports", prefixes: ["REPORT"] },
   import: { label: "Imports de reprise", prefixes: ["LEGACY"] }

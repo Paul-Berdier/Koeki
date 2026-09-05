@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  BarChart3, BookOpenText, Boxes, ChevronLeft, ChevronRight, FileText, HandCoins, HeartHandshake,
+  ArrowLeftRight, BarChart3, BookOpenText, Boxes, ChevronLeft, ChevronRight, ClipboardList, FileText, HandCoins, HeartHandshake,
   LayoutDashboard, LogOut, Menu, MessageCircleQuestion, PackageSearch, ScrollText, Settings, ShieldCheck, Trophy, UserCircle2, Users, X
 } from "lucide-react";
 import type { ShellInfo } from "@/lib/types";
@@ -20,10 +20,14 @@ const navigation: Array<{ label: string | null; items: Array<{ href: string; lab
     { href: "/ninjas", label: "Ninjas", icon: Users },
     { href: "/recouvrement", label: "Recouvrement", icon: HandCoins }
   ] },
-  { label: "Économie", items: [
-    { href: "/resources", label: "Ressources", icon: PackageSearch },
-    { href: "/dons", label: "Dons", icon: HeartHandshake },
+  { label: "Inventaire", items: [
     { href: "/inventory", label: "Inventaire", icon: Boxes },
+    { href: "/inventory/movements", label: "Mouvements", icon: ArrowLeftRight },
+    { href: "/inventory/counts", label: "Comptages", icon: ClipboardList },
+    { href: "/resources", label: "Catalogue", icon: PackageSearch }
+  ] },
+  { label: "Économie", items: [
+    { href: "/dons", label: "Dons", icon: HeartHandshake },
     { href: "/crafting", label: "Artisanat", icon: BookOpenText },
     { href: "/equipement", label: "Équipement Jonin", icon: ShieldCheck }
   ] },
@@ -45,6 +49,10 @@ export function AppShell({ children, shell, allowed }: { children: React.ReactNo
   useEffect(() => { setCollapsed(localStorage.getItem("koeki.nav") === "collapsed"); }, []);
   const toggleCollapsed = () => setCollapsed((current) => { const next = !current; localStorage.setItem("koeki.nav", next ? "collapsed" : "expanded"); return next; });
   const groups = navigation.map((group) => ({ ...group, items: group.items.filter((item) => allowed.includes(item.href)) })).filter((group) => group.items.length > 0);
+  // The most specific matching entry wins, so /inventory/movements does not also light up /inventory.
+  const activeHref = groups.flatMap((group) => group.items.map((item) => item.href))
+    .filter((href) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)))
+    .sort((a, b) => b.length - a.length)[0];
   return <div className={`app-shell${collapsed ? " nav-collapsed" : ""}`}>
     <a className="skip-link" href="#main">Aller au contenu</a>
     <button className="mobile-menu" onClick={() => setOpen(true)} aria-label="Ouvrir la navigation"><Menu /></button>
@@ -63,7 +71,7 @@ export function AppShell({ children, shell, allowed }: { children: React.ReactNo
         {groups.map((group, index) => <div key={group.label ?? index}>
           {group.label && <p className="nav-label">{group.label}</p>}
           {group.items.map(({ href, label, icon: Icon }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            const active = href === activeHref;
             return <Link key={href} href={href} className={active ? "active" : ""} title={label} onClick={() => setOpen(false)}>
               <Icon size={17} aria-hidden="true" /><span>{label}</span>
               {href === "/recouvrement" && shell.overdueCount > 0 && <b aria-label={`${shell.overdueCount} dossiers en retard`}>{shell.overdueCount}</b>}

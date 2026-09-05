@@ -84,6 +84,7 @@ cartes ninjas, filtres empilés), 560 (densité mobile).
   les formulaires gardent leur état en changeant d'onglet.
 - **Vues table/cartes** (`NinjaViews` + `.cards-mode`) : bascule mémorisée,
   cartes forcées sous 820 px.
+- **Registre d’inventaire** (`.inventory-panel`, `.board-table`) : tableau pleine largeur, en-tête et première colonne collants dans un conteneur défilant (`.inventory-table-wrap`), tri par en-tête (`.sort-button`, `aria-sort`), densité `.density-compact`, boutons de ligne `.row-action.in/.out/.adjust`, cartes empilées sous 820 px (`data-col`). Tiroir de mouvement (`.drawer`, feuille basse sur mobile) avec aperçu avant → après (`.movement-preview`) et boutons segmentés (`.segmented`). Journal (`.journal-table`) et grille de comptage (`.stocktake-table`).
 - **Notices** (`.notice[.error]`) : cachet latéral, messages en français métier.
 - **États** : `EmptyState` (dune stylisée + phrase utile), `LoadingState`,
   `ErrorState`, `.skeleton` (shimmer sable).

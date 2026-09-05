@@ -3,8 +3,10 @@ import {
   calculatePoints, createRpTimeService, defaultRpTimeConfig, deriveTaxAssessmentStatus,
   EXEMPTION_POLICY_SETTING_KEY, exemptionUse, parseExemptionPolicy, rpTimeConfigSchema
 } from "@koeki/domain";
+import { lockResources, recordMovement } from "./inventory-ledger";
 
 export type Tx = Prisma.TransactionClient;
+export { lockResources };
 
 export async function loadExemptionPolicy(tx: Tx) {
   // Every credit consumer locks NinjaProfile first, then retains this shared
@@ -40,21 +42,6 @@ function scaledQuantity(quantity: number): bigint {
     throw new Error("VALIDATION:Quantité invalide — 4 décimales maximum");
   }
   return BigInt(scaled);
-}
-
-/** Serialises stock-sensitive mutations. IDs are sorted so multi-resource commands
- * always acquire locks in the same order and cannot deadlock one another. */
-export async function lockResources(tx: Tx, resourceIds: string[]): Promise<Set<string>> {
-  const ids = [...new Set(resourceIds)].sort();
-  if (!ids.length) return new Set();
-  const rows = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT "id"
-    FROM "Resource"
-    WHERE "id" IN (${Prisma.join(ids)})
-    ORDER BY "id"
-    FOR UPDATE
-  `;
-  return new Set(rows.map((row) => row.id));
 }
 
 /** Locks a ninja lifecycle row and confirms it is still eligible for a mutation. */
@@ -103,10 +90,14 @@ export async function activePrice(tx: Tx, resourceId: string) {
  *  tax-exemption credit, whose use on open taxes follows the administrative ceiling. Shared by
  *  agent-recorded flows and ninja self-declarations. */
 export async function applyValidatedTransaction(tx: Tx, transaction: { id: string; type: "DONATION" | "BUYBACK"; ninjaId: string; receiptNumber: string; totalAmount: bigint; idempotencyKey: string }, items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }>, actorId: string) {
-  for (const item of items) await tx.inventoryMovement.create({ data: {
+  // Stock: one ledger line per item through the single inventory writer — the ninja who
+  // handed the goods over is the counterparty, the validating agent is the recorder.
+  await lockResources(tx, items.map((item) => item.resourceId));
+  for (const item of items) await recordMovement(tx, {
     resourceId: item.resourceId, type: transaction.type === "BUYBACK" ? "BUYBACK_IN" : "DONATION_IN", quantity: new Prisma.Decimal(item.quantity),
-    unitCost: item.unitPrice, transactionId: transaction.id, agentId: actorId, justification: `Reçu ${transaction.receiptNumber}`, idempotencyKey: `${transaction.idempotencyKey}:${item.resourceId}`
-  } });
+    unitCost: item.unitPrice, transactionId: transaction.id, agentId: actorId, counterparty: { type: "NINJA", ninjaId: transaction.ninjaId },
+    reason: `${transaction.type === "BUYBACK" ? "Rachat" : "Don"} ${transaction.receiptNumber}`, idempotencyKey: `${transaction.idempotencyKey}:${item.resourceId}`
+  });
   // Old-register scale: a donation earns each resource's own points per donated unit.
   const basePoints = transaction.type === "DONATION" ? items.reduce((total, item) => total + Number(scaledTimes(item.quantity, BigInt(item.pointsPerUnit))), 0) : 0;
   const points = await awardPoints(tx, { ninjaId: transaction.ninjaId, eventType: transaction.type === "BUYBACK" ? "RESOURCE_SALE" : "DONATION", amount: transaction.totalAmount, sourceType: "ResourceTransaction", sourceId: transaction.id, basePoints });

@@ -43,7 +43,7 @@ export default async function DonsPage({ searchParams }: { searchParams: Promise
   const itemsInclude = { include: { resource: { select: { name: true, pointsPerUnit: true, exemptionPerUnit: true } } } } as const;
   const [profile, resources, pending, recent, cyclePoints, cycleDons, allNinjas, exemptionSetting] = await Promise.all([
     prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true, code: true, firstName: true, lastName: true, status: true } }),
-    prisma.resource.findMany({ where: { isActive: true }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }),
+    prisma.resource.findMany({ where: { isActive: true, category: { code: { not: "TREASURY" } } }, orderBy: [{ exemptionPerUnit: "desc" }, { name: "asc" }] }),
     prisma.resourceTransaction.findMany({ where: { type: "DONATION", status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" }, include: { ninja: { select: { id: true, code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
     prisma.resourceTransaction.findMany({ where: registerWhere, orderBy: { createdAt: "desc" }, take: 100, include: { ninja: { select: { id: true, code: true, firstName: true, lastName: true } }, items: itemsInclude } }),
     prisma.pointLedgerEntry.aggregate({ where: { eventType: "DONATION", points: { gt: 0 }, createdAt: { gte: since } }, _sum: { points: true } }),
