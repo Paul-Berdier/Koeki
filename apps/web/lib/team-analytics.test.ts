@@ -95,10 +95,8 @@ describe.skipIf(!inject("dbReady"))(
     async function createUserWithRoles(name: string, codes: RoleCode[]) {
       const user = await createTestUser(name);
       for (const code of codes) {
-        const role = await prisma.role.upsert({
+        const role = await prisma.role.findUniqueOrThrow({
           where: { code },
-          create: { code, label: code },
-          update: {},
         });
         await prisma.userRole.create({
           data: { userId: user.id, roleId: role.id },
@@ -130,6 +128,19 @@ describe.skipIf(!inject("dbReady"))(
       });
     }
     beforeAll(async () => {
+      // On a fresh database, parallel users must not race to insert the same role.
+      for (const code of [
+        "KOEKI_MANAGER",
+        "ECONOMIC_AGENT",
+        "NINJA",
+        "SUPER_ADMIN",
+      ] as const) {
+        await prisma.role.upsert({
+          where: { code },
+          create: { code, label: code },
+          update: {},
+        });
+      }
       const ref = await ensureReferential();
       [manager, agent, idle, former, disabled, technical] = await Promise.all([
         createUserWithRoles("Analytique responsable", ["KOEKI_MANAGER"]),
