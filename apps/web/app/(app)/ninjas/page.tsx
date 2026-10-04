@@ -19,12 +19,14 @@ export default async function NinjasPage({ searchParams }: { searchParams: Promi
   const statut = typeof params.statut === "string" && params.statut ? params.statut : undefined;
   // The whole register (for the chosen grade / situation) is loaded once; the text search
   // filters it in the browser, so typing never re-renders the page from the server.
-  const data = await getNinjas({ grade, statut });
+  const assignedToMe = params.mesDossiers === "1";
+  const data = await getNinjas({ grade, statut, assignedToMe });
   const canWrite = hasPermission(session, "ninjas:write");
   const info = typeof params.info === "string" ? params.info : null;
   const error = typeof params.erreur === "string" ? params.erreur : null;
   const rows = data.ninjas.map((ninja) => ({ ...ninja, debt: ninja.debt.toString() }));
   return <div className="page-wrap">
+    {assignedToMe && <p className="notice">Vos dossiers attribués. <Link className="text-link" href="/ninjas">Voir tous les ninjas</Link></p>}
     <PageHeader eyebrow="Registre administratif" title="Ninjas" description="Dossiers fiscaux des shinobis de Suna — taxes, points, dettes et suivi par agent."
       metrics={[
         { label: "Dossiers", value: new Intl.NumberFormat("fr-FR").format(data.stats.total) },

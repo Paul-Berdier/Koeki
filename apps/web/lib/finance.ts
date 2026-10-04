@@ -8,6 +8,9 @@ import { lockResources, recordMovement } from "./inventory-ledger";
 export type Tx = Prisma.TransactionClient;
 export { lockResources };
 
+/** The PostgreSQL evidence trigger supplies the first-validation instant. */
+export const businessOperationEvidence = { operationOrigin: "BUSINESS" } as const;
+
 export async function loadExemptionPolicy(tx: Tx) {
   // Every credit consumer locks NinjaProfile first, then retains this shared
   // setting lock until commit. An administrative switch to 0 therefore waits

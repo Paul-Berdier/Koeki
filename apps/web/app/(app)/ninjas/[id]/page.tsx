@@ -25,7 +25,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
   const canWrite = hasPermission(session, "ninjas:write");
   const ownProfile = demoMode ? null : await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
   const isOwner = ownProfile?.id === id;
-  const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "audit:read") });
+  const data = await getNinjaDetail(id, { canSeeNotes: canWrite || hasPermission(session, "business:read") });
   if (!data) notFound();
   const inventory = hasPermission(session, "inventory:read") ? await getNinjaInventoryHistory(id) : null;
   const exemptionSetting = demoMode ? null : await prisma.appSetting.findUnique({ where: { key: "exemptionPolicy" } });

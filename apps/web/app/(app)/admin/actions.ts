@@ -4,10 +4,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@koeki/database";
-import { createInvitationToken, EXEMPTION_POLICY_SETTING_KEY } from "@koeki/domain";
+import { assertInvitationRole, createInvitationToken, EXEMPTION_POLICY_SETTING_KEY, ROLES } from "@koeki/domain";
+import { assertActiveActor, changeAccount, lockAccountChanges } from "@/lib/account-service";
 import { getRpService } from "@/lib/data";
 import { autoCoverOpenTaxes, isUniqueViolation, writeAudit } from "@/lib/finance";
-import { hasPermission, requireWriteAccess } from "@/lib/session";
+import { requireWriteAccess } from "@/lib/session";
 
 const invitationSchema = z.object({
   roleId: z.string().min(1, "Choisissez un rôle"),
@@ -25,11 +26,16 @@ export async function createInvitation(formData: FormData) {
   if (!pepper) back("INVITE_TOKEN_PEPPER n’est pas configuré sur le serveur");
   const role = await prisma.role.findUnique({ where: { id: roleId } });
   if (!role) back("Rôle inconnu");
-  if (role!.code === "SUPER_ADMIN" && !hasPermission(session, "users:manage")) back("Seul un super-administrateur peut inviter un super-administrateur");
+  try { assertInvitationRole({ id: session.userId, roles: session.roles, revokedAt: null }, role!.code); } catch (error) { back(error instanceof Error ? error.message : "Accès refusé"); }
   const { token, tokenHash } = createInvitationToken(pepper!);
   const expiresAt = new Date(Date.now() + expiresDays * 86_400_000);
   try {
     await prisma.$transaction(async (tx) => {
+    await lockAccountChanges(tx);
+    await assertActiveActor(tx, session.userId, "settings:manage");
+      const actor = await assertActiveActor(tx, session.userId, "users:roles");
+      const currentRole = await tx.role.findUniqueOrThrow({ where: { id: roleId } });
+      assertInvitationRole(actor, currentRole.code);
       if (ninjaProfileId) {
         await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${ninjaProfileId} FOR UPDATE`;
         await tx.invitation.updateMany({
@@ -63,42 +69,13 @@ export async function dismissLastInvite() {
   redirect("/admin");
 }
 
-/** Replaces a user's role set. Super-admins can grant everything; managers can grant
- *  everything except SUPER_ADMIN and cannot touch a super-admin's account. Roles are read
- *  from the database on every request, so the change applies immediately. */
+/** Legacy action remains guarded; the Comptes dialog uses the same service. */
 export async function updateUserRoles(formData: FormData) {
-  const session = await requireWriteAccess("settings:manage");
-  const isSuper = hasPermission(session, "users:manage");
-  const back = (message: string): never => redirect(`/admin?erreur=${encodeURIComponent(message)}`);
-  const userId = formData.get("userId");
-  if (typeof userId !== "string" || !userId) back("Utilisateur manquant");
-  const [roles, target] = await Promise.all([
-    prisma.role.findMany(),
-    prisma.user.findUnique({ where: { id: userId as string }, include: { roles: { include: { role: true } }, ninjaProfile: { select: { firstName: true, lastName: true } } } })
-  ]);
-  if (!target) back("Utilisateur introuvable");
-  const displayName = target!.ninjaProfile ? `${target!.ninjaProfile.firstName} ${target!.ninjaProfile.lastName}`.trim() : target!.name ?? target!.email ?? target!.id;
-  const requested = roles.filter((role) => formData.get(`role_${role.code}`) === "on");
-  const currentCodes = target!.roles.map((entry) => entry.role.code);
-  if (!isSuper && currentCodes.includes("SUPER_ADMIN")) back("Seul un super-administrateur peut modifier les rôles d’un super-administrateur");
-  if (!isSuper && requested.some((role) => role.code === "SUPER_ADMIN")) back("Seul un super-administrateur peut attribuer le rôle super-administrateur");
-  if (!requested.length) back("Attribuez au moins un rôle — pour couper l’accès, utilisez la révocation");
-  if (currentCodes.includes("SUPER_ADMIN") && !requested.some((role) => role.code === "SUPER_ADMIN")) {
-    const otherSupers = await prisma.userRole.count({ where: { role: { code: "SUPER_ADMIN" }, userId: { not: target!.id }, user: { revokedAt: null } } });
-    if (otherSupers === 0) back("Impossible de retirer le rôle du dernier super-administrateur actif");
-  }
-  const requestedIds = new Set(requested.map((role) => role.id));
-  const currentIds = new Set(target!.roles.map((entry) => entry.roleId));
-  const toAdd = requested.filter((role) => !currentIds.has(role.id));
-  const toRemove = target!.roles.filter((entry) => !requestedIds.has(entry.roleId));
-  if (!toAdd.length && !toRemove.length) redirect(`/admin?info=${encodeURIComponent("Rôles inchangés — rien à faire")}`);
-  await prisma.$transaction(async (tx) => {
-    if (toRemove.length) await tx.userRole.deleteMany({ where: { userId: target!.id, roleId: { in: toRemove.map((entry) => entry.roleId) } } });
-    if (toAdd.length) await tx.userRole.createMany({ data: toAdd.map((role) => ({ userId: target!.id, roleId: role.id, assignedById: session.userId })) });
-    await writeAudit(tx, { actorId: session.userId, action: "USER_ROLES_UPDATED", entityType: "User", entityId: target!.id, reason: `Rôles de ${displayName}`,
-      previousValues: { roles: currentCodes }, newValues: { roles: requested.map((role) => role.code) } });
-  });
-  redirect(`/admin?info=${encodeURIComponent(`Rôles de ${displayName} mis à jour — effet immédiat`)}`);
+  const session = await requireWriteAccess("users:roles");
+  try {
+    await changeAccount({ actorId: session.userId, targetId: String(formData.get("userId") ?? ""), operation: "roles", reason: String(formData.get("reason") ?? ""), roles: ROLES.filter((role) => formData.get(`role_${role}`) === "on"), replacementAgentId: String(formData.get("replacementAgentId") ?? "") || null });
+  } catch (error) { redirect(`/admin/comptes?erreur=${encodeURIComponent(error instanceof Error ? error.message : "Action impossible")}`); }
+  redirect("/admin/comptes?info=R%C3%B4les%20mis%20%C3%A0%20jour");
 }
 
 export async function revokeInvitation(formData: FormData) {
@@ -106,6 +83,12 @@ export async function revokeInvitation(formData: FormData) {
   const invitationId = formData.get("invitationId");
   if (typeof invitationId !== "string" || !invitationId) redirect("/admin");
   await prisma.$transaction(async (tx) => {
+    await lockAccountChanges(tx);
+    await assertActiveActor(tx, session.userId, "settings:manage");
+    const invitation = await tx.invitation.findUnique({ where: { id: invitationId as string }, include: { role: true } });
+    if (!invitation) return;
+    const actor = await assertActiveActor(tx, session.userId, "users:roles");
+    assertInvitationRole(actor, invitation.role.code);
     const updated = await tx.invitation.updateMany({ where: { id: invitationId as string, status: "PENDING" }, data: { status: "REVOKED", revokedAt: new Date() } });
     if (updated.count === 1) await writeAudit(tx, { actorId: session.userId, action: "INVITATION_REVOKED", entityType: "Invitation", entityId: invitationId as string });
   });
@@ -137,6 +120,8 @@ export async function updatePenaltySettings(formData: FormData) {
     maxPenaltyApplications: data.maxApplications, maxAssessmentDebt: String(data.maxDebt), isPenaltyAutomationEnabled: enabled, isRateValidated: validated
   };
   await prisma.$transaction(async (tx) => {
+    await lockAccountChanges(tx);
+    await assertActiveActor(tx, session.userId, "settings:manage");
     await tx.appSetting.upsert({ where: { key: "latePenalty" }, create: { key: "latePenalty", value, updatedById: session.userId }, update: { value, version: { increment: 1 }, updatedById: session.userId } });
     await writeAudit(tx, { actorId: session.userId, action: "PENALTY_SETTINGS_UPDATED", entityType: "AppSetting", entityId: "latePenalty", previousValues: previous?.value ?? undefined, newValues: value });
   });
@@ -152,6 +137,8 @@ export async function updateApprovalThreshold(formData: FormData) {
   const value = { amount: String(parsed.data!.amount), isValidated: parsed.data!.isValidated === "on" };
   const previous = await prisma.appSetting.findUnique({ where: { key: "approvalThreshold" } });
   await prisma.$transaction(async (tx) => {
+    await lockAccountChanges(tx);
+    await assertActiveActor(tx, session.userId, "settings:manage");
     await tx.appSetting.upsert({ where: { key: "approvalThreshold" }, create: { key: "approvalThreshold", value, updatedById: session.userId }, update: { value, version: { increment: 1 }, updatedById: session.userId } });
     await writeAudit(tx, { actorId: session.userId, action: "APPROVAL_THRESHOLD_UPDATED", entityType: "AppSetting", entityId: "approvalThreshold", previousValues: previous?.value ?? undefined, newValues: value });
   });
@@ -174,6 +161,8 @@ export async function updateExemptionPolicy(formData: FormData) {
   let covered = 0n;
   let coveredNinjas = 0;
   await prisma.$transaction(async (tx) => {
+    await lockAccountChanges(tx);
+    await assertActiveActor(tx, session.userId, "settings:manage");
     // Global order for credit consumers: NinjaProfile rows, then AppSetting.
     // Locking every active ninja also drains transactions using the old rate
     // before the administrative change can commit.
@@ -232,6 +221,8 @@ export async function updateTaxRates(formData: FormData) {
   const rpYear = service.currentRpYear();
   let version = 0, rebilled = 0, exempted = 0, unchanged = false;
   await prisma.$transaction(async (tx) => {
+    await lockAccountChanges(tx);
+    await assertActiveActor(tx, session.userId, "settings:manage");
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
     const active = await tx.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
     if (active && grades.every((grade) => (active.rates.find((rate) => rate.gradeId === grade.id)?.amount ?? 0n) === rates.get(grade.id))) {
@@ -286,6 +277,8 @@ export async function billCurrentWeek() {
   const rpYear = service.currentRpYear();
   let created = 0, repaired = 0, exempted = 0, missingPolicy = false, missingRateLabel: string | null = null;
   await prisma.$transaction(async (tx) => {
+    await lockAccountChanges(tx);
+    await assertActiveActor(tx, session.userId, "settings:manage");
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
     const policy = await tx.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } });
     if (!policy) {
@@ -352,14 +345,9 @@ export async function billCurrentWeek() {
 }
 
 export async function revokeUserAccess(formData: FormData) {
-  const session = await requireWriteAccess("users:manage");
-  const userId = formData.get("userId");
-  if (typeof userId !== "string" || !userId) redirect("/admin");
-  if (userId === session.userId) redirect("/admin?erreur=Impossible%20de%20r%C3%A9voquer%20votre%20propre%20acc%C3%A8s");
-  await prisma.$transaction(async (tx) => {
-    await tx.user.update({ where: { id: userId as string }, data: { revokedAt: new Date(), sessionVersion: { increment: 1 } } });
-    await tx.session.deleteMany({ where: { userId: userId as string } });
-    await writeAudit(tx, { actorId: session.userId, action: "USER_ACCESS_REVOKED", entityType: "User", entityId: userId as string });
-  });
-  redirect("/admin");
+  const session = await requireWriteAccess("users:revoke");
+  try {
+    await changeAccount({ actorId: session.userId, targetId: String(formData.get("userId") ?? ""), operation: "revoke", reason: String(formData.get("reason") ?? ""), replacementAgentId: String(formData.get("replacementAgentId") ?? "") || null });
+  } catch (error) { redirect(`/admin/comptes?erreur=${encodeURIComponent(error instanceof Error ? error.message : "Action impossible")}`); }
+  redirect("/admin/comptes?info=Acc%C3%A8s%20d%C3%A9sactiv%C3%A9");
 }

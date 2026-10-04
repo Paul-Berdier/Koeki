@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { isLeadershipRole } from "@koeki/domain";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AlertTriangle, Ban, CheckCircle2, KeyRound, Settings2, ShieldCheck, TimerReset, X } from "lucide-react";
@@ -5,20 +7,20 @@ import { EmptyState, PageHeader, SectionHeader, StatusBadge } from "@koeki/ui";
 import { getAdmin } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
 import { demoMode, hasPermission, requireSession, roleLabels } from "@/lib/session";
-import { billCurrentWeek, createInvitation, dismissLastInvite, revokeInvitation, revokeUserAccess, updateApprovalThreshold, updateExemptionPolicy, updatePenaltySettings, updateTaxRates, updateUserRoles } from "./actions";
+import { billCurrentWeek, createInvitation, dismissLastInvite, revokeInvitation, updateApprovalThreshold, updateExemptionPolicy, updatePenaltySettings, updateTaxRates } from "./actions";
+import { ConfirmSettingSubmit } from "./confirm-setting-submit";
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
   if (!hasPermission(session, "settings:manage") && !hasPermission(session, "users:manage")) redirect("/access-denied");
   const query = await searchParams;
+  const section = query.section === "economic" ? "economic" : query.section === "technical" ? "technical" : "invitations";
   const error = typeof query.erreur === "string" ? query.erreur : null;
   const info = typeof query.info === "string" ? query.info : null;
   const data = await getAdmin();
-  const canUsers = !demoMode && hasPermission(session, "users:manage");
   const canWrite = !demoMode;
-  const isSuper = hasPermission(session, "users:manage");
-  const canRoles = !demoMode && hasPermission(session, "settings:manage");
-  const assignableRoles = data.roles.filter((role) => isSuper || role.code !== "SUPER_ADMIN");
+  const isSuper = hasPermission(session, "users:leadership");
+  const assignableRoles = data.roles.filter((role) => isSuper || !isLeadershipRole(role.code));
   let lastInvite: { token: string; role: string; expiresAt: string } | null = null;
   const rawInvite = (await cookies()).get("koeki_last_invite")?.value;
   if (rawInvite) { try { lastInvite = JSON.parse(rawInvite); } catch { lastInvite = null; } }
@@ -26,16 +28,17 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const penaltyMissing = data.penalty.percentBps === null || !data.penalty.isValidated;
   return <div className="page-wrap">
     <PageHeader eyebrow="Accès responsable" title="Administration" description="Politiques, invitations, permissions et paramètres structurants." />
+    <nav className="form-actions" aria-label="Sections de l’administration"><Link className="button button-ghost" href="/admin/comptes">Comptes et rôles</Link><Link className="button button-ghost" aria-current={section === "invitations" ? "page" : undefined} href="/admin?section=invitations">Invitations</Link><Link className="button button-ghost" aria-current={section === "economic" ? "page" : undefined} href="/admin?section=economic">Paramètres économiques</Link><Link className="button button-ghost" aria-current={section === "technical" ? "page" : undefined} href="/admin?section=technical">Paramètres techniques</Link></nav>
     {error && <p className="notice error" role="alert">{error}</p>}
     {info && <p className="notice" role="status">{info}</p>}
     {lastInvite && <div className="notice" role="status" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
       <span>Invitation <strong>{roleLabels[lastInvite.role as keyof typeof roleLabels] ?? lastInvite.role}</strong> générée — transmettez ce lien unique (affiché une seule fois) :<br /><code>{appUrl}/invite/{lastInvite.token}</code></span>
       <form action={dismissLastInvite}><button className="button button-ghost" type="submit" aria-label="Masquer le lien"><X size={15} /></button></form>
     </div>}
-    {penaltyMissing && <div className="admin-alert" role="alert"><AlertTriangle /><div><strong>Le taux de majoration n’est pas configuré.</strong><p>Les majorations automatiques sont désactivées jusqu’à validation explicite d’un responsable.</p></div><a href="#penalty-panel">Configurer</a></div>}
+    {penaltyMissing && section === "economic" && <div className="admin-alert" role="alert"><AlertTriangle /><div><strong>Le taux de majoration n’est pas configuré.</strong><p>Les majorations automatiques sont désactivées jusqu’à validation explicite d’un responsable.</p></div><a href="#penalty-panel">Configurer</a></div>}
 
-    <div className="admin-grid">
-      <section className="panel">
+    <div style={{ display: "grid", gap: 20 }}>
+      {section === "invitations" && <section className="panel">
         <SectionHeader title="Générer une invitation" description="Jeton à usage unique, seul le hash est stocké" />
         {canWrite ? <form action={createInvitation} className="form-grid">
           <div className="form-row">
@@ -46,24 +49,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <div className="form-actions"><button className="button button-primary" type="submit"><KeyRound size={16} /> Générer l’invitation</button></div>
         </form> : <p className="notice" style={{ margin: 18 }}>Mode démonstration : génération désactivée.</p>}
         <SectionHeader title="Invitations récentes" description="Révocables tant qu’elles n’ont pas été utilisées" />
-        {data.invitations.length ? <div className="table-scroll"><table><thead><tr><th>Rôle</th><th>Ninja lié</th><th>Créée</th><th>Expire</th><th>État</th><th></th></tr></thead><tbody>{data.invitations.map((invitation) => <tr key={invitation.id}><td><strong>{invitation.role}</strong></td><td>{invitation.ninja ?? "—"}</td><td>{invitation.createdAt}</td><td>{invitation.expiresAt}</td><td><StatusBadge status={invitation.badge}>{invitation.statusLabel}</StatusBadge></td><td>{canWrite && invitation.canRevoke && <form action={revokeInvitation}><input type="hidden" name="invitationId" value={invitation.id} /><button className="button button-ghost" style={{ minHeight: 30 }} type="submit"><Ban size={14} /> Révoquer</button></form>}</td></tr>)}</tbody></table></div>
+        {data.invitations.length ? <div className="table-scroll"><table><thead><tr><th>Rôle</th><th>Ninja lié</th><th>Créée</th><th>Expire</th><th>État</th><th></th></tr></thead><tbody>{data.invitations.map((invitation) => <tr key={invitation.id}><td><strong>{invitation.role}</strong></td><td>{invitation.ninja ?? "—"}</td><td>{invitation.createdAt}</td><td>{invitation.expiresAt}</td><td><StatusBadge status={invitation.badge}>{invitation.statusLabel}</StatusBadge></td><td>{canWrite && invitation.canRevoke && (isSuper || !isLeadershipRole(invitation.roleCode ?? "")) && <form action={revokeInvitation}><input type="hidden" name="invitationId" value={invitation.id} /><button className="button button-ghost" style={{ minHeight: 30 }} type="submit"><Ban size={14} /> Révoquer</button></form>}</td></tr>)}</tbody></table></div>
           : <EmptyState title="Aucune invitation" description="Générez la première invitation pour ouvrir l’accès." />}
-        <SectionHeader title="Comptes" description={isSuper ? "Rôles modifiables — effet immédiat, chaque changement est audité" : "Rôles modifiables sauf super-administrateur (réservé aux super-admins) — effet immédiat"} />
-        {data.users.length ? <div className="table-scroll"><table><thead><tr><th>Utilisateur</th><th>Rôles</th><th>État</th><th></th></tr></thead><tbody>{data.users.map((user) => <tr key={user.id}>
-          <td><strong>{user.name}</strong></td>
-          <td>{canRoles && (isSuper || !user.roleCodes.includes("SUPER_ADMIN")) ? <form action={updateUserRoles} style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-            <input type="hidden" name="userId" value={user.id} />
-            {assignableRoles.map((role) => <label key={role.code} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, whiteSpace: "nowrap" }}><input type="checkbox" name={`role_${role.code}`} defaultChecked={user.roleCodes.includes(role.code)} style={{ minHeight: 0, width: 14, height: 14 }} /> {role.label}</label>)}
-            <button className="button button-ghost" type="submit" style={{ minHeight: 28 }}>Appliquer</button>
-          </form> : <span title={user.roleCodes.includes("SUPER_ADMIN") && !isSuper ? "Compte super-administrateur — réservé aux super-admins" : undefined}>{user.roles}</span>}</td>
-          <td><StatusBadge status={user.revoked ? "overdue" : "paid"}>{user.revoked ? "Révoqué" : "Actif"}</StatusBadge></td>
-          <td>{canUsers && !user.revoked && <form action={revokeUserAccess}><input type="hidden" name="userId" value={user.id} /><button className="button button-ghost" style={{ minHeight: 30 }} type="submit"><Ban size={14} /> Révoquer</button></form>}</td>
-        </tr>)}</tbody></table></div>
-          : <EmptyState title="Aucun compte" description="Les comptes apparaissent après la première connexion sur invitation." />}
-      </section>
+      </section>}
 
       <aside style={{ display: "grid", gap: 12, alignContent: "start" }}>
-        <section className="panel" id="bareme-panel">
+        {section === "economic" && <><section className="panel" id="bareme-panel">
           <SectionHeader title="Semaine fiscale en cours" description={`Semaine RP ${data.currentWeek.rpYear} · ${data.currentWeek.period} — échéance dimanche minuit`} />
           <div className="mini-list">
             <div><span>Ninjas facturés (grade renseigné)</span><strong>{data.currentWeek.lines} / {data.currentWeek.activeNinjas}</strong></div>
@@ -78,21 +69,21 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         </section>
         <section className="panel">
           <SectionHeader title="Barème hebdomadaire par grade" description={`Publier un nouveau barème refacture immédiatement la semaine en cours. Les paiements sont préservés ; le crédit d’exonération est plafonné à ${formatPercentBps(data.exemption.weeklyTaxCoverageBps)} par semaine.`} />
-          {canWrite ? <form action={updateTaxRates} className="form-grid">
+          {canWrite ? <form id="tax-rates-form" action={updateTaxRates} className="form-grid">
             {data.gradeRates.map((rate) => <div className="form-row" key={rate.gradeId} style={{ gridTemplateColumns: "1fr 140px", alignItems: "center" }}>
               <span style={{ fontSize: 12 }}>{rate.label}</span>
               <label className="sr-only" htmlFor={`rate-${rate.gradeId}`}>Taxe hebdomadaire {rate.label}</label>
               <input id={`rate-${rate.gradeId}`} type="number" name={`rate_${rate.gradeId}`} min={0} step={1} defaultValue={rate.amount} />
             </div>)}
-            <div className="form-actions"><button className="button button-primary" type="submit">Publier le barème et refacturer la semaine</button></div>
+            <div className="form-actions"><ConfirmSettingSubmit formId="tax-rates-form" label="Publier le barème et refacturer la semaine" impact="Ce barème s’applique immédiatement à la semaine RP en cours. Les lignes sans opération seront recalculées. Les paiements, majorations et exemptions existants sont conservés ; le crédit disponible s’applique selon le plafond configuré." fields={data.gradeRates.map((rate) => ({ name: `rate_${rate.gradeId}`, label: rate.label, unit: "Ryō" }))} /></div>
           </form> : <p className="notice" style={{ margin: 18 }}>Mode démonstration : édition désactivée.</p>}
         </section>
         <section className="panel" id="exemption-panel">
           <SectionHeader title="Application du crédit d’exonération" description="Plafond par taxe hebdomadaire — les barèmes, crédits acquis et historiques restent toujours conservés" />
-          {canWrite ? <form action={updateExemptionPolicy} className="form-grid">
+          {canWrite ? <form id="exemption-policy-form" action={updateExemptionPolicy} className="form-grid">
             <label>Part maximale d’une taxe couverte (%)<input type="number" name="coveragePercent" min={0} max={100} step={0.01} required defaultValue={data.exemption.weeklyTaxCoverageBps / 100} /></label>
             <p className="notice" style={{ margin: 0 }} role="status">À 0 %, les dons et rachats continuent d’ajouter le montant d’exonération au dossier du ninja, mais aucun crédit ne réduit ses taxes. Les semaines déjà couvertes restent inchangées.</p>
-            <div className="form-actions"><StatusBadge status={data.exemption.weeklyTaxCoverageBps === 0 ? "draft" : "paid"}>{data.exemption.weeklyTaxCoverageBps === 0 ? "Suspendue" : formatPercentBps(data.exemption.weeklyTaxCoverageBps)}</StatusBadge><button className="button button-ghost" type="submit">Enregistrer</button></div>
+            <div className="form-actions"><StatusBadge status={data.exemption.weeklyTaxCoverageBps === 0 ? "draft" : "paid"}>{data.exemption.weeklyTaxCoverageBps === 0 ? "Suspendue" : formatPercentBps(data.exemption.weeklyTaxCoverageBps)}</StatusBadge><ConfirmSettingSubmit formId="exemption-policy-form" label="Modifier le plafond d’exonération" impact="Le nouveau plafond s’applique immédiatement aux taxes ouvertes. À 0 %, les soldes de crédit sont conservés et leur application est suspendue. Les taxes déjà couvertes restent inchangées." fields={[{ name: "coveragePercent", label: "Part maximale par taxe", unit: "%" }]} /></div>
           </form> : <div className="mini-list"><div><span>Part appliquée par semaine</span><strong>{formatPercentBps(data.exemption.weeklyTaxCoverageBps)}</strong></div></div>}
         </section>
         <section className="panel" id="penalty-panel">
@@ -119,14 +110,16 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
             <div className="form-actions"><button className="button button-ghost" type="submit">Enregistrer</button></div>
           </form> : null}
         </section>
-        <section className="panel">
+        </>}
+        {section === "technical" && <><section className="panel">
           <SectionHeader title="Configuration active" description="Paramètres versionnés et audités" />
           <div className="settings-list">
             <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, alignItems: "center", padding: "12px 17px", borderBottom: "1px solid var(--border)" }}><span className="setting-icon"><Settings2/></span><span><strong>Politique fiscale</strong><small style={{ display: "block", color: "var(--sand-500)" }}>{data.policy ? `${data.policy.name} v${data.policy.version} · ${data.policy.rateCount} grades` : "Aucune politique active"}</small></span><StatusBadge status={data.policy ? "paid" : "overdue"}>{data.policy ? "Active" : "Manquante"}</StatusBadge></div>
             <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 12, alignItems: "center", padding: "12px 17px" }}><span className="setting-icon"><TimerReset/></span><span><strong>Temps RP</strong><small style={{ display: "block", color: "var(--sand-500)" }}>{data.rpTimeLabel}</small></span><StatusBadge status="paid">Configuré</StatusBadge></div>
           </div>
         </section>
-        <section className="panel"><SectionHeader title="État du système" description="Contrôles de sécurité"/><div className="system-checks"><p><CheckCircle2/>Base Kōeki isolée</p><p><CheckCircle2/>Invitations à usage unique</p><p><CheckCircle2/>Sessions révocables</p><p><CheckCircle2/>Worker idempotent</p><p><CheckCircle2/>Indexation interdite</p><p><ShieldCheck/>Permissions vérifiées côté serveur</p></div></section>
+        <section className="panel"><SectionHeader title="État du système" description="Contrôles de sécurité"/><div className="system-checks"><p><CheckCircle2/>Base dédiée requise pour Kōeki</p><p><CheckCircle2/>Invitations à usage unique</p><p><CheckCircle2/>Sessions révocables</p><p><CheckCircle2/>Worker idempotent</p><p><CheckCircle2/>Indexation interdite</p><p><ShieldCheck/>Permissions vérifiées côté serveur</p></div></section>
+        </>}
       </aside>
     </div>
   </div>;

@@ -4,7 +4,7 @@ import { allocatePayment, assessmentSettlementBreakdown, buildAgentScores, build
 import { demoAdmin, demoAudit, demoCrafting, demoDashboard, demoEvents, demoNinjaDetail, demoNinjas, demoRecovery, demoReports, demoResources, demoShell, demoStatistics } from "./demo-data";
 import { assessmentBadge, assessmentStatusLabels, formatDate, formatDateTime, lateYearsLabel, relativeTime, weekPeriod, type BadgeStatus } from "./format";
 import { normalizeReportHistoryRange } from "./report-period";
-import { demoMode, hasPermission, roleLabels, type SessionInfo } from "./session";
+import { demoMode, hasPermission, requirePermission, requireSession, roleLabels, type SessionInfo } from "./session";
 import type { AdminData, AuditData, CraftingData, DashboardData, EventsData, NinjaDetailData, NinjaRow, NinjasData, RecoveryData, ReportsData, ResourcesData, ShellInfo, StatisticsData } from "./types";
 
 const sumBig = (values: bigint[]) => values.reduce((total, value) => total + value, 0n);
@@ -70,8 +70,9 @@ function computeAssessment(assessment: {
   return { id: assessment.id, rpYear: assessment.taxYear.rpYear, gradeCode: assessment.gradeCodeSnapshot, gradeLabel: assessment.gradeLabelSnapshot, original: assessment.originalAmount, penalties, adjustments, exemptions, paid, remaining, dueAt: assessment.dueAt, status };
 }
 
-const loadNinjaAggregates = cache(async (): Promise<NinjaAggregate[]> => {
+const loadNinjaAggregates = cache(async (ninjaId?: string, referenceAgentId?: string): Promise<NinjaAggregate[]> => {
   const [service, ninjas] = await Promise.all([getRpService(), prisma.ninjaProfile.findMany({
+    where: { ...(ninjaId ? { id: ninjaId } : {}), ...(referenceAgentId ? { referenceAgentId } : {}) },
     include: {
       currentGrade: true, pointEntries: { select: { points: true } },
       assessments: { include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } }, taxYear: { select: { rpYear: true } } } }
@@ -123,18 +124,20 @@ const stockMap = cache(async () => {
 
 export async function getShellInfo(session: SessionInfo | null): Promise<ShellInfo> {
   if (demoMode) return demoShell;
-  const [service, aggregates, users] = await Promise.all([getRpService(), loadNinjaAggregates(), getUserNames()]);
+  const [service, profile] = await Promise.all([getRpService(), session ? prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { firstName: true, lastName: true } }) : null]);
   const now = new Date();
   const year = service.currentRpYear(now);
-  const firstRole = session?.roles[0];
   return {
     rpYear: year, rpDayLabel: `Mois RP ${Math.min(7, Math.floor(service.progress(now) * 7) + 1)} sur 7`, rpProgress: service.progress(now),
-    overdueCount: aggregates.filter((ninja) => ninja.status === "ACTIVE" && ninja.badge === "overdue").length,
-    userName: (session ? users.get(session.userId) : null) ?? session?.name ?? "Session inconnue", userRoleLabel: firstRole ? roleLabels[firstRole] : "Sans rôle"
+    // The navigation does not compute fiscal balances. Exact priorities belong to
+    // the authorised dashboard/recouvrement reads, not every page request.
+    overdueCount: 0,
+    userName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : "Compte à relier", userRoleLabel: session?.roles.map((role) => roleLabels[role]).join(" · ") || "Sans rôle"
   };
 }
 
 export async function getDashboard(session?: SessionInfo): Promise<DashboardData> {
+  await requirePermission("business:read");
   if (demoMode) return demoDashboard;
   const canReviewReports = session ? hasPermission(session, "reports:review") : false;
   const [service, aggregates, prices, stocks, penaltySetting, reportsToReview, resources] = await Promise.all([
@@ -188,9 +191,10 @@ export async function getDashboard(session?: SessionInfo): Promise<DashboardData
 
 /** Rows of the register for a grade / situation. The free-text search is applied in the browser
  *  (see components/ninja-register.tsx), so every dossier of the selection is returned. */
-export async function getNinjas(params: { grade?: string | undefined; statut?: string | undefined }): Promise<NinjasData> {
+export async function getNinjas(params: { grade?: string | undefined; statut?: string | undefined; assignedToMe?: boolean }): Promise<NinjasData> {
+  const session = await requirePermission("business:read");
   if (demoMode) return demoNinjas;
-  const [aggregates, users, grades] = await Promise.all([loadNinjaAggregates(), getUserNames(), prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })]);
+  const [aggregates, users, grades] = await Promise.all([loadNinjaAggregates(undefined, params.assignedToMe ? session.userId : undefined), getUserNames(), prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })]);
   const registry = aggregates.filter((ninja) => ninja.status !== "ARCHIVED");
   let rows = params.statut === "archived" ? aggregates.filter((ninja) => ninja.status === "ARCHIVED") : registry;
   if (params.grade) rows = rows.filter((ninja) => ninja.gradeCode === params.grade);
@@ -249,8 +253,14 @@ export function buildDebtLines(assessments: AssessmentAggregate[]): Array<DebtLi
 }
 
 export async function getNinjaDetail(id: string, options: { previewAmount?: bigint | undefined; canSeeNotes: boolean }): Promise<NinjaDetailData | null> {
+  const session = await requireSession();
+  const canReadBusiness = hasPermission(session, "business:read");
+  if (!demoMode && !canReadBusiness) {
+    const own = await prisma.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
+    if (own?.id !== id) throw new Error("FORBIDDEN");
+  }
   if (demoMode) return { ...demoNinjaDetail, preview: options.previewAmount ? { amount: options.previewAmount, lines: [{ label: "Taxe année 46", amount: options.previewAmount }], unallocated: 0n } : null };
-  const aggregates = await loadNinjaAggregates();
+  const aggregates = await loadNinjaAggregates(id);
   const ninja = aggregates.find((entry) => entry.id === id);
   if (!ninja) return null;
   const currentRpYear = (await getRpService()).currentRpYear();
@@ -278,7 +288,7 @@ export async function getNinjaDetail(id: string, options: { previewAmount?: bigi
     id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, clan: ninja.clan,
     lifecycleStatus: ninja.status, statusLabel: lifecycle?.label ?? "Actif", diedAt: ninja.diedAt ? formatDate(ninja.diedAt) : null,
     grade: { code: ninja.gradeCode, label: ninja.gradeLabel }, grades: grades.map((grade) => ({ id: grade.id, code: grade.code, label: grade.label })),
-    hasLinkedUser: linked, notes: options.canSeeNotes ? ninja.notes : null,
+    hasLinkedUser: linked, notes: options.canSeeNotes && canReadBusiness ? ninja.notes : null,
     totalDebt: ninja.debt, lateYears: ninja.lateYears, nextDue: ninja.badge === "overdue" ? "Dépassée" : ninja.nextDueAt ? formatDate(ninja.nextDueAt) : "—", pointsBalance: ninja.points,
     exemptionBalance: exemptionGranted - exemptionUsed, exemptionGranted, exemptionUsed,
     assessments: [...ninja.assessments]
@@ -306,6 +316,7 @@ async function ninjaHasLinkedUser(ninjaId: string) {
 }
 
 export async function getRecovery(): Promise<RecoveryData> {
+  await requirePermission("business:read");
   if (demoMode) return demoRecovery;
   const [aggregates, users] = await Promise.all([loadNinjaAggregates(), getUserNames()]);
   const active = aggregates.filter((ninja) => ninja.status === "ACTIVE");
@@ -403,6 +414,7 @@ export async function getCrafting(params: CraftingFilterParams = {}): Promise<Cr
 }
 
 export async function getStatistics(): Promise<StatisticsData> {
+  await requirePermission("statistics:read");
   if (demoMode) return demoStatistics;
   const [service, aggregates, users] = await Promise.all([getRpService(), loadNinjaAggregates(), getUserNames()]);
   const rpYear = service.currentRpYear();
@@ -550,6 +562,7 @@ export const auditCategories: Record<string, { label: string; prefixes: string[]
 export interface AuditFilterParams { categorie?: string | undefined; q?: string | undefined; acteur?: string | undefined }
 
 export async function getAudit(page: number, filters: AuditFilterParams = {}): Promise<AuditData> {
+  await requirePermission("audit:read");
   if (demoMode) return demoAudit;
   const pageSize = 25;
   const conditions: Prisma.AuditLogWhereInput[] = [];
@@ -572,6 +585,7 @@ export async function getAudit(page: number, filters: AuditFilterParams = {}): P
 }
 
 export async function getAdmin(): Promise<AdminData> {
+  await requirePermission("settings:manage");
   if (demoMode) return demoAdmin;
   const service = await getRpService();
   const currentRpYear = service.currentRpYear();
@@ -583,7 +597,8 @@ export async function getAdmin(): Promise<AdminData> {
     prisma.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: true } }),
     prisma.ninjaGrade.findMany({ where: { isActive: true, code: { not: "UNKNOWN" } }, orderBy: { sortOrder: "asc" } }),
     prisma.invitation.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { role: true, ninjaProfile: { select: { code: true } } } }),
-    prisma.user.findMany({ include: { roles: { include: { role: true } }, ninjaProfile: { select: { firstName: true, lastName: true } } }, orderBy: { createdAt: "asc" } }),
+    // Account reads are paginated in account-service; this settings view does not load them.
+    Promise.resolve([] as Array<{ id: string; name: string | null; email: string | null; revokedAt: Date | null; roles: Array<{ role: { code: string; label: string } }>; ninjaProfile: { firstName: string; lastName: string } | null }>),
     prisma.role.findMany(),
     prisma.ninjaProfile.findMany({ where: { userId: null, status: "ACTIVE" }, orderBy: { code: "asc" }, select: { id: true, code: true, firstName: true, lastName: true } }),
     prisma.ninjaProfile.count({ where: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } } }),
@@ -615,7 +630,7 @@ export async function getAdmin(): Promise<AdminData> {
     currentWeek: { rpYear: currentRpYear, period: weekPeriod(service.dueAt(currentRpYear)), lines, billable, activeNinjas, gradesToUpdate },
     policy: policy ? { name: policy.name, version: policy.version, rateCount: policy.rates.length } : null,
     rpTimeLabel: rpLabel,
-    invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: invitation.status === "PENDING" }; }),
+    invitations: invitations.map((invitation) => { const state = invitationStatus(invitation); return { id: invitation.id, roleCode: invitation.role.code, role: roleLabels[invitation.role.code as keyof typeof roleLabels] ?? invitation.role.label, ninja: invitation.ninjaProfile?.code ?? null, statusLabel: state.label, badge: state.badge, createdAt: formatDate(invitation.createdAt), expiresAt: formatDate(invitation.expiresAt), canRevoke: invitation.status === "PENDING" }; }),
     users: users.map((user) => ({ id: user.id, name: user.ninjaProfile ? `${user.ninjaProfile.firstName} ${user.ninjaProfile.lastName}`.trim() : user.name ?? user.email ?? user.id, roles: user.roles.map((entry) => roleLabels[entry.role.code as keyof typeof roleLabels] ?? entry.role.label).join(", ") || "Sans rôle", roleCodes: user.roles.map((entry) => entry.role.code), revoked: user.revokedAt !== null })),
     roles: [...roles].sort((a, b) => roleOrder.indexOf(a.code) - roleOrder.indexOf(b.code)).map((role) => ({ id: role.id, code: role.code, label: roleLabels[role.code as keyof typeof roleLabels] ?? role.label })),
     freeNinjas: freeNinjas.map((ninja) => ({ id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}` }))

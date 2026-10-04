@@ -2,18 +2,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { getShellInfo } from "@/lib/data";
-import { demoMode, hasPermission, requireSession, type SessionInfo } from "@/lib/session";
+import { demoMode, requireSession } from "@/lib/session";
+import { allowedNavigation } from "@/lib/navigation";
 import { prisma } from "@koeki/database";
-
-function allowedNav(session: SessionInfo): string[] {
-  const base = ["/", "/profil", "/ninjas", "/resources", "/dons", "/crafting", "/events"];
-  if (hasPermission(session, "inventory:read")) base.push("/inventory", "/inventory/movements", "/inventory/counts");
-  if (hasPermission(session, "payments:write") || hasPermission(session, "audit:read")) base.push("/recouvrement", "/equipement", "/statistics");
-  if (hasPermission(session, "reports:read")) base.push("/reports");
-  if (hasPermission(session, "audit:read")) base.push("/audit");
-  if (hasPermission(session, "users:manage") || hasPermission(session, "settings:manage")) base.push("/admin");
-  return base;
-}
 
 export default async function PrivateLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
@@ -27,5 +18,5 @@ export default async function PrivateLayout({ children }: { children: React.Reac
     }
   }
   const shell = await getShellInfo(session);
-  return <AppShell shell={shell} allowed={allowedNav(session)}>{children}</AppShell>;
+  return <AppShell shell={shell} allowed={allowedNavigation(session.roles)} demo={demoMode}>{children}</AppShell>;
 }

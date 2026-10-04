@@ -1,0 +1,53 @@
+name: Kōeki validation
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: koeki_v2_test
+          POSTGRES_USER: koeki
+          POSTGRES_PASSWORD: koeki-local-fixture
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U koeki -d koeki_v2_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://koeki:koeki-local-fixture@127.0.0.1:5432/koeki_v2_test?schema=public
+      DATABASE_URL_TEST: postgresql://koeki:koeki-local-fixture@127.0.0.1:5432/koeki_v2_test?schema=public
+      REQUIRE_TEST_DATABASE: "true"
+      DEMO_MODE: "false"
+      NEXT_TELEMETRY_DISABLED: "1"
+      pnpm_config_verify_deps_before_run: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm db:generate
+      - run: corepack pnpm db:deploy
+      - run: corepack pnpm lint
+      - run: corepack pnpm typecheck
+      - run: corepack pnpm test
+      - run: corepack pnpm test:upgrade
+      - run: corepack pnpm build
+      - run: corepack pnpm --filter @koeki/web exec playwright install --with-deps chromium
+      - run: corepack pnpm test:e2e
+      - run: corepack pnpm test:e2e:auth
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: authenticated-browser-evidence
+          path: |
+            docs/evidence/
+            apps/web/test-results/

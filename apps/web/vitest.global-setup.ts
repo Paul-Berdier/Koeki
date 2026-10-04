@@ -23,6 +23,7 @@ export default async function setup(project: TestProject) {
     const { Client } = requireFromDatabase("pg") as { Client: new (config: Record<string, unknown>) => PgClient };
     const url = new URL(TEST_URL);
     const database = url.pathname.slice(1);
+    if (!["localhost", "127.0.0.1"].includes(url.hostname) || !/^koeki(?:_v2)?_(?:integration_)?test$/.test(database)) throw new Error("Une base locale jetable Kōeki explicitement autorisée est requise");
     const admin = new Client({ host: url.hostname, port: Number(url.port || 5432), user: decodeURIComponent(url.username), password: decodeURIComponent(url.password), database: "postgres", connectionTimeoutMillis: 3_000 });
     await admin.connect();
     const exists = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [database]);
@@ -33,6 +34,7 @@ export default async function setup(project: TestProject) {
     execFileSync(process.execPath, [prismaCli, "migrate", "deploy"], { cwd: databaseDir, env: { ...process.env, DATABASE_URL: TEST_URL }, stdio: "pipe" });
     ready = true;
   } catch (error) {
+    if (process.env.CI || process.env.REQUIRE_TEST_DATABASE === "true") throw error;
     console.warn(`[vitest] PostgreSQL indisponible pour les tests d'intégration (${error instanceof Error ? error.message.split("\n")[0] : String(error)}) — ils seront ignorés.`);
   }
   project.provide("dbReady", ready);

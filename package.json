@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.9.0",
-  "engines": { "node": ">=20.18.0" },
+  "engines": { "node": ">=22.13.0" },
   "scripts": {
     "dev": "pnpm --filter @koeki/web dev",
     "start:prod": "pnpm db:deploy && pnpm db:seed:bootstrap && pnpm --filter @koeki/web start",
@@ -12,6 +12,8 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "test:e2e": "pnpm --filter @koeki/web test:e2e",
+    "test:e2e:auth": "pnpm --filter @koeki/web exec playwright test --config playwright.auth.config.ts",
+    "test:upgrade": "node scripts/verify-v2-upgrade.cjs",
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @koeki/database run generate",
     "db:migrate": "pnpm --filter @koeki/database run migrate",

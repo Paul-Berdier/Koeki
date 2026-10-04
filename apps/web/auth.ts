@@ -1,9 +1,10 @@
 import NextAuth from "next-auth";
 import Discord from "next-auth/providers/discord";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { cookies } from "next/headers";
 import { hashInvitationToken, isInvitationUsable } from "@koeki/auth";
 import { prisma } from "@koeki/database";
+import { consumeInvitationAccess } from "@/lib/invitation-service";
+import { accessControlledAdapter } from "@/lib/auth-session-adapter";
 
 const refuse = (reason: string) => { console.warn(`[auth] connexion refusée : ${reason}`); return false; };
 
@@ -20,29 +21,16 @@ async function findUsableInvitation(token: string) {
 async function consumeInvitation(userId: string, token: string) {
   const invitation = await findUsableInvitation(token);
   if (!invitation) throw new Error("INVITATION_UNUSABLE");
-  await prisma.$transaction(async (tx) => {
-    if (invitation.ninjaProfileId) {
-      await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${invitation.ninjaProfileId} FOR UPDATE`;
-      const linked = await tx.ninjaProfile.updateMany({
-        where: { id: invitation.ninjaProfileId, status: "ACTIVE", userId: null },
-        data: { userId, version: { increment: 1 } }
-      });
-      if (linked.count !== 1) throw new Error("INVITED_NINJA_UNAVAILABLE");
-    }
-    const consumed = await tx.invitation.updateMany({ where: { id: invitation.id, status: "PENDING", consumedAt: null, revokedAt: null, expiresAt: { gt: new Date() } }, data: { status: "USED", consumedById: userId, consumedAt: new Date() } });
-    if (consumed.count !== 1) throw new Error("INVITATION_ALREADY_CONSUMED");
-    await tx.userRole.create({ data: { userId, roleId: invitation.roleId, assignedById: invitation.createdById } });
-    await tx.auditLog.create({ data: { actorId: userId, action: "INVITATION_CONSUMED", entityType: "Invitation", entityId: invitation.id, requestId: crypto.randomUUID() } });
-  });
+  await consumeInvitationAccess(userId, invitation.id);
   (await cookies()).delete("koeki_invite");
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: accessControlledAdapter,
   session: { strategy: "database", maxAge: 60 * 60 * 12, updateAge: 60 * 15 },
   providers: [Discord({ clientId: process.env.DISCORD_CLIENT_ID ?? "", clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "", authorization: { params: { scope: "identify guilds" } } })],
   pages: { signIn: "/connexion", error: "/access-denied" },
-  cookies: { sessionToken: { name: "__Secure-koeki.session-token", options: { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV === "production" } } },
+  cookies: { sessionToken: { name: process.env.NODE_ENV === "production" ? "__Secure-koeki.session-token" : "koeki.session-token", options: { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV === "production" } } },
   callbacks: {
     async signIn({ user, account }) {
       const existing = user.id ? await prisma.user.findUnique({ where: { id: user.id }, include: { roles: true } }) : null;
@@ -68,7 +56,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async session({ session, user }) {
       const current = await prisma.user.findUnique({ where: { id: user.id }, include: { roles: { include: { role: true } } } });
-      if (!current || current.revokedAt) throw new Error("SESSION_REVOKED");
+      if (!current || current.revokedAt || !current.roles.length) throw new Error("SESSION_REVOKED");
       session.user.id = current.id;
       (session.user as typeof session.user & { roles: string[] }).roles = current.roles.map((entry) => entry.role.code);
       return session;

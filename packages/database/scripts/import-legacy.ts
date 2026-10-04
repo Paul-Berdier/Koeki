@@ -103,7 +103,7 @@ async function importCore() {
     await tx.resourceTransaction.createMany({ data: donRows.map((don) => ({
       id: `imp-don-${don.id}`, receiptNumber: `DON-IMP-${String(don.id).padStart(6, "0")}`, type: "DONATION" as const, status: "VALIDATED" as const,
       ninjaId: profileIdByExternal.get(don.ninjaId)!, agentId: systemUser.id, totalAmount: BigInt(Math.max(0, don.value)), totalPoints: don.points,
-      idempotencyKey: `imp-don-${don.id}`, validatedAt: new Date(don.date), createdAt: new Date(don.date)
+      operationOrigin: "IMPORT", idempotencyKey: `imp-don-${don.id}`, validatedAt: new Date(don.date), createdAt: new Date(don.date)
     })), skipDuplicates: true });
     await tx.resourceTransactionItem.createMany({ data: donRows.map((don) => ({
       transactionId: `imp-don-${don.id}`, resourceId: resourceIdByKey.get(don.resource)!, quantity: new Prisma.Decimal(don.quantity),
@@ -578,7 +578,7 @@ async function mergeKvExport20260807() {
       const when = new Date(don.date);
       await tx.resourceTransaction.create({ data: {
         id: `kv-don-${don.id}`, receiptNumber: `DON-BOT-${String(donIndex).padStart(6, "0")}`, type: "DONATION", status: "VALIDATED",
-        ninjaId: profile.id, agentId: systemUser.id, totalAmount: 0n, totalPoints: don.points, idempotencyKey: `kv-don-${don.id}`, validatedAt: when, createdAt: when,
+        operationOrigin: "IMPORT", ninjaId: profile.id, agentId: systemUser.id, totalAmount: 0n, totalPoints: don.points, idempotencyKey: `kv-don-${don.id}`, validatedAt: when, createdAt: when,
         ...(items.length ? { items: { createMany: { data: items.map((item) => ({ resourceId: item.resource.id, quantity: new Prisma.Decimal(item.quantity), unitPriceSnapshot: 0n, lineTotal: 0n })) } } } : {})
       } });
       donsImported++;

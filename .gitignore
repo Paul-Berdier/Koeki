@@ -10,3 +10,4 @@ test-results/
 *.log
 .DS_Store
 packages/database/prisma/dev.db
+.tmp/

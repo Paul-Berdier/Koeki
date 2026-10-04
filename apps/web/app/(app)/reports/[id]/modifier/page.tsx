@@ -1,3 +1,4 @@
+import { ActionForm } from "@/components/action-form";
 import Link from "next/link";
 import { ArrowLeft, Send } from "lucide-react";
 import { redirect } from "next/navigation";
@@ -16,16 +17,19 @@ export default async function EditReportPage({ params, searchParams }: { params:
   const report = await prisma.agentReport.findFirst({ where: { id, authorId: session.userId, status: { in: ["DRAFT", "RETURNED"] } } });
   if (!report) redirect("/reports?erreur=Ce%20rapport%20ne%20peut%20pas%20%C3%AAtre%20modifi%C3%A9");
   const returned = report.status === "RETURNED";
+  const reviews = await prisma.reportReview.findMany({ where: { reportId: report.id }, orderBy: { createdAt: "desc" }, take: 10 });
 
   return <div className="page-wrap">
     <PageHeader eyebrow="Suivi des agents" title={returned ? "Corriger le rapport" : "Modifier le brouillon"} description={returned ? "Apportez les corrections demandées puis soumettez à nouveau le rapport." : "Vous pouvez enregistrer vos changements ou soumettre le rapport au responsable."}
       actions={<Link className="button button-ghost" href="/reports"><ArrowLeft size={17} /> Rapports</Link>} />
     {error && <p className="notice error" role="alert">{error}</p>}
     {returned && <p className="notice" role="status">Ce rapport a été renvoyé par un responsable. Il restera marqué « Renvoyé » tant qu’il n’est pas soumis à nouveau.</p>}
+    {reviews.map((review) => <p className="notice" key={review.id}>Avis sur la version {review.reportVersion} : {review.comment ?? "Approuvé"}</p>)}
     <section className="panel" style={{ maxWidth: 680 }}>
       <SectionHeader title="Période et contenu" description="Les totaux seront recalculés lors de l’enregistrement" />
-      <form action={updateReport} className="form-grid">
+      <ActionForm action={updateReport} className="form-grid">
         <input type="hidden" name="reportId" value={report.id} />
+        <input type="hidden" name="version" value={report.version} />
         <div className="form-row">
           <label>Début de période<input type="date" name="periodStart" required defaultValue={formatReportDate(report.periodStart)} /></label>
           <label>Fin de période<input type="date" name="periodEnd" required defaultValue={formatReportDate(report.periodEnd)} /></label>
@@ -38,7 +42,7 @@ export default async function EditReportPage({ params, searchParams }: { params:
           <button className="button button-ghost" type="submit" name="intent" value="draft">Enregistrer les modifications</button>
           <button className="button button-primary" type="submit" name="intent" value="submit"><Send size={16} /> {returned ? "Soumettre à nouveau" : "Soumettre au responsable"}</button>
         </div>
-      </form>
+      </ActionForm>
     </section>
   </div>;
 }

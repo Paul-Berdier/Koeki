@@ -38,7 +38,8 @@ Aucun statut n'est communiqué par la couleur seule : chaque badge porte icône 
 `--font-display` (serif Iowan/Palatino/Georgia) : titres, chiffres clés.
 `--font-sans` (Inter/system) : corps. `--font-mono` : codes (reçus, RES-…).
 
-Échelle : `--text-caption` 10 → `--text-display` 54. Niveaux : DISPLAY (connexion),
+Échelle V2 : légendes 12 px, libellés 13 px, texte secondaire 14 px, corps 16 px,
+jusqu’à `--text-display` 54. Niveaux : DISPLAY (connexion),
 PAGE TITLE (`.page-header h1`), ZONE (`.zone-title`), SECTION (`.section-header h2`),
 CARD (`.recipe-card h3`), BODY, SECONDARY, LABEL, CAPTION, NUMERIC.
 
@@ -102,3 +103,27 @@ Focus visible or partout, skip-link, `aria-label` sur les graphiques CSS avec
 synthèse textuelle (`.chart-summary`), tableaux avec `th`, statuts icône+texte,
 onglets `role=tablist/tab/tabpanel`, drawer avec backdrop cliquable,
 `prefers-reduced-motion` neutralise les animations.
+
+## V2 — parcours et accessibilité vérifiable
+
+L’accueil est organisé selon les permissions : Mon activité pour les agents,
+pilotage pour les responsables, lecture économique pour les auditeurs, fiche
+personnelle pour les ninjas. `/operations` rassemble les démarches avec verbes
+explicites. Comptes, invitations, paramètres économiques et techniques ont des
+entrées distinctes. Les groupes secondaires de navigation se déplient.
+
+Le menu mobile et les confirmations Comptes utilisent Radix Dialog : focus piégé,
+Échap, restauration du focus, `aria-expanded` et arrière-plan non interactif.
+`aria-current` indique la route active. Les boutons principaux visent 44 px ;
+les cases à cocher ont une surface 24 px. Les tableaux restent dans leur propre
+conteneur horizontal, avec toutes les colonnes accessibles.
+
+Les nouvelles pages partagent `PageHeader`, `MetricCard`, `MoneyDisplay`,
+`StatusBadge`, `EmptyState` et `LoadingState` de `@koeki/ui`. Les formulaires de
+suivi conservent les champs sur erreur sans stocker le brouillon dans le navigateur,
+affichent l’enregistrement et désactivent les soumissions répétées. Les protections
+transactionnelles restent indépendantes de cet état visuel.
+
+Les captures authentifiées 1440/768/390 et les résultats axe/clavier sont listés
+avec leurs limites dans `KOEKI_V2_VALIDATION.md`. Ces vérifications ne constituent
+pas une certification WCAG générale.

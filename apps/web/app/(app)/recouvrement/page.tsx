@@ -7,7 +7,7 @@ import { hasPermission, requireSession } from "@/lib/session";
 
 export default async function RecoveryPage() {
   const session = await requireSession();
-  if (!hasPermission(session, "payments:write") && !hasPermission(session, "audit:read")) redirect("/access-denied");
+  if (!hasPermission(session, "payments:write") && !hasPermission(session, "business:read")) redirect("/access-denied");
   const data = await getRecovery();
   return <ModulePage eyebrow="File de suivi" title="Recouvrement" description="Dossiers à relancer, classés par ancienneté et exposition." registerDescription="Dette calculée depuis les écritures réelles" metrics={[
     { label: "Dette prioritaire", value: <MoneyDisplay amount={data.metrics.priorityDebt} />, detail: `${data.metrics.priorityCount} dossier${data.metrics.priorityCount > 1 ? "s" : ""} critiques`, tone: data.metrics.priorityCount ? "danger" : "good" },

@@ -44,7 +44,7 @@ export async function declareOwnDonation(formData: FormData) {
       }
       const receiptNumber = await nextTransactionReceipt(tx, "DONATION");
       const transaction = await tx.resourceTransaction.create({ data: {
-        receiptNumber, type: "DONATION", status: "PENDING_APPROVAL", ninjaId: profile!.id, agentId: session.userId,
+        operationOrigin: "SELF_DECLARED", recordedById: session.userId, receiptNumber, type: "DONATION", status: "PENDING_APPROVAL", ninjaId: profile!.id, agentId: session.userId,
         totalAmount: items.reduce((total, item) => total + item.lineTotal, 0n), idempotencyKey
       } });
       await tx.resourceTransactionItem.createMany({ data: items.map((item) => ({ transactionId: transaction.id, resourceId: item.resourceId, quantity: new Prisma.Decimal(item.quantity), unitPriceSnapshot: item.unitPrice, lineTotal: item.lineTotal })) });
@@ -59,8 +59,8 @@ export async function declareOwnDonation(formData: FormData) {
   redirect(`/dons?declare=${encodeURIComponent(receipt)}`);
 }
 
-/** An agent validates a declared donation: the validator becomes the responsible agent,
- *  then stock, points and exemption credit are applied exactly like an agent-recorded don. */
+/** An agent validates a declaration. recordedById retains the real author;
+ * agentId remains the operational handler and gives the approver no ranking credit. */
 export async function validateDonation(formData: FormData) {
   const session = await requireWriteAccess("inventory:write");
   const transactionId = formData.get("transactionId");
