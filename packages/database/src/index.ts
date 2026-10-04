@@ -6,3 +6,5 @@ const connectionString = process.env.DATABASE_URL ?? "postgresql://koeki:koeki@1
 export const prisma = globalForPrisma.koekiPrisma ?? new PrismaClient({ adapter: new PrismaPg({ connectionString }), log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"] });
 if (process.env.NODE_ENV !== "production") globalForPrisma.koekiPrisma = prisma;
 export * from "@prisma/client";
+export * from "./ranking";
+export * from "./report-reminders";

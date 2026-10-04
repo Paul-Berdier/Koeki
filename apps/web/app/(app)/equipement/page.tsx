@@ -15,7 +15,7 @@ const equippedCount = (row: EquipmentRow) => EQUIPMENT_SLOTS.filter(([slot]) => 
 
 export default async function EquipmentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
-  if (!hasPermission(session, "inventory:write") && !hasPermission(session, "audit:read")) redirect("/access-denied");
+  if (!hasPermission(session, "inventory:write") && !hasPermission(session, "business:read")) redirect("/access-denied");
 
   const query = await searchParams;
   const error = typeof query.erreur === "string" ? query.erreur : null;

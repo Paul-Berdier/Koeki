@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@koeki/ui", "@koeki/domain", "@koeki/auth", "@koeki/database"],
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg"],
   poweredByHeader: false,
+  devIndicators: false,
   experimental: { optimizePackageImports: ["lucide-react"] },
   async headers() {
     return [

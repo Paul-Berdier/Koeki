@@ -4,7 +4,7 @@ import { AlertTriangle, CircleCheck, CircleX, Inbox, LoaderCircle } from "lucide
 /** Montant en Ryō — chiffres tabulaires via .money ; en mode compact, le montant
  *  exact reste disponible au survol et pour les lecteurs d'écran. */
 export function MoneyDisplay({ amount, compact = false }: { amount: number | bigint; compact?: boolean }) {
-  const value = typeof amount === "bigint" ? Number(amount) : amount;
+  const value = amount;
   const formatted = new Intl.NumberFormat("fr-FR", {
     notation: compact ? "compact" : "standard",
     maximumFractionDigits: compact ? 1 : 0

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { prisma, type Prisma } from "@koeki/database";
+import { closeCompletedRankings, prisma, sendReportReminders, type Prisma } from "@koeki/database";
 import { assessmentSettlementBreakdown, calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, deriveStockState, deriveTaxAssessmentStatus, exemptionUse, parseExemptionPolicy, rpTimeConfigSchema, ryo } from "@koeki/domain";
 
 const isUniqueViolation = (error: unknown) => (error as { code?: string } | null)?.code === "P2002";
@@ -205,6 +205,26 @@ async function applyPenalties() {
 const assessmentStatusLabels: Record<string, string> = { DUE: "à payer", OVERDUE: "en retard", PARTIALLY_PAID: "partiellement payée" };
 
 async function sendReminders() {
+  const reportReminders = await sendReportReminders(prisma);
+  const taskReminderSetting = await prisma.appSetting.findUnique({ where: { key: "taskReminders" } });
+  let taskReminders = 0;
+  if ((taskReminderSetting?.value as { enabled?: boolean } | undefined)?.enabled !== false) {
+    const tasks = await prisma.followUpTask.findMany({ where: { dueAt: { lte: new Date() }, status: { in: ["TODO", "IN_PROGRESS", "BLOCKED"] }, assigneeId: { not: null } }, select: { id: true } });
+    for (const candidate of tasks) {
+      await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "FollowUpTask" WHERE "id" = ${candidate.id} FOR UPDATE`;
+        const task = await tx.followUpTask.findUnique({ where: { id: candidate.id } });
+        if (!task?.assigneeId || !task.dueAt || task.dueAt > new Date() || !["TODO", "IN_PROGRESS", "BLOCKED"].includes(task.status)) return;
+        const user = await tx.user.findUnique({ where: { id: task.assigneeId }, select: { revokedAt: true } });
+        if (!user || user.revokedAt) return;
+        const dedupeKey = `task-due:${task.id}:${task.assigneeId}:${task.dueAt.toISOString()}`;
+        const exists = await tx.notification.findUnique({ where: { dedupeKey }, select: { id: true } });
+        if (exists) return;
+        await tx.notification.create({ data: { userId: task.assigneeId, title: "Échéance de tâche dépassée", body: task.title, href: `/taches?id=${task.id}`, dedupeKey } });
+        taskReminders++;
+      });
+    }
+  }
   const overdueCandidates = await prisma.taxAssessment.findMany({
     where: { ninja: { status: "ACTIVE" }, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID"] }, originalAmount: { gt: 0 } },
     select: { id: true, ninjaId: true }
@@ -253,7 +273,7 @@ async function sendReminders() {
     });
     if (notified) sent++;
   }
-  return { command: "reminders:send", eligible: assessments.length, sent, statusSweep: swept };
+  return { command: "reminders:send", eligible: assessments.length, sent, statusSweep: swept, taskReminders, reportReminders };
 }
 
 async function checkInventory() {
@@ -321,7 +341,7 @@ async function reconcileInventory() {
   return { command: "inventory:reconcile", mismatches: mismatches.map((row) => ({ code: row.code, ledger: row.ledger, cache: row.cache })), alerted };
 }
 
-const commands: Record<string, () => Promise<unknown>> = { "taxes:generate": generateTaxes, "penalties:apply": applyPenalties, "reminders:send": sendReminders, "inventory:check": checkInventory, "inventory:reconcile": reconcileInventory, "stats:refresh": refreshStats };
+const commands: Record<string, () => Promise<unknown>> = { "taxes:generate": generateTaxes, "penalties:apply": applyPenalties, "reminders:send": sendReminders, "inventory:check": checkInventory, "inventory:reconcile": reconcileInventory, "stats:refresh": refreshStats, "ranking:close": () => closeCompletedRankings(prisma) };
 async function main() {
   const command = process.argv[2] ?? "all";
   const selected = command === "all" ? Object.values(commands) : [commands[command]];

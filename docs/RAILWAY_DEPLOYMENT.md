@@ -112,3 +112,30 @@ Associer un domaine exclusivement à `koeki-web`, mettre `APP_URL` et `AUTH_URL`
 ## 8. Interdictions
 
 Ne jamais définir `DATABASE_URL=${{toile-dor-postgres.DATABASE_URL}}`. Ne partager ni `AUTH_SECRET`, ni pepper, ni cookie, ni bucket. Ne renommer ou modifier les services de La Toile d’Or depuis ce déploiement.
+
+## V2 — déploiement préparé, non exécuté
+
+Appliquer les migrations additives 0017 à 0020 après revue et sauvegarde vérifiée.
+Aucune commande distante n’a été lancée dans la mission V2. Déployer web et worker
+avec les mêmes versions de code ; les anciennes écritures restent conservées et
+les écritures non instrumentées d’une version ancienne restent exclues du
+classement officiel. Exécuter d’abord `scripts/verify-v2-upgrade.cjs` sur une base
+jetable locale. Ce script préserve et compare les références et montants BigInt.
+
+Avant publication autorisée : vérifier hôte/base, absence de DEMO_MODE, sommes des
+paiements/points/crédits et stocks, nombre de fiches et rapports, sessions expirées,
+matrice de permissions et santé. La commande worker `ranking:close` complète les commandes existantes ;
+`reminders:send` inclut les rappels de tâches et de rapports configurés. Aucun message
+Discord ni email automatique n’est ajouté.
+
+Le retour arrière recommandé est une correction en avant. Conserver les nouvelles
+tables/colonnes et toutes les versions publiées ; ne pas exécuter une migration
+inverse destructive ou restaurer un dump ancien sur les écritures récentes.
+Un retour au binaire V1 réouvrirait les anciens droits d’audit : il n’est donc pas
+un retour arrière de sécurité acceptable. Toute restauration de secours exige une
+réconciliation des écritures postérieures (reçus, idempotence, ledger), sous arrêt
+contrôlé des écrivains, avant réouverture.
+
+La CI locale préparée valide migrations, permissions, concurrence, finance,
+compilation et sessions navigateur. Son exécution sur GitHub n’est pas démontrée
+avant push, qui reste hors autorisation de cette mission.

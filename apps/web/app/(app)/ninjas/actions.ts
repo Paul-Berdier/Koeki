@@ -5,7 +5,7 @@ import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { exemptionUse, planLegacySettlement } from "@koeki/domain";
 import { getRpService, loadNinjaFiscal } from "@/lib/data";
-import { awardPoints, grantExemption, isUniqueViolation, loadExemptionPolicy, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { awardPoints, businessOperationEvidence, grantExemption, isUniqueViolation, loadExemptionPolicy, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { billCurrentWeekAfterGradeResolution } from "@/lib/grade-tax";
 import { lockResources, recordMovement } from "@/lib/inventory-ledger";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
@@ -405,7 +405,7 @@ export async function recordPayment(formData: FormData) {
         }
         donationReceipt = await nextTransactionReceipt(tx, "DONATION");
         const transaction = await tx.resourceTransaction.create({ data: {
-          receiptNumber: donationReceipt, type: "DONATION", status: "VALIDATED", ninjaId, agentId: session.userId,
+          ...businessOperationEvidence, receiptNumber: donationReceipt, type: "DONATION", status: "VALIDATED", ninjaId, agentId: session.userId, recordedById: session.userId,
           totalAmount: donationValue, idempotencyKey: `${idempotencyKey}:don`, validatedAt: new Date()
         } });
         await tx.resourceTransactionItem.createMany({ data: lines.map((line) => ({ transactionId: transaction.id, resourceId: line.resourceId, quantity: new Prisma.Decimal(line.quantity), unitPriceSnapshot: line.unitPrice, lineTotal: scaledTimes(line.quantity, line.exemptionPerUnit) })) });
@@ -460,7 +460,7 @@ export async function recordPayment(formData: FormData) {
         const settled = potRyo + coveredByDonation;
         const payment = await tx.taxPayment.create({ data: {
           receiptNumber: paymentReceipt, ninjaId, recordedById: session.userId, amount: potRyo, method: "RYO", reference, status: "VALIDATED",
-          balanceBefore, balanceAfter: balanceBefore > settled ? balanceBefore - settled : 0n, idempotencyKey, validatedAt: new Date()
+          ...businessOperationEvidence, balanceBefore, balanceAfter: balanceBefore > settled ? balanceBefore - settled : 0n, idempotencyKey, validatedAt: new Date()
         } });
         if (allocations.length) await tx.taxPaymentAllocation.createMany({ data: allocations.map((entry, index) => ({ paymentId: payment.id, assessmentId: entry.assessmentId, amount: entry.amount, allocationOrder: index + 1 })) });
         await awardPoints(tx, { ninjaId, eventType: legacyTargets.length ? "REGULARIZATION" : "TAX_PAYMENT", amount: potRyo, sourceType: "TaxPayment", sourceId: payment.id });

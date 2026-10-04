@@ -1,0 +1,13 @@
+.overlay { position: fixed; inset: 0; z-index: 100; background: rgb(24 19 13 / 72%); }
+.content { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 101; width: min(580px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--surface, #211f1b); color: var(--text, #f3e8ce); border: 1px solid var(--border, #695039); border-radius: 14px; padding: 24px; box-shadow: 0 24px 80px #0008; }
+.title { font-size: 22px; margin: 0 0 12px; }
+.description { line-height: 1.55; margin-bottom: 16px; }
+.roles { display: grid; gap: 10px; border: 1px solid var(--border); padding: 14px; }
+.roles label { display: flex; gap: 12px; align-items: center; min-height: 32px; }
+.roles input { width: 24px; height: 24px; min-height: 24px; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.trigger { white-space: normal; }
+.content form { display: grid; gap: 16px; }
+.content label { display: grid; gap: 8px; }
+.content textarea { min-height: 90px; }
+@media (max-width: 480px) { .content { padding: 18px; } .actions > button { width: 100%; } }

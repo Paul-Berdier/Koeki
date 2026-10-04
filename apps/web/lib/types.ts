@@ -76,7 +76,7 @@ export interface AdminData {
   exemption: { weeklyTaxCoverageBps: number };
   policy: { name: string; version: number; rateCount: number } | null;
   rpTimeLabel: string;
-  invitations: Array<{ id: string; role: string; ninja: string | null; statusLabel: string; badge: BadgeStatus; createdAt: string; expiresAt: string; canRevoke: boolean }>;
+  invitations: Array<{ id: string; role: string; roleCode?: string; ninja: string | null; statusLabel: string; badge: BadgeStatus; createdAt: string; expiresAt: string; canRevoke: boolean }>;
   users: Array<{ id: string; name: string; roles: string; roleCodes: string[]; revoked: boolean }>;
   roles: Array<{ id: string; code: string; label: string }>;
   freeNinjas: Array<{ id: string; code: string; name: string }>;

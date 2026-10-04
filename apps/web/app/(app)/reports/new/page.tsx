@@ -1,3 +1,4 @@
+import { ActionForm } from "@/components/action-form";
 import Link from "next/link";
 import { ArrowLeft, FilePlus2 } from "lucide-react";
 import { PageHeader, SectionHeader } from "@koeki/ui";
@@ -18,7 +19,7 @@ export default async function NewReportPage({ searchParams }: { searchParams: Pr
     {error && <p className="notice error" role="alert">{error}</p>}
     {demoMode ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : <section className="panel" style={{ maxWidth: 680 }}>
       <SectionHeader title="Période et contenu" description="Les périodes d’un même agent ne peuvent pas se chevaucher" />
-      <form action={createReport} className="form-grid">
+      <ActionForm action={createReport} className="form-grid">
         <div className="form-row">
           <label>Début de période<input type="date" name="periodStart" required defaultValue={weekStart} /></label>
           <label>Fin de période<input type="date" name="periodEnd" required defaultValue={lastCompleteDay} /></label>
@@ -31,7 +32,7 @@ export default async function NewReportPage({ searchParams }: { searchParams: Pr
           <button className="button button-ghost" type="submit" name="intent" value="draft">Enregistrer en brouillon</button>
           <button className="button button-primary" type="submit" name="intent" value="submit"><FilePlus2 size={16} /> Soumettre au responsable</button>
         </div>
-      </form>
+      </ActionForm>
     </section>}
   </div>;
 }

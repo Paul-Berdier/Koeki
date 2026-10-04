@@ -1,10 +1,12 @@
+import { ActionForm } from "@/components/action-form";
 import Link from "next/link";
-import { CheckCircle2, Filter, Pencil, Undo2 } from "lucide-react";
+import { Filter, Pencil } from "lucide-react";
 import { EmptyState, MoneyDisplay, StatusBadge } from "@koeki/ui";
 import { ModulePage } from "@/components/module-page";
 import { getReports, reportStatusOptions } from "@/lib/data";
 import { demoMode, hasPermission, requirePermission } from "@/lib/session";
-import { reviewReport } from "./actions";
+import { configureReportExpectation } from "./actions";
+import { getReportExpectations } from "@/lib/report-service";
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requirePermission("reports:read");
@@ -20,6 +22,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const canReview = !demoMode && hasPermission(session, "reports:review");
   const canWrite = !demoMode && hasPermission(session, "reports:write");
   const canReadAll = hasPermission(session, "reports:read-all");
+  const expectations = await getReportExpectations(session);
   let data;
   try { data = await getReports(session, page, filters); }
   catch (caught) {
@@ -28,7 +31,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     data = await getReports(session, 1, cleaned);
     return <ReportsView data={data} filters={cleaned} error={message} canReview={canReview} canWrite={canWrite} canReadAll={canReadAll} />;
   }
-  return <ReportsView data={data} filters={filters} error={error} canReview={canReview} canWrite={canWrite} canReadAll={canReadAll} />;
+  return <><section className="panel" style={{ margin: "24px" }}><h2>Rapports attendus</h2><p>{expectations.configured ? "Cadence hebdomadaire. Les absences et périodes incomplètes de participation sont dispensées." : "Attente non configurée"}</p>{expectations.periods.map((period) => <p key={period.start}>{period.start} au {period.end} · {period.state} · échéance {period.dueAt.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} {period.reportId && <Link href={`/reports/${period.reportId}`}>Ouvrir le rapport</Link>}</p>)}
+    {canReview && <details><summary>Configurer les rapports attendus</summary><ActionForm action={configureReportExpectation} className="form-grid"><p>Nouvelle règle appliquée uniquement aux semaines commençant après sa date d’effet ; aucune obligation rétroactive.</p><label>Date d’effet future<input type="date" name="effectiveFrom" required /></label><label>Population<select name="population"><option value="ECONOMIC_AGENT">Agents économiques participants</option><option value="PARTICIPANTS">Tous les participants déclarés</option></select></label><label>Délai après la fin de semaine (jours)<input name="dueAfterDays" type="number" min={0} max={30} defaultValue={2} required /></label><label><input type="checkbox" name="reminders" defaultChecked /> Rappels internes</label><button className="button button-primary">Configurer la cadence hebdomadaire</button></ActionForm></details>}
+  </section><ReportsView data={data} filters={filters} error={error} canReview={canReview} canWrite={canWrite} canReadAll={canReadAll} /></>;
 }
 
 type ReportFilters = { auteur?: string | undefined; statut?: string | undefined; du?: string | undefined; au?: string | undefined };
@@ -82,11 +87,9 @@ function ReportsView({ data, filters, error, canReview, canWrite, canReadAll }: 
           <section><h3>Suivi</h3><p className={report.followUps ? undefined : "muted"}>{report.followUps ?? "Aucune action de suivi demandée."}</p></section>
         </div>
       </details>
-      {(report.canEdit || report.canReview) && <footer className="report-actions">
+      <footer className="report-actions"><Link className="button button-ghost" href={`/reports/${report.id}`}>{report.canReview ? "Examiner" : "Ouvrir le rapport et ses avis"}</Link>
         {report.canEdit && <Link className="button button-ghost" href={`/reports/${report.id}/modifier`}><Pencil size={15} /> Modifier</Link>}
-        {report.canReview && <><form action={reviewReport}><input type="hidden" name="reportId" value={report.id} /><input type="hidden" name="intent" value="approve" /><button className="button button-primary" type="submit"><CheckCircle2 size={15} /> Approuver</button></form>
-        <form action={reviewReport}><input type="hidden" name="reportId" value={report.id} /><input type="hidden" name="intent" value="return" /><button className="button button-ghost" type="submit"><Undo2 size={15} /> Renvoyer</button></form></>}
-      </footer>}
+      </footer>
     </article>)}</div>
       : <EmptyState title="Aucun rapport" description={activeFilters ? "Aucun rapport ne correspond à ces filtres." : "Créez un rapport de période : les totaux se rempliront automatiquement."} />}
 

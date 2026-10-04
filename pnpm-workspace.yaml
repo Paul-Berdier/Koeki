@@ -1,6 +1,10 @@
 packages:
   - apps/*
   - packages/*
+# Install explicitly from the lockfile, never during parallel lint/test commands.
+verifyDepsBeforeRun: false
+overrides:
+  'next@15.5.27>postcss': '8.5.25'
 onlyBuiltDependencies:
   - "@prisma/client"
   - "@prisma/engines"

@@ -180,6 +180,8 @@ model User {
   auditLogs          AuditLog[]
   reports            AgentReport[]  @relation("ReportAuthor")
   notifications      Notification[]
+  participations     AgentParticipation[]
+  absences           AgentAbsence[]
 }
 
 // OAuth token fields keep the snake_case names the Auth.js adapter writes verbatim.
@@ -410,6 +412,9 @@ model TaxPenalty {
 }
 
 model TaxPayment {
+  firstValidatedAt DateTime?
+  validationEvidence String?
+  operationOrigin String @default("UNKNOWN")
   id             String                 @id @default(cuid())
   receiptNumber  String                 @unique
   ninjaId        String
@@ -428,6 +433,7 @@ model TaxPayment {
   adjustments    TaxAdjustment[]
 
   @@index([ninjaId, createdAt])
+  @@index([firstValidatedAt, status])
 }
 
 model TaxPaymentAllocation {
@@ -602,6 +608,10 @@ model ResourcePriceHistory {
 }
 
 model ResourceTransaction {
+  firstValidatedAt DateTime?
+  validationEvidence String?
+  operationOrigin String @default("UNKNOWN")
+  recordedById String?
   id             String                    @id @default(cuid())
   receiptNumber  String                    @unique
   type           ResourceTransactionType
@@ -616,6 +626,7 @@ model ResourceTransaction {
   ninja          NinjaProfile              @relation(fields: [ninjaId], references: [id])
   items          ResourceTransactionItem[]
   movements      InventoryMovement[]
+  @@index([firstValidatedAt, status])
 }
 
 model ResourceTransactionItem {
@@ -796,8 +807,13 @@ model AgentReport {
   processedValue  BigInt       @default(0)
   correctionCount Int          @default(0)
   reviewerId      String?
+  version         Int          @default(1)
+  submittedAt     DateTime?
+  decidedAt       DateTime?
+  snapshotAt      DateTime?
   createdAt       DateTime     @default(now())
   author          User         @relation("ReportAuthor", fields: [authorId], references: [id])
+  reviews         ReportReview[]
 
   @@unique([authorId, periodStart, periodEnd])
 }
@@ -807,11 +823,120 @@ model Notification {
   userId    String
   title     String
   body      String
+  href      String?
+  dedupeKey String?            @unique
   status    NotificationStatus @default(UNREAD)
   createdAt DateTime           @default(now())
   user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, createdAt])
+}
+
+model AgentParticipation {
+  id              String    @id @default(cuid())
+  userId          String
+  startsAt        DateTime?
+  endsAt          DateTime?
+  observedAt      DateTime  @default(now())
+  dateSource      String    @default("DECLARED")
+  serviceRole     String?
+  rankingEligible Boolean   @default(true)
+  createdById     String?
+  createdAt       DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@index([userId, endsAt])
+}
+
+model AgentAbsence {
+  id          String   @id @default(cuid())
+  userId      String
+  startsAt    DateTime
+  endsAt      DateTime
+  reason      String?  @db.Text
+  createdById String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@index([userId, startsAt, endsAt])
+}
+
+model AssignmentHistory {
+  id              String   @id @default(cuid())
+  ninjaId         String?
+  taskId          String?
+  previousAgentId String?
+  assignedAgentId String?
+  actorId         String
+  reason          String
+  createdAt       DateTime @default(now())
+  @@index([ninjaId, createdAt])
+  @@index([taskId, createdAt])
+}
+
+model FollowUpTask {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @db.Text
+  ninjaId     String?
+  reportId    String?
+  assigneeId  String?
+  createdById String
+  priority    String   @default("NORMAL")
+  status      String   @default("TODO")
+  dueAt       DateTime?
+  resolution  String?  @db.Text
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  transitions TaskTransition[]
+  @@index([assigneeId, status, dueAt])
+  @@index([status, dueAt])
+}
+
+model TaskTransition {
+  id         String   @id @default(cuid())
+  taskId     String
+  actorId    String
+  fromStatus String?
+  toStatus   String
+  reason     String?  @db.Text
+  createdAt  DateTime @default(now())
+  task       FollowUpTask @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  @@index([taskId, createdAt])
+}
+
+model AgentNote {
+  id          String   @id @default(cuid())
+  userId      String
+  authorId    String
+  body        String   @db.Text
+  createdAt   DateTime @default(now())
+  @@index([userId, createdAt])
+}
+
+model ReportReview {
+  id             String   @id @default(cuid())
+  reportId       String
+  reportVersion  Int
+  reviewerId     String
+  reviewedStatus String
+  decision       String
+  comment        String?  @db.Text
+  contentSnapshot Json
+  createdAt      DateTime @default(now())
+  report         AgentReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
+  @@unique([reportId, reportVersion])
+}
+
+model ReportExpectation {
+  id             String   @id @default(cuid())
+  cadence        String   @default("WEEKLY")
+  population     String   @default("ECONOMIC_AGENT")
+  effectiveFrom  DateTime
+  dueAfterDays   Int      @default(2)
+  reminders      Boolean  @default(true)
+  createdById    String
+  createdAt      DateTime @default(now())
+  @@index([effectiveFrom])
 }
 
 model AuditLog {
@@ -850,4 +975,29 @@ model IdempotencyKey {
   completedAt    DateTime?
 
   @@index([scope, createdAt])
+}
+model RankingPeriod {
+  id               String           @id @default(cuid())
+  weekKey          String           @unique
+  startsAt         DateTime
+  endsAt           DateTime
+  correctionNeeded Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  versions         RankingVersion[]
+}
+
+model RankingVersion {
+  id             String        @id @default(cuid())
+  periodId       String
+  version        Int
+  formulaVersion String
+  snapshot       Json
+  fingerprint    String
+  reason         String?
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  period         RankingPeriod @relation(fields: [periodId], references: [id])
+
+  @@unique([periodId, version])
+  @@index([periodId, createdAt])
 }
