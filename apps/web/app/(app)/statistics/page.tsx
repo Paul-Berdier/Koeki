@@ -1,43 +1,321 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { EmptyState, MoneyDisplay, PageHeader, PointDisplay, SectionHeader, ZoneTitle } from "@koeki/ui";
-import { getRpService, getStatistics } from "@/lib/data";
-import { getInventoryAgentActivity } from "@/lib/inventory-data";
+import {
+  EmptyState,
+  MetricCard,
+  MoneyDisplay,
+  PageHeader,
+  PointDisplay,
+  SectionHeader,
+} from "@koeki/ui";
+import { getStatistics } from "@/lib/data";
 import { formatPercentBps } from "@/lib/format";
 import { hasPermission, requireSession } from "@/lib/session";
+
+const number = new Intl.NumberFormat("fr-FR");
 
 export default async function StatisticsPage() {
   const session = await requireSession();
   if (!hasPermission(session, "statistics:read")) redirect("/access-denied");
   const data = await getStatistics();
-  const service = await getRpService();
-  const inventoryActivity = hasPermission(session, "inventory:read") ? await getInventoryAgentActivity(service.startOfRpYear(service.currentRpYear())) : [];
-  const rate = formatPercentBps(data.rateBps);
-  const ringPercent = Math.round(data.rateBps / 100);
-  return <div className="page-wrap">
-    <PageHeader eyebrow="Analyse multi-dimensionnelle" title="Statistiques" description="Finances, stocks et activité des agents — chaque graphique possède une synthèse textuelle." actions={<span className="button button-ghost" aria-label={`Période : année RP ${data.rpYear}`}>Année RP {data.rpYear}</span>} />
-    <section className="stats-hero"><div><span>Taux de recouvrement</span><strong>{rate}</strong><p>{data.previousDeltaBps === null ? "Première année suivie" : data.previousDeltaBps >= 0 ? `+${formatPercentBps(data.previousDeltaBps)} depuis l’année RP ${data.rpYear - 1}` : `−${formatPercentBps(-data.previousDeltaBps)} depuis l’année RP ${data.rpYear - 1}`} — Ryō encaissés et exonérations historiquement appliquées</p></div><div className="collection-ring" role="img" aria-label={`${rate} réglés`} style={{ background: `conic-gradient(var(--gold-400) ${ringPercent}%, var(--ink-750) 0)` }}><span>{ringPercent}%</span></div><dl><div><dt>Attendu</dt><dd><MoneyDisplay amount={data.expected} /></dd></div><div><dt>Encaissé (Ryō)</dt><dd><MoneyDisplay amount={data.collected} /></dd></div><div><dt>Exonérations appliquées</dt><dd><MoneyDisplay amount={data.exempted} /></dd></div><div><dt>Restant</dt><dd className="negative"><MoneyDisplay amount={data.remaining} /></dd></div></dl></section>
-    <ZoneTitle title="Économie du village" detail="Dettes ouvertes et discipline de la semaine" />
-    <div className="dashboard-grid stats-grid">
-      <section className="panel"><SectionHeader title="Dette par grade" description="Montant ouvert, toutes années RP confondues" />{data.debtByGrade.length ? <><div className="horizontal-chart" role="img" aria-label={`Dette par grade : ${data.debtByGrade.map((entry) => `${entry.grade} ${new Intl.NumberFormat("fr-FR").format(Number(entry.amount))} Ryō`).join(", ")}`}>{data.debtByGrade.map((entry) => <div key={entry.grade}><span>{entry.grade}</span><i><b style={{ width: `${Math.max(2, entry.percent)}%` }} /></i><strong><MoneyDisplay amount={entry.amount} /></strong></div>)}</div><p className="chart-summary">Le grade le plus exposé est {data.debtByGrade[0]?.grade}. Le suivi doit toutefois tenir compte de l’ancienneté et non du seul montant.</p></> : <EmptyState title="Aucune dette" description="Aucune dette ouverte : le village est à jour." />}</section>
-      <section className="panel"><SectionHeader title="Semaines de taxe du cycle" description="Lignes fiscales de l’année RP en cours" />{data.weekCompliance.total > 0 ? <><div className="horizontal-chart" role="img" aria-label={`${data.weekCompliance.settled} réglées, ${data.weekCompliance.pending} en attente, ${data.weekCompliance.overdue} en retard sur ${data.weekCompliance.total}`}>
-        {[{ label: "Réglées", count: data.weekCompliance.settled }, { label: "En attente", count: data.weekCompliance.pending }, { label: "En retard", count: data.weekCompliance.overdue }].map((row) => <div key={row.label}><span>{row.label}</span><i><b style={{ width: `${Math.max(2, Math.round((row.count * 100) / data.weekCompliance.total))}%` }} /></i><strong>{row.count.toLocaleString("fr-FR")}</strong></div>)}
-      </div><p className="chart-summary">{formatPercentBps(data.weekCompliance.settledRateBps)} des taxes du cycle sont soldées par des Ryō ou par une exonération déjà appliquée.</p></> : <EmptyState title="Aucune ligne fiscale" description="La facturation du dimanche minuit remplira ce suivi." />}</section>
+  const compliance = [
+    { label: "Réglées", count: data.weekCompliance.settled },
+    { label: "En attente", count: data.weekCompliance.pending },
+    { label: "En retard", count: data.weekCompliance.overdue },
+  ];
+  const delta = data.previousDeltaBps;
+  const rateDetail =
+    delta === null
+      ? "Aucune année précédente comparable"
+      : `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${number.format(Math.abs(delta) / 100)} point${Math.abs(delta) === 100 ? "" : "s"} de pourcentage par rapport à l’année RP ${data.rpYear - 1}`;
+
+  return (
+    <div className="page-wrap economy-page">
+      <PageHeader
+        eyebrow="Pilotage"
+        title="Économie"
+        description="Recouvrement, crédits et ressources du village. Les montants restent distincts de l’activité des agents."
+        actions={<span className="period-label">Année RP {data.rpYear}</span>}
+      />
+
+      <section
+        className="metric-grid economy-summary"
+        aria-label={`Situation fiscale de l’année RP ${data.rpYear}`}
+      >
+        <MetricCard
+          label="À recouvrer sur le cycle"
+          value={<MoneyDisplay amount={data.expected} />}
+          detail="Montant fiscal attendu"
+        />
+        <MetricCard
+          label="Encaissé"
+          value={<MoneyDisplay amount={data.collected} />}
+          detail="Ryō affectés aux taxes du cycle"
+          tone="good"
+        />
+        <MetricCard
+          label="Exonérations appliquées"
+          value={<MoneyDisplay amount={data.exempted} />}
+          detail="Crédit déjà utilisé sur ces taxes"
+        />
+        <MetricCard
+          label="Reste à recouvrer"
+          value={<MoneyDisplay amount={data.remaining} />}
+          detail="Solde fiscal du cycle"
+          tone={data.remaining > 0n ? "warn" : "good"}
+        />
+      </section>
+
+      <section className="panel economy-recovery">
+        <SectionHeader
+          title="Avancement du recouvrement"
+          description={`Année RP ${data.rpYear} · Ryō encaissés et exonérations appliquées`}
+        />
+        <div className="panel-body">
+          <div className="economy-rate">
+            <strong>
+              {data.expected > 0n ? formatPercentBps(data.rateBps) : "—"}
+            </strong>
+            <span>
+              {data.expected > 0n
+                ? rateDetail
+                : "Aucun montant fiscal attendu sur ce cycle"}
+            </span>
+          </div>
+          {data.expected > 0n && (
+            <progress
+              className="economy-progress"
+              value={Math.max(0, Math.min(10000, data.rateBps))}
+              max={10000}
+              aria-label="Part des taxes du cycle réglée par Ryō ou exonération"
+            />
+          )}
+          <p className="muted">
+            Le taux porte sur les taxes du cycle. Une exonération appliquée
+            règle une taxe sans constituer un encaissement de Ryō.
+          </p>
+        </div>
+      </section>
+
+      <div className="dashboard-grid stats-grid">
+        <section className="panel">
+          <SectionHeader
+            title="Dette ouverte par grade"
+            description="Ninjas actifs · toutes années RP confondues"
+          />
+          {data.debtByGrade.length ? (
+            <>
+              <div
+                className="horizontal-chart"
+                role="img"
+                aria-label={`Dette par grade : ${data.debtByGrade.map((entry) => `${entry.grade}, ${number.format(entry.amount)} Ryō`).join(" ; ")}`}
+              >
+                {data.debtByGrade.map((entry) => (
+                  <div key={entry.grade}>
+                    <span>{entry.grade}</span>
+                    <i>
+                      <b
+                        style={{
+                          width: `${Math.max(0, Math.min(100, entry.percent))}%`,
+                        }}
+                      />
+                    </i>
+                    <strong>
+                      <MoneyDisplay amount={entry.amount} />
+                    </strong>
+                  </div>
+                ))}
+              </div>
+              <p className="chart-summary">
+                Ces dettes comprennent les cycles précédents. Le montant seul ne
+                renseigne pas sur leur ancienneté.
+              </p>
+            </>
+          ) : (
+            <EmptyState
+              title="Aucune dette ouverte"
+              description="Aucun solde fiscal positif sur les dossiers actifs."
+            />
+          )}
+        </section>
+        <section className="panel">
+          <SectionHeader
+            title="Situation des lignes fiscales"
+            description={`${number.format(data.weekCompliance.total)} ligne(s) sur l’année RP ${data.rpYear}`}
+          />
+          {data.weekCompliance.total > 0 ? (
+            <>
+              <div
+                className="horizontal-chart"
+                role="img"
+                aria-label={compliance
+                  .map(
+                    (row) =>
+                      `${number.format(row.count)} ${row.label.toLocaleLowerCase("fr")}`,
+                  )
+                  .join(", ")}
+              >
+                {compliance.map((row) => (
+                  <div key={row.label}>
+                    <span>{row.label}</span>
+                    <i>
+                      <b
+                        style={{
+                          width: `${(row.count * 100) / data.weekCompliance.total}%`,
+                        }}
+                      />
+                    </i>
+                    <strong>{number.format(row.count)}</strong>
+                  </div>
+                ))}
+              </div>
+              <p className="chart-summary">
+                {formatPercentBps(data.weekCompliance.settledRateBps)} des
+                lignes du cycle sont soldées. Ce graphique compte les lignes
+                fiscales, pas les agents.
+              </p>
+            </>
+          ) : (
+            <EmptyState
+              title="Aucune ligne fiscale"
+              description="Le suivi apparaîtra dès la création des taxes du cycle."
+            />
+          )}
+        </section>
+      </div>
+
+      <div className="dashboard-grid stats-grid">
+        <section className="panel">
+          <SectionHeader
+            title="Crédits d’exonération"
+            description="Crédit accordé, utilisé et encore disponible"
+          />
+          <div className="mini-list">
+            <div>
+              <span>
+                <strong>Accordé ce cycle</strong>
+                <small>Crédit créé sur les dossiers</small>
+              </span>
+              <strong>
+                <MoneyDisplay amount={data.exemptionFlow.granted} />
+              </strong>
+            </div>
+            <div>
+              <span>
+                <strong>Appliqué ce cycle</strong>
+                <small>Taxes couvertes · corrections exclues</small>
+              </span>
+              <strong>
+                <MoneyDisplay amount={data.exemptionFlow.spent} />
+              </strong>
+            </div>
+            <div>
+              <span>
+                <strong>Encours total</strong>
+                <small>Toutes périodes · crédit restant aux ninjas</small>
+              </span>
+              <strong>
+                <MoneyDisplay amount={data.exemptionFlow.outstanding} />
+              </strong>
+            </div>
+          </div>
+          <p className="chart-summary">
+            L’application d’un crédit aux taxes suit le taux d’exonération
+            configuré. L’encours peut inclure du crédit acquis lors de cycles
+            précédents.
+          </p>
+        </section>
+        <section className="panel">
+          <SectionHeader
+            title="Attributions de points"
+            description="Principaux bénéficiaires sur le cycle RP"
+            action={<PointDisplay points={data.pointsDistributed} />}
+          />
+          {data.topNinjas.length ? (
+            <div className="mini-list">
+              {data.topNinjas.map((ninja) => (
+                <div key={ninja.code}>
+                  <span>
+                    {ninja.id ? (
+                      <Link
+                        className="ninja-record-link"
+                        href={`/ninjas/${ninja.id}`}
+                      >
+                        <strong>{ninja.name}</strong>
+                      </Link>
+                    ) : (
+                      <strong>{ninja.name}</strong>
+                    )}
+                    <small>{ninja.code}</small>
+                  </span>
+                  <PointDisplay points={ninja.points} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Aucun point attribué"
+              description="Aucune écriture positive de points sur ce cycle."
+            />
+          )}
+          <p className="chart-summary">
+            Écritures positives du cycle, avant contre-écritures. Les soldes à
+            jour figurent dans les dossiers ninja.
+          </p>
+        </section>
+      </div>
+
+      <section className="panel">
+        <SectionHeader
+          title="Ressources traitées"
+          description="Principales ressources des dons et rachats validés, créés durant ce cycle"
+          action={
+            hasPermission(session, "inventory:read") ? (
+              <Link className="button button-ghost" href="/inventory/movements">
+                Journal des stocks →
+              </Link>
+            ) : undefined
+          }
+        />
+        {data.topResources.length ? (
+          <div
+            className="table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label="Ressources traitées durant le cycle"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Ressource</th>
+                  <th scope="col">Opération</th>
+                  <th scope="col" className="num">
+                    Quantité enregistrée
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.topResources.map((resource) => (
+                  <tr key={`${resource.name}-${resource.typeLabel}`}>
+                    <th scope="row">{resource.name}</th>
+                    <td>{resource.typeLabel}</td>
+                    <td className="num">{number.format(resource.quantity)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            title="Aucune ressource traitée"
+            description="Les dons et rachats validés du cycle apparaîtront ici."
+          />
+        )}
+        <p className="chart-summary">
+          Les quantités suivent l’unité de chaque ressource. Elles ne
+          s’additionnent pas entre ressources de natures différentes.
+        </p>
+      </section>
     </div>
-    <ZoneTitle title="Ninjas et dons" detail="Classement du cycle et crédit d’exonération" />
-    <div className="dashboard-grid stats-grid">
-      <section className="panel"><SectionHeader title="Classement des ninjas" description="Points gagnés sur le cycle en cours" />{data.topNinjas.length ? <><div className="mini-list">{data.topNinjas.map((ninja, index) => <div key={ninja.code}><span>{ninja.id ? <Link className="ninja-record-link" href={`/ninjas/${ninja.id}`}><strong>#{index + 1} · {ninja.name}</strong></Link> : <strong>#{index + 1} · {ninja.name}</strong>}<small>{ninja.code}</small></span><PointDisplay points={ninja.points} /></div>)}</div><p className="chart-summary">Seules les écritures positives comptent ; les corrections n’effacent jamais l’histoire du registre.</p></> : <EmptyState title="Aucun point ce cycle" description="Les dons et paiements de la semaine alimenteront ce classement." />}</section>
-      <section className="panel"><SectionHeader title="Économie des dons" description="Points distribués et crédit d’exonération" /><div style={{ padding: "16px 20px 0", textAlign: "center" }}><PointDisplay points={data.pointsDistributed} /></div><div className="mini-list">
-        <div><span><strong>Crédit accordé</strong><small>Cycle en cours</small></span><strong><MoneyDisplay amount={data.exemptionFlow.granted} /></strong></div>
-        <div><span><strong>Crédit appliqué aux taxes</strong><small>Cycle en cours — corrections exclues</small></span><strong><MoneyDisplay amount={data.exemptionFlow.spent} /></strong></div>
-        <div><span><strong>Encours total</strong><small>Toutes périodes — dette du village envers les ninjas</small></span><strong><MoneyDisplay amount={data.exemptionFlow.outstanding} /></strong></div>
-      </div><p className="chart-summary">Donner des ressources crée un crédit conservé sur chaque dossier. Son application aux taxes dépend du taux défini dans l’administration.</p></section>
-    </div>
-    {hasPermission(session, "ranking:read") && <p className="notice"><Link className="text-link" href="/classement">Voir le classement hebdomadaire par nombre d’opérations →</Link></p>}<ZoneTitle title="Agents et ressources" detail="Travail du service et flux du comptoir" />
-    <div className="dashboard-grid stats-grid">
-      <section className="panel"><SectionHeader title="Indicateur relatif du cycle RP" description="Indicateur secondaire historique, distinct du classement hebdomadaire" />{data.agents.length ? <><div className="agent-scores">{data.agents.map((agent) => <article key={agent.name}><span className="agent-avatar">{agent.initials}</span><div><strong>{agent.name}</strong><small>{agent.payments} paiement{agent.payments > 1 ? "s" : ""} · {agent.donations} don{agent.donations > 1 ? "s" : ""} · {agent.buybacks} rachat{agent.buybacks > 1 ? "s" : ""} · <MoneyDisplay amount={agent.collected} compact /></small><i><b style={{ width: `${Math.max(2, agent.score)}%` }} /></i></div><em>{agent.score}</em></article>)}</div><p className="chart-summary">Cet indicateur relatif combine volume (60 %) et montants (40 %). Il dépend de la population et ne se compare pas d’une semaine à l’autre.</p></> : <EmptyState title="Aucune activité" description="Les opérations enregistrées ce cycle alimenteront ces scores." />}</section>
-      <section className="panel"><SectionHeader title="Traçabilité des stocks par agent" description="Mouvements enregistrés ce cycle — un indicateur d’activité, jamais une sanction" />{inventoryActivity.length ? <div className="table-scroll"><table className="agent-trace-table"><thead><tr><th>Agent</th><th className="num">Mouvements</th><th className="num">Entrées</th><th className="num">Sorties</th><th className="num">Comptages</th><th className="num">Ajustements</th><th className="num">Corrections</th><th className="num">Lignes annulées</th></tr></thead><tbody>{inventoryActivity.map((agent) => <tr key={agent.id}><td><Link className="ninja-record-link" href={`/inventory/movements?agent=${agent.id}`}><strong>{agent.name}</strong></Link></td><td className="num">{agent.movements}</td><td className="num positive">{agent.entries}</td><td className="num negative">{agent.exits}</td><td className="num">{agent.counts}</td><td className="num">{agent.adjustments}</td><td className="num">{agent.corrections}</td><td className={`num ${agent.reversed ? "negative" : "muted"}`}>{agent.reversed}</td></tr>)}</tbody></table></div> : <EmptyState title="Aucun mouvement" description="Les entrées, sorties et comptages du cycle apparaîtront ici." />}</section>
-      <section className="panel"><SectionHeader title="Ressources les plus traitées" description="Dons et rachats validés ce cycle" />{data.topResources.length ? <div className="mini-list">{data.topResources.map((resource) => <div key={`${resource.name}-${resource.typeLabel}`}><span><strong>{resource.name}</strong><small>{resource.typeLabel}</small></span><strong>{resource.quantity.toLocaleString("fr-FR")}</strong></div>)}</div> : <EmptyState title="Aucune transaction" description="Les dons et rachats validés apparaîtront ici." />}</section>
-    </div>
-  </div>;
+  );
 }

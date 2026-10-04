@@ -1,66 +1,161 @@
 import { expect, test } from "@playwright/test";
 
-test("dashboard remains readable at desktop size", async ({ page }, testInfo) => {
+test("dashboard remains readable at desktop size", async ({
+  page,
+}, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop-only assertion");
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Pilotage du service" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("Taux de majoration absent")).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await expect(page.getByRole("heading", { name: "Mon bureau" })).toBeVisible({
+    timeout: 30_000,
+  });
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: "test-results/dashboard-desktop.png", fullPage: true });
+  await page.screenshot({
+    path: "test-results/front-v3-dashboard-desktop.png",
+    fullPage: true,
+  });
+  await page.goto("/admin?section=economic");
+  await expect(
+    page.getByRole("heading", { name: "Réglages économiques", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Taux à valider · automatisation inactive", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Taux non validé.", { exact: true }),
+  ).toBeVisible();
 });
 
-test("ninjas use cards and a drawer menu on mobile", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "mobile", "Mobile-only responsive assertion");
+test("ninjas use cards and a drawer menu on mobile", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "mobile",
+    "Mobile-only responsive assertion",
+  );
   await page.goto("/ninjas");
-  await expect(page.getByRole("heading", { name: "Ninjas" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("button", { name: "Ouvrir la navigation" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ninjas" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(
+    page.getByRole("button", { name: "Ouvrir la navigation" }),
+  ).toBeVisible();
   await expect(page.locator(".ninja-card")).toHaveCount(8);
-  await expect(page.locator(".ninja-card .person-cell").first()).toHaveAttribute("href", /\/ninjas\//);
+  await expect(
+    page.locator(".ninja-card .person-cell").first(),
+  ).toHaveAttribute("href", /\/ninjas\//);
   await expect(page.getByText(/8 ninjas affichés/)).toBeVisible();
-  await expect(page.getByLabel("Registre des ninjas en cartes").getByText("Décédé", { exact: true })).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await expect(
+    page
+      .getByLabel("Registre des ninjas en cartes")
+      .getByText("Décédé", { exact: true }),
+  ).toBeVisible();
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: "test-results/ninjas-mobile.png", fullPage: true });
+  await page.screenshot({
+    path: "test-results/front-v3-ninjas-mobile.png",
+    fullPage: true,
+  });
 });
 
 test("overdue tax weeks are never selected automatically", async ({ page }) => {
   await page.goto("/ninjas/demo-58");
-  await expect(page.getByRole("heading", { name: "Araki Hoki" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Araki Hoki" })).toBeVisible({
+    timeout: 30_000,
+  });
   const weeks = page.locator('.week-picker input[type="checkbox"]');
   await expect(weeks).toHaveCount(2);
-  expect(await weeks.evaluateAll((inputs) => inputs.every((input) => !(input as HTMLInputElement).checked))).toBe(true);
+  expect(
+    await weeks.evaluateAll((inputs) =>
+      inputs.every((input) => !(input as HTMLInputElement).checked),
+    ),
+  ).toBe(true);
 });
 
-test("equipment board stays readable without horizontal scrolling", async ({ page }, testInfo) => {
+test("equipment board stays readable without horizontal scrolling", async ({
+  page,
+}, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop-only assertion");
   await page.goto("/equipement");
-  await expect(page.getByRole("heading", { name: "Équipement des Jōnin" })).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("heading", { name: "Équipement des Jōnin" }),
+  ).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".equipment-row")).toHaveCount(6);
-  await expect(page.locator(".equipment-person").first()).toHaveAttribute("href", /\/ninjas\//);
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await expect(page.locator(".equipment-person").first()).toHaveAttribute(
+    "href",
+    /\/ninjas\//,
+  );
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: "test-results/equipment-desktop.png", fullPage: true });
+  await page.screenshot({
+    path: "test-results/front-v3-equipment-desktop.png",
+    fullPage: true,
+  });
 });
 
-test("equipment board becomes a compact card list on mobile", async ({ page }, testInfo) => {
+test("equipment board becomes a compact card list on mobile", async ({
+  page,
+}, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Mobile-only assertion");
   await page.goto("/equipement");
-  await expect(page.getByRole("heading", { name: "Équipement des Jōnin" })).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("heading", { name: "Équipement des Jōnin" }),
+  ).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".equipment-slot").first()).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: "test-results/equipment-mobile.png", fullPage: true });
+  await page.screenshot({
+    path: "test-results/front-v3-equipment-mobile.png",
+    fullPage: true,
+  });
 });
 
-test("reports expose their readable content without horizontal overflow", async ({ page }, testInfo) => {
+test("reports expose their readable content without horizontal overflow", async ({
+  page,
+}, testInfo) => {
   await page.goto("/reports");
-  await expect(page.getByRole("heading", { name: "Historique des rapports" })).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByRole("heading", { name: "Historique des rapports" }),
+  ).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".report-card")).toHaveCount(3);
-  await expect(page.locator(".report-card").first().locator(".report-preview").getByText("Activité régulière au comptoir et clôture de la période sans écart de caisse.", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .locator(".report-card")
+      .first()
+      .locator(".report-preview")
+      .getByText(
+        "Activité régulière au comptoir et clôture de la période sans écart de caisse.",
+        { exact: true },
+      ),
+  ).toBeVisible();
   await page.locator(".report-details summary").first().click();
-  await expect(page.getByText("Stock de cuivre à surveiller.", { exact: true })).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  await expect(
+    page.getByText("Stock de cuivre à surveiller.", { exact: true }),
+  ).toBeVisible();
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
   expect(overflow).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: `test-results/reports-${testInfo.project.name}.png`, fullPage: true });
+  await page.screenshot({
+    path: `test-results/front-v3-reports-${testInfo.project.name}.png`,
+    fullPage: true,
+  });
 });

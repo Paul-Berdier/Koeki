@@ -21,7 +21,8 @@ const transactionSchema = z.object({
 export async function recordResourceTransaction(formData: FormData) {
   const session = await requireWriteAccess("inventory:write");
   const parsed = transactionSchema.safeParse({ type: formData.get("type"), ninjaId: formData.get("ninjaId"), idempotencyKey: formData.get("idempotencyKey") });
-  const back = (message: string): never => redirect(`/resources/transaction?erreur=${encodeURIComponent(message)}`);
+  const returnType = formData.get("type") === "DONATION" ? "DONATION" : "BUYBACK";
+  const back = (message: string): never => redirect(`/resources/transaction?type=${returnType}&erreur=${encodeURIComponent(message)}`);
   if (!parsed.success) back(parsed.error.issues[0]?.message ?? "Saisie invalide");
   const { type, ninjaId, idempotencyKey } = parsed.data!;
   const lines: Array<{ resourceId: string; quantity: number; negotiated: bigint | null }> = [];
