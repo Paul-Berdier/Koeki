@@ -1,129 +1,41 @@
-# Design system — « Registre de Suna »
+# Design system Kōeki — Sable & encre
 
-Référence unique de l'interface Kōeki. Tout est défini en tokens CSS dans
-`apps/web/app/globals.css` (`:root`) ; aucune valeur arbitraire dans les composants.
-Les primitives React vivent dans `packages/ui/src/primitives.tsx`.
+## Objectif
 
-## Direction
+Un service économique lisible, avec une identité de Suna discrète. Les agents travaillent depuis le Bureau ; les responsables consultent le Pilotage. Les réglages, contrôles et historiques secondaires ne concurrencent pas l’action principale.
 
-Trois pistes évaluées : **A. Registre de Suna** (administratif, dense, serif
-institutionnelle), **B. Trésor du Kazekage** (prestigieux, or dominant),
-**C. Bureau des Routes du Sable** (commercial, cartes et comptoirs). Direction
-retenue : **A**, avec les dunes et l'or de B en touches — la plus crédible pour
-un usage quotidien : administration économique d'un village du désert, élégante,
-sobre, chaude, institutionnelle. L'or est réservé à ce qui compte (argent, action
-principale, état actif) ; le bronze structure ; le fond reste une nuit de désert.
-Pas de parchemin plaqué sur chaque panneau — le désert vit dans les fonds, les
-traits, les états vides et les dunes de la page de connexion.
+## Direction artistique
 
-## Couleurs
+- Fond sable très clair `#f6f5f1`, panneaux blancs, texte encre `#232f2d`.
+- Navigation vert encre `#1e3028`, sélection sauge `#dee7cb`, accent sable `#876022`.
+- Police système Segoe UI / Inter / sans-serif ; grands titres sobres, chiffres tabulaires, pas de police externe à télécharger.
+- Espaces de 8/12/16/24/32 px, panneaux arrondis de 12 px, ombres faibles, contrôles usuels de 44 px.
+- Le rouge signale une action ou un blocage concret ; l’absence d’opération n’est pas une faute et ne reçoit pas automatiquement cet état.
 
-| Token | Usage |
-|---|---|
-| `--ink-950…700` | Fonds, du plus profond (page) au plus clair (surfaces) |
-| `--paper-100/50` | Texte principal, titres |
-| `--sand-600/500/300` | Texte secondaire, libellés |
-| `--gold-600/500/400/300` | Primaire : montants, actions, actif |
-| `--bronze-500/300` | Secondaire : structure, libellés de section, points |
-| `--olive-500/300` | Succès (« À jour », validations) |
-| `--amber-500/300` | Avertissement (« À payer », partiel) |
-| `--terracotta-500/300` | Danger (« En retard », dettes) |
-| `--slate-400` | Information neutre désaturée |
-| `--border`, `--border-strong`, `--border-gold`, `--hairline` | Traits |
+## Organisation du CSS
 
-Aucun statut n'est communiqué par la couleur seule : chaque badge porte icône + texte.
+`apps/web/app/globals.css` importe trois feuilles :
 
-## Typographie
+1. `styles/modules.css` : règles propres aux modules économiques conservés et leurs adaptations mobiles.
+2. `styles/foundations.css` : tokens sémantiques, base, boutons, tables, formulaires, panneaux, métriques et états.
+3. `styles/workspace.css` : navigation, bureau, pilotage, fiches agents, mise en page des parcours repensés.
 
-`--font-display` (serif Iowan/Palatino/Georgia) : titres, chiffres clés.
-`--font-sans` (Inter/system) : corps. `--font-mono` : codes (reçus, RES-…).
+Les anciens tokens `ink-*`, `paper-*`, `sand-*` servent de passerelle vers les nouvelles couleurs pour les composants métier existants. Les nouveaux composants utilisent les tokens `canvas`, `surface`, `text`, `text-secondary`, `accent` et les états sémantiques. Aucun mode sombre implicite ne reste sur les champs de date.
 
-Échelle V2 : légendes 12 px, libellés 13 px, texte secondaire 14 px, corps 16 px,
-jusqu’à `--text-display` 54. Niveaux : DISPLAY (connexion),
-PAGE TITLE (`.page-header h1`), ZONE (`.zone-title`), SECTION (`.section-header h2`),
-CARD (`.recipe-card h3`), BODY, SECONDARY, LABEL, CAPTION, NUMERIC.
+## Navigation et hiérarchie
 
-**Numérique** : tout montant/compteur utilise `font-variant-numeric: tabular-nums`
-(`.money`, `.points`, `.metric-value`, `td.num`…). Les Ryō s'affichent via
-`MoneyDisplay` (suffixe or, tooltip du montant exact en mode compact), les points
-via `PointDisplay` (bronze — jamais le même traitement que les Ryō).
+Le menu principal expose les espaces, les onglets horizontaux leurs rubriques. La matrice de permissions alimente `allowedNavigation` ; `workspaceNavigation` organise seulement la présentation. Un lien masqué n’est jamais un contrôle d’accès.
 
-## Espacement, rayons, ombres, mouvement
+Le profil et la déconnexion sont des actions distinctes. La navigation mobile utilise un dialogue Radix avec fermeture par Échap, focus contraint et retour au déclencheur. Le lien d’évitement mène au contenu principal.
 
-Échelle 4 px (`--sp-1…10`). Rayons administratifs discrets (`--radius-xs` 2 →
-`--radius-lg` 11). Ombres chaudes (`--shadow-sm/md/lg`), jamais de halo froid.
-Transitions `--motion-fast` 130 ms / `--motion-med` 220 ms, hover/fade/slide
-uniquement ; `prefers-reduced-motion` respecté.
+## Pilotage
 
-## Layout et navigation
+La synthèse montre quatre indicateurs, une courbe et les interventions actuelles. Le registre des agents permet recherche, tri et pagination. Les dossiers à attribuer ont leur propre vue. Une fiche distingue aperçu, dossiers, opérations et accompagnement pour éviter une page interminable.
 
-AppShell : sidebar fixe 262 px (repliable à 70 px, préférence mémorisée dans
-`localStorage`, tooltips natifs repliée), contenu plafonné à `--content-max`
-1480. Navigation groupée : **Ninjas / Économie / Analyse / Administration**,
-entrée active marquée d'un rail or, compteurs utiles (retards sur Recouvrement).
-Breakpoints : 1120 (grilles à une colonne, sidebar 232), 820 (drawer mobile,
-cartes ninjas, filtres empilés), 560 (densité mobile).
+Les graphiques portent sur les opérations validées, à la date réelle de validation, groupées par jour Europe/Paris. Les jours à zéro restent présents. Les légendes activables, infobulles et tableaux de valeurs rendent les courbes consultables. Les définitions précisent origine, auteur, exclusions, périmètre des dates et charge actuelle. La période est conservée quand on ouvre un agent.
 
-## Composants
+## Accessibilité et mobile
 
-- **PageHeader** : eyebrow, titre, description, `metrics` (bandeau de chiffres
-  clés sous la description) et actions. Trait or sous l'en-tête.
-- **MetricCard** : accent latéral par ton (`good/warn/danger`).
-- **ZoneTitle** : sépare les tranches d'une page dense (trait de sable dégradé).
-- **Tables** (`.table-scroll table`) : en-têtes bronze, lignes 52 px, colonnes
-  numériques `th.num/td.num` alignées à droite, hover chaud, `.table-footer`
-  pour la pagination.
-- **Badges** (`StatusBadge`) : À JOUR olive · EN RETARD terracotta · À
-  PAYER/PARTIEL ambre · EN ATTENTE slate · BROUILLON sable. Un seul style,
-  toutes pages.
-- **Formulaires** (`.form-grid`) : labels visibles (jamais placeholder seul),
-  `legend` bronze pour les sections, `.field-help` pour l'aide, focus or,
-  `.form-row` pour les paires. Lignes d'objets : `.item-row` (+ `.with-price`).
-- **Filtres** (`.filter-bar` + `.search-field`) : recherche débouncée,
-  autocomplétion par `datalist`, URL partageable.
-- **Onglets** (`DetailTabs` + `.tabs-bar`) : contenu rendu serveur puis masqué —
-  les formulaires gardent leur état en changeant d'onglet.
-- **Registre des ninjas** (`NinjaRegister` + `.cards-mode`) : chargé une fois, recherche
-  filtrée dans le navigateur (aucun aller-retour serveur à la frappe, URL synchronisée par
-  `history.replaceState`), bascule table/cartes mémorisée, cartes forcées sous 820 px, une
-  seule vue conservée dans le DOM après hydratation.
-- **Registre d’inventaire** (`.inventory-panel`, `.board-table`) : tableau pleine largeur, en-tête et première colonne collants dans un conteneur défilant (`.inventory-table-wrap`), tri par en-tête (`.sort-button`, `aria-sort`), densité `.density-compact`, boutons de ligne `.row-action.in/.out/.adjust`, cartes empilées sous 820 px (`data-col`). Tiroir de mouvement (`.drawer`, feuille basse sur mobile) avec aperçu avant → après (`.movement-preview`) et boutons segmentés (`.segmented`). Journal (`.journal-table`) et grille de comptage (`.stocktake-table`).
-- **Notices** (`.notice[.error]`) : cachet latéral, messages en français métier.
-- **États** : `EmptyState` (dune stylisée + phrase utile), `LoadingState`,
-  `ErrorState`, `.skeleton` (shimmer sable).
+Conserver les intitulés explicites, les labels de champs, le focus visible, le contenu textuel des états, les en-têtes de tableau et les régions défilantes nommées. La couleur seule ne porte aucune information. Les tableaux larges défilent dans leur propre région ; le document ne déborde pas. Les courbes fournissent les données tabulaires équivalentes.
 
-## Pages hors shell
-
-`.invite-page/.invite-card` : connexion (`/connexion`), invitation, accès refusé —
-sceau Kōeki, filet or supérieur, dunes en pied de carte (`.invite-dunes`).
-
-## Accessibilité
-
-Focus visible or partout, skip-link, `aria-label` sur les graphiques CSS avec
-synthèse textuelle (`.chart-summary`), tableaux avec `th`, statuts icône+texte,
-onglets `role=tablist/tab/tabpanel`, drawer avec backdrop cliquable,
-`prefers-reduced-motion` neutralise les animations.
-
-## V2 — parcours et accessibilité vérifiable
-
-L’accueil est organisé selon les permissions : Mon activité pour les agents,
-pilotage pour les responsables, lecture économique pour les auditeurs, fiche
-personnelle pour les ninjas. `/operations` rassemble les démarches avec verbes
-explicites. Comptes, invitations, paramètres économiques et techniques ont des
-entrées distinctes. Les groupes secondaires de navigation se déplient.
-
-Le menu mobile et les confirmations Comptes utilisent Radix Dialog : focus piégé,
-Échap, restauration du focus, `aria-expanded` et arrière-plan non interactif.
-`aria-current` indique la route active. Les boutons principaux visent 44 px ;
-les cases à cocher ont une surface 24 px. Les tableaux restent dans leur propre
-conteneur horizontal, avec toutes les colonnes accessibles.
-
-Les nouvelles pages partagent `PageHeader`, `MetricCard`, `MoneyDisplay`,
-`StatusBadge`, `EmptyState` et `LoadingState` de `@koeki/ui`. Les formulaires de
-suivi conservent les champs sur erreur sans stocker le brouillon dans le navigateur,
-affichent l’enregistrement et désactivent les soumissions répétées. Les protections
-transactionnelles restent indépendantes de cet état visuel.
-
-Les captures authentifiées 1440/768/390 et les résultats axe/clavier sont listés
-avec leurs limites dans `KOEKI_V2_VALIDATION.md`. Ces vérifications ne constituent
-pas une certification WCAG générale.
+Les préférences de réduction de mouvement sont respectées. Les actions financières conservent leurs contrôles et confirmations existants ; les modales sensibles affichent toujours l’identité et les effets de l’action.

@@ -1,27 +1,641 @@
-import { ActionForm } from "@/components/action-form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader, MoneyDisplay } from "@koeki/ui";
-import { getAgentDetail, getAssignableAgents, taskLabels } from "@/lib/team-service";
+import { ArrowLeft, ArrowRight, ClipboardList, FileText } from "lucide-react";
+import {
+  EmptyState,
+  MetricCard,
+  MoneyDisplay,
+  NinjaAvatar,
+  PageHeader,
+  SectionHeader,
+  StatusBadge,
+} from "@koeki/ui";
+import { ActionForm } from "@/components/action-form";
+import { ActivityChart } from "@/components/team-charts";
+import { TeamPeriod } from "@/components/team-period";
+import {
+  getAgentDetail,
+  getAssignableAgents,
+  taskLabels,
+} from "@/lib/team-service";
+import { getAgentAnalytics, resolveTeamPeriod } from "@/lib/team-analytics";
 import { getReportExpectations } from "@/lib/report-service";
 import { demoMode, hasPermission, requirePermission } from "@/lib/session";
 import { addAgentNote, assignDossier, updateParticipation } from "../actions";
 
-export default async function AgentDetail({ params, searchParams }: { params: Promise<{ userId: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
-  const session = await requirePermission("team:read"), { userId } = await params, query = await searchParams;
-  const [data, expectations, agents] = await Promise.all([getAgentDetail(session, userId), getReportExpectations(session, userId), getAssignableAgents(session)]);
-  if (!data) notFound();
-  const date = (value: Date | null) => value ? value.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }) : "Date inconnue";
-  const activity = [...data.payments.map((payment) => ({ id: payment.id, label: `Paiement ${payment.receiptNumber}`, amount: payment.amount, status: payment.status, at: payment.validatedAt ?? payment.createdAt, known: Boolean(payment.validatedAt), href: `/ninjas/${payment.ninjaId}` })), ...data.transactions.map((transaction) => ({ id: transaction.id, label: `${transaction.type === "DONATION" ? "Don" : "Rachat"} ${transaction.receiptNumber}`, amount: transaction.totalAmount, status: transaction.status, at: transaction.validatedAt ?? transaction.createdAt, known: Boolean(transaction.validatedAt), href: `/ninjas/${transaction.ninjaId}` }))].sort((a, b) => +b.at - +a.at);
-  const backQuery = query.retour && /^[\w%&=+.-]+$/.test(query.retour) ? `?${query.retour}` : "";
-  return <div className="page-wrap"><PageHeader eyebrow="Fiche agent · encadrement" title={data.user.name} description={data.user.revokedAt ? "Compte désactivé ; les historiques métier sont conservés." : "Dossiers, participation et accompagnement de l’agent."} actions={<Link href={`/equipe${backQuery}`} className="button button-ghost">Retour à l’équipe</Link>} />
-    {query.erreur && <p className="notice error" role="alert">{query.erreur}</p>}
-    <section className="panel"><h2>Participation au service</h2>{data.user.participations.length ? data.user.participations.map((part) => <p key={part.id}>Entrée : {date(part.startsAt)} · observée le {date(part.observedAt)} · {part.endsAt ? `sortie le ${date(part.endsAt)}` : "participation ouverte"} · {part.rankingEligible ? "Participe au classement" : "Hors classement"} · source {part.dateSource === "DECLARED" ? "déclaration" : "observation, date initiale inconnue"}</p>) : <p>Aucune période de participation déclarée.</p>}<h3>Absences déclarées</h3>{data.user.absences.length ? data.user.absences.map((absence) => <p key={absence.id}>{date(absence.startsAt)} au {date(absence.endsAt)} · {absence.reason || "Sans motif détaillé"}</p>) : <p>Aucune absence déclarée.</p>}
-      {hasPermission(session, "team:assign") && !demoMode && <details><summary>Déclarer une participation, une sortie ou une absence</summary><ActionForm action={updateParticipation} className="form-grid"><input type="hidden" name="userId" value={userId} /><label>Action<select name="intent"><option value="absence">Déclarer une absence</option><option value="join">Ouvrir une participation</option><option value="leave">Clore la participation aujourd’hui</option></select></label><label>Date d’entrée / début d’absence<input type="date" name="startsAt" /></label><label>Fin d’absence<input type="date" name="endsAt" /></label><label><input type="checkbox" name="rankingEligible" defaultChecked /> Participation explicite au classement lors de l’entrée</label><p>Une date d’entrée laissée vide reste inconnue. La participation au classement commence au plus tôt à son observation.</p><label>Justification<textarea name="reason" minLength={5} maxLength={1000} required /></label><button className="button button-primary">Enregistrer la déclaration</button></ActionForm></details>}
-    </section>
-    <section className="panel" id="dossiers"><h2>Dossiers attribués</h2>{data.dossiers.length ? data.dossiers.map((ninja) => <article key={ninja.id}><h3><Link href={`/ninjas/${ninja.id}`}>{ninja.firstName} {ninja.lastName}</Link></h3><p>{ninja.status === "ACTIVE" ? "Dossier actif" : ninja.status === "DECEASED" ? "Ninja décédé" : "Dossier archivé"}</p>{hasPermission(session, "team:assign") && !demoMode && <details><summary>Réaffecter ce dossier</summary><ActionForm action={assignDossier} className="form-grid"><input type="hidden" name="ninjaId" value={ninja.id} /><label>Nouveau référent<select name="assigneeId" defaultValue={userId}><option value="">À attribuer</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label><label>Justification<input name="reason" minLength={5} maxLength={1000} required /></label><button className="button button-primary">Réaffecter le dossier</button></ActionForm></details>}</article>) : <p>Aucun dossier attribué.</p>}<h3>Historique des affectations</h3>{data.assignments.map((assignment) => <p key={assignment.id}>{date(assignment.createdAt)} · {assignment.ninjaId ? "Dossier" : "Tâche"} · {assignment.assignedAgentId === userId ? "Attribué à cet agent" : "Réattribué ou mis en attente"} · {assignment.reason}</p>)}</section>
-    <section className="panel"><h2>Tâches et rapports</h2><p><Link href={`/taches?agent=${userId}`}>Ouvrir les tâches de cet agent</Link> · <Link href={`/reports?auteur=${userId}`}>Ouvrir ses rapports accessibles</Link></p>{data.tasks.map((task) => <p key={task.id}>{task.title} · {taskLabels[task.status]} · {date(task.dueAt)}</p>)}<h3>Rapports attendus</h3><p>{expectations.configured ? "Cadence hebdomadaire configurée" : "Attente non configurée"}</p>{expectations.periods.map((period) => <p key={period.start}>{period.start} au {period.end} · {period.state} · échéance {date(period.dueAt)}</p>)}</section>
-    <section className="panel" id="activite"><h2>Activité chronologique</h2><p>90 derniers jours, au maximum 50 paiements et 50 dons/rachats. Chaque ligne ouvre le dossier source autorisé. Les dates de création ne sont pas présentées comme des dates de validation.</p>{activity.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Opérations de cet agent"><table><thead><tr><th>Date</th><th>Opération</th><th>État</th><th>Montant</th></tr></thead><tbody>{activity.map((item) => <tr key={item.id}><td>{date(item.at)}{!item.known && <small> · création, validation inconnue</small>}</td><td><Link href={item.href}>{item.label}</Link></td><td>{{ VALIDATED: "Validé", REVERSED: "Inversé", CANCELLED: "Annulé", PENDING: "En attente", PENDING_APPROVAL: "À approuver", DRAFT: "Brouillon" }[item.status] ?? item.status}</td><td><MoneyDisplay amount={item.amount} /></td></tr>)}</tbody></table></div> : <p>Aucune opération enregistrée sur cette période.</p>}<h3>Évolution hebdomadaire publiée</h3>{data.weekly.length ? data.weekly.map((week) => <p key={week.weekKey}><Link href={`/classement?semaine=${week.weekKey}`}>{week.weekKey}</Link> · {week.operations === null ? "Hors population de cette semaine" : `${week.operations} opérations · rang ${week.rank}`} · version {week.version} · {week.coverageComplete ? "Couverture complète" : "Historique incomplet"}{week.correctionNeeded && " · correction à examiner"}</p>) : <p>Aucune semaine clôturée disponible. Aucune progression ne peut encore être calculée.</p>}<Link href="/classement">Ouvrir le classement collectif</Link></section>
-    {hasPermission(session, "team:notes") && <section className="panel"><h2>Notes réservées à l’encadrement</h2><p>Ces notes ne sont jamais incluses dans les notifications ni dans le classement collectif.</p>{data.notes.map((note) => <article key={note.id}><p>{date(note.createdAt)} · auteur {note.authorName}</p><p style={{ whiteSpace: "pre-wrap" }}>{note.body}</p></article>)}{!demoMode && <ActionForm action={addAgentNote} className="form-grid"><input type="hidden" name="userId" value={userId} /><label>Nouvelle note<textarea name="body" minLength={5} maxLength={4000} required /></label><button className="button button-primary">Ajouter une note interne</button></ActionForm>}</section>}
-  </div>;
+export default async function AgentDetail({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ userId: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const session = await requirePermission("team:read"),
+    { userId } = await params,
+    query = await searchParams;
+  const view = ["dossiers", "activite", "accompagnement"].includes(
+    query.vue ?? "",
+  )
+    ? query.vue!
+    : "apercu";
+  let period, periodError;
+  try {
+    period = resolveTeamPeriod({ from: query.du, to: query.au });
+  } catch {
+    period = resolveTeamPeriod();
+    periodError = "Période invalide : les 30 derniers jours sont affichés.";
+  }
+  const [data, analytics, expectations, agents] = await Promise.all([
+    getAgentDetail(session, userId, period),
+    getAgentAnalytics(session, userId, period),
+    getReportExpectations(session, userId),
+    view === "dossiers" && hasPermission(session, "team:assign")
+      ? getAssignableAgents(session)
+      : [],
+  ]);
+  if (!data || !analytics || !analytics.agents[0]) notFound();
+  const agent = analytics.agents[0];
+  const date = (value: Date | string | null) =>
+    value
+      ? new Date(value).toLocaleDateString("fr-FR", {
+          timeZone: "Europe/Paris",
+        })
+      : "Date inconnue";
+  const activity = [
+    ...data.payments.map((payment) => ({
+      id: payment.id,
+      label: `Paiement ${payment.receiptNumber}`,
+      amount: payment.amount,
+      status: payment.status,
+      origin: payment.operationOrigin,
+      at: payment.validatedAt ?? payment.createdAt,
+      known: Boolean(payment.validatedAt),
+      href: `/ninjas/${payment.ninjaId}`,
+    })),
+    ...data.transactions.map((transaction) => ({
+      id: transaction.id,
+      label: `${transaction.type === "DONATION" ? "Don" : "Rachat"} ${transaction.receiptNumber}`,
+      amount: transaction.totalAmount,
+      status: transaction.status,
+      origin: transaction.operationOrigin,
+      at: transaction.validatedAt ?? transaction.createdAt,
+      known: Boolean(transaction.validatedAt),
+      href: `/ninjas/${transaction.ninjaId}`,
+    })),
+  ].sort((a, b) => +b.at - +a.at);
+  const periodQuery = new URLSearchParams({
+    du: analytics.from,
+    au: analytics.to,
+  });
+  const url = `/equipe/${userId}`;
+  const statusLabels: Record<string, string> = {
+    VALIDATED: "Validé",
+    REVERSED: "Inversé",
+    CANCELLED: "Annulé",
+    PENDING: "En attente",
+    PENDING_APPROVAL: "À approuver",
+    DRAFT: "Brouillon",
+  };
+  return (
+    <div className="page-wrap agent-detail-page">
+      <Link href={`/equipe?${periodQuery}&vue=agents`} className="back-link">
+        <ArrowLeft size={16} aria-hidden="true" />
+        Retour à l’équipe
+      </Link>
+      <PageHeader
+        eyebrow="Fiche agent · encadrement"
+        title={data.user.name}
+        description={agent.participation}
+        actions={
+          <Link
+            href={`/taches?agent=${userId}`}
+            className="button button-ghost"
+          >
+            <ClipboardList size={16} aria-hidden="true" />
+            Voir ses tâches
+          </Link>
+        }
+      />
+      <div className="agent-identity-strip">
+        <NinjaAvatar name={agent.name} />
+        <StatusBadge
+          status={
+            agent.state === "DISABLED" || agent.state === "LEFT"
+              ? "draft"
+              : agent.absentNow
+                ? "warning"
+                : "paid"
+          }
+        >
+          {agent.stateLabel}
+        </StatusBadge>
+        <span>
+          {agent.entryDateKnown
+            ? `Entrée déclarée le ${date(agent.participationStartsAt)}`
+            : "Date d’entrée non renseignée"}
+        </span>
+        <span>
+          Dernière opération dans la période :{" "}
+          {agent.lastActivity ? date(agent.lastActivity) : "aucune"}
+        </span>
+      </div>
+      {periodError && (
+        <p className="notice error" role="alert">
+          {periodError}
+        </p>
+      )}
+      {query.erreur && (
+        <p className="notice error" role="alert">
+          {query.erreur}
+        </p>
+      )}
+      <TeamPeriod
+        from={analytics.from}
+        to={analytics.to}
+        action={url}
+        view={view}
+      />
+      <nav className="view-tabs" aria-label="Rubriques de la fiche agent">
+        {[
+          ["apercu", "Aperçu"],
+          ["dossiers", "Dossiers"],
+          ["activite", "Opérations"],
+          ["accompagnement", "Accompagnement"],
+        ].map(([key, label]) => (
+          <Link
+            key={key}
+            href={`${url}?${periodQuery}&vue=${key}`}
+            aria-current={view === key ? "page" : undefined}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      {view === "apercu" && (
+        <>
+          <section className="metric-grid" aria-label="Bilan de l’agent">
+            <MetricCard
+              label="Opérations validées"
+              value={agent.total}
+              detail={`${agent.payments} paiements · ${agent.donations} dons · ${agent.buybacks} rachats`}
+            />
+            <MetricCard
+              label="Encaissements fiscaux"
+              value={<MoneyDisplay amount={BigInt(agent.collected)} compact />}
+              detail="Paiements validés sur la période"
+              tone="good"
+            />
+            <Link
+              className="metric-link"
+              href={`${url}?${periodQuery}&vue=dossiers`}
+            >
+              <MetricCard
+                label="Dossiers actifs"
+                value={agent.dossiers}
+                detail="Affectations actuelles"
+              />
+            </Link>
+            <Link className="metric-link" href={`/taches?agent=${userId}`}>
+              <MetricCard
+                label="Tâches ouvertes"
+                value={agent.tasksOpen}
+                detail={`${agent.tasksOverdue} en retard · ${agent.tasksBlocked} bloquées`}
+                tone={
+                  agent.tasksOverdue || agent.tasksBlocked ? "warn" : "neutral"
+                }
+              />
+            </Link>
+          </section>
+          <section className="panel">
+            <SectionHeader
+              title="Activité de l’agent"
+              description="Opérations métier validées pendant la période sélectionnée"
+              action={
+                <Link
+                  href={`${url}?${periodQuery}&vue=activite`}
+                  className="text-link"
+                >
+                  Voir les opérations sources{" "}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+              }
+            />
+            <ActivityChart days={analytics.daily} />
+          </section>
+          <div className="duo-grid agent-followup">
+            <section className="panel">
+              <SectionHeader
+                title="Travail en cours"
+                action={
+                  <Link className="text-link" href={`/taches?agent=${userId}`}>
+                    Toutes les tâches
+                  </Link>
+                }
+              />
+              <ul className="compact-list">
+                {data.tasks
+                  .filter((task) =>
+                    ["TODO", "IN_PROGRESS", "BLOCKED"].includes(task.status),
+                  )
+                  .slice(0, 5)
+                  .map((task) => (
+                    <li key={task.id}>
+                      <Link href={`/taches?id=${task.id}`}>
+                        <strong>{task.title}</strong>
+                        <span>
+                          {taskLabels[task.status]} ·{" "}
+                          {task.dueAt ? date(task.dueAt) : "Sans échéance"}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+              </ul>
+              {agent.tasksOpen === 0 && (
+                <p className="empty-inline">Aucune tâche ouverte.</p>
+              )}
+              <p className="muted">
+                {agent.tasksDone} tâches terminées sur la période.
+              </p>
+            </section>
+            <section className="panel">
+              <SectionHeader
+                title="Rapports & suivi"
+                action={
+                  <Link
+                    className="text-link"
+                    href={`/reports?auteur=${userId}`}
+                  >
+                    Ses rapports
+                  </Link>
+                }
+              />
+              <div className="report-kpis">
+                <span>
+                  <strong>{agent.reportsSubmitted}</strong>soumis, en attente
+                </span>
+                <span>
+                  <strong>{agent.reportsApproved}</strong>approuvés
+                </span>
+              </div>
+              <p>Soumissions et décisions datées dans la période.</p>
+              <details>
+                <summary>Rapports attendus</summary>
+                <p>
+                  {expectations.configured
+                    ? "Cadence hebdomadaire configurée"
+                    : "Attente non configurée"}
+                </p>
+                {expectations.periods.map((item) => (
+                  <p key={item.start}>
+                    {item.reportId ? (
+                      <Link href={`/reports/${item.reportId}`}>
+                        {item.start} au {item.end}
+                      </Link>
+                    ) : (
+                      `${item.start} au ${item.end}`
+                    )}{" "}
+                    · {item.state} · échéance {date(item.dueAt)}
+                  </p>
+                ))}
+              </details>
+            </section>
+          </div>
+          <details className="methodology">
+            <summary>Historique des classements publiés</summary>
+            {data.weekly.length ? (
+              <ul className="compact-list">
+                {data.weekly.map((week) => (
+                  <li key={week.weekKey}>
+                    <Link href={`/classement?semaine=${week.weekKey}`}>
+                      <strong>{week.weekKey}</strong>
+                      <span>
+                        {week.operations === null
+                          ? "Hors population"
+                          : `${week.operations} opérations · rang ${week.rank}`}{" "}
+                        · version {week.version} ·{" "}
+                        {week.coverageComplete
+                          ? "Couverture complète"
+                          : "Historique incomplet"}
+                        {week.correctionNeeded && " · correction à examiner"}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>Aucune semaine clôturée disponible.</p>
+            )}
+          </details>
+        </>
+      )}
+      {view === "dossiers" && (
+        <section className="panel" id="dossiers">
+          <SectionHeader
+            title="Dossiers attribués"
+            description="Jusqu’aux 100 premiers dossiers, actifs et historiques"
+          />
+          {data.dossiers.length ? (
+            <div className="assignment-list">
+              {data.dossiers.map((ninja) => (
+                <details className="assignment-item" key={ninja.id}>
+                  <summary>
+                    <NinjaAvatar
+                      name={`${ninja.firstName} ${ninja.lastName}`}
+                    />
+                    <strong>
+                      {ninja.firstName} {ninja.lastName}
+                    </strong>
+                    <span>
+                      {ninja.status === "ACTIVE"
+                        ? "Actif"
+                        : ninja.status === "DECEASED"
+                          ? "Décédé"
+                          : "Archivé"}
+                    </span>
+                  </summary>
+                  <div className="assignment-body">
+                    <Link href={`/ninjas/${ninja.id}`} className="text-link">
+                      Ouvrir le dossier ninja{" "}
+                      <ArrowRight size={16} aria-hidden="true" />
+                    </Link>
+                    {hasPermission(session, "team:assign") && !demoMode && (
+                      <ActionForm action={assignDossier} className="form-grid">
+                        <input
+                          type="hidden"
+                          name="returnTo"
+                          value={`${url}?${periodQuery}&vue=dossiers`}
+                        />
+                        <input type="hidden" name="ninjaId" value={ninja.id} />
+                        <label>
+                          Nouveau référent
+                          <select name="assigneeId" defaultValue={userId}>
+                            <option value="">À attribuer</option>
+                            {agents.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Justification
+                          <input
+                            name="reason"
+                            minLength={5}
+                            maxLength={1000}
+                            required
+                          />
+                        </label>
+                        <button className="button button-primary">
+                          Réaffecter le dossier
+                        </button>
+                      </ActionForm>
+                    )}
+                  </div>
+                </details>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Aucun dossier attribué"
+              description="Les dossiers confiés à cet agent apparaîtront ici."
+            />
+          )}
+          <details>
+            <summary>Historique des affectations</summary>
+            {data.assignments.map((assignment) => (
+              <p key={assignment.id}>
+                {date(assignment.createdAt)} ·{" "}
+                {assignment.ninjaId ? "Dossier" : "Tâche"} ·{" "}
+                {assignment.assignedAgentId === userId
+                  ? "Attribué à cet agent"
+                  : "Réattribué ou mis en attente"}{" "}
+                · {assignment.reason}
+              </p>
+            ))}
+          </details>
+        </section>
+      )}
+      {view === "activite" && (
+        <section className="panel" id="activite">
+          <SectionHeader
+            title="Journal des opérations"
+            description="50 paiements et 50 dons/rachats maximum, sur la période sélectionnée"
+          />
+          <p>
+            Ce journal conserve tous les états et origines. La courbe ne retient
+            que les opérations métier validées et éligibles ; les créations sans
+            date de validation sont indiquées.
+          </p>
+          {activity.length ? (
+            <div
+              className="table-scroll"
+              tabIndex={0}
+              role="region"
+              aria-label="Opérations de cet agent"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Opération</th>
+                    <th>État / origine</th>
+                    <th className="num">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activity.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        {date(item.at)}
+                        {!item.known && (
+                          <small className="cell-detail">
+                            Création · validation inconnue
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        <Link href={item.href} className="text-link">
+                          {item.label}
+                        </Link>
+                      </td>
+                      <td>
+                        <StatusBadge
+                          status={
+                            item.status === "VALIDATED" ? "paid" : "draft"
+                          }
+                        >
+                          {statusLabels[item.status] ?? item.status}
+                        </StatusBadge>
+                        <small className="cell-detail">
+                          {item.origin === "BUSINESS"
+                            ? "Métier"
+                            : item.origin === "SELF_DECLARED"
+                              ? "Déclaration ninja"
+                              : "Historique ou technique"}
+                        </small>
+                      </td>
+                      <td className="num">
+                        <MoneyDisplay amount={item.amount} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState
+              title="Aucune opération sur cette période"
+              description="Modifiez la période pour consulter un autre intervalle."
+            />
+          )}
+        </section>
+      )}
+      {view === "accompagnement" && (
+        <div className="duo-grid">
+          <section className="panel">
+            <SectionHeader
+              title="Participation & absences"
+              description="Historique déclaré du service"
+            />
+            <div className="panel-body">
+              <h3>Participation</h3>
+              {data.user.participations.length ? (
+                data.user.participations.map((part) => (
+                  <p key={part.id}>
+                    {date(part.startsAt)} →{" "}
+                    {part.endsAt ? date(part.endsAt) : "en cours"}
+                    <small className="cell-detail">
+                      {part.rankingEligible
+                        ? "Participe au classement"
+                        : "Hors classement"}{" "}
+                      ·{" "}
+                      {part.dateSource === "DECLARED"
+                        ? "Déclaration"
+                        : `Observation le ${date(part.observedAt)}, entrée inconnue`}
+                    </small>
+                  </p>
+                ))
+              ) : (
+                <p>Aucune période déclarée.</p>
+              )}
+              <h3>Absences déclarées</h3>
+              {data.user.absences.length ? (
+                data.user.absences.map((absence) => (
+                  <p key={absence.id}>
+                    {date(absence.startsAt)} → {date(absence.endsAt)}
+                    <small className="cell-detail">
+                      {absence.reason || "Sans motif détaillé"}
+                    </small>
+                  </p>
+                ))
+              ) : (
+                <p>Aucune absence déclarée.</p>
+              )}
+            </div>
+            {hasPermission(session, "team:assign") && !demoMode && (
+              <details>
+                <summary>Déclarer une participation ou une absence</summary>
+                <ActionForm action={updateParticipation} className="form-grid">
+                  <input
+                    type="hidden"
+                    name="returnTo"
+                    value={`${url}?${periodQuery}&vue=accompagnement`}
+                  />
+                  <input type="hidden" name="userId" value={userId} />
+                  <label>
+                    Action
+                    <select name="intent">
+                      <option value="absence">Déclarer une absence</option>
+                      <option value="join">Ouvrir une participation</option>
+                      <option value="leave">
+                        Clore la participation aujourd’hui
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    Date d’entrée / début d’absence
+                    <input type="date" name="startsAt" />
+                  </label>
+                  <label>
+                    Fin d’absence
+                    <input type="date" name="endsAt" />
+                  </label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      name="rankingEligible"
+                      defaultChecked
+                    />
+                    Participation au classement lors de l’entrée
+                  </label>
+                  <p className="field-help">
+                    Une date d’entrée laissée vide reste inconnue. L’éligibilité
+                    commence au plus tôt à son observation.
+                  </p>
+                  <label>
+                    Justification
+                    <textarea
+                      name="reason"
+                      minLength={5}
+                      maxLength={1000}
+                      required
+                    />
+                  </label>
+                  <button className="button button-primary">
+                    Enregistrer la déclaration
+                  </button>
+                </ActionForm>
+              </details>
+            )}
+          </section>
+          {hasPermission(session, "team:notes") && (
+            <section className="panel internal-notes">
+              <SectionHeader
+                title="Notes d’encadrement"
+                description="Confidentielles · accessibles uniquement aux responsables"
+              />
+              {data.notes.length ? (
+                <ul className="note-list">
+                  {data.notes.map((note) => (
+                    <li key={note.id}>
+                      <span>
+                        <FileText size={15} aria-hidden="true" />
+                        {note.authorName} · {date(note.createdAt)}
+                      </span>
+                      <p>{note.body}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="empty-inline">Aucune note enregistrée.</p>
+              )}
+              {!demoMode && (
+                <ActionForm action={addAgentNote} className="form-grid">
+                  <input
+                    type="hidden"
+                    name="returnTo"
+                    value={`${url}?${periodQuery}&vue=accompagnement`}
+                  />
+                  <input type="hidden" name="userId" value={userId} />
+                  <label>
+                    Nouvelle note
+                    <textarea
+                      name="body"
+                      minLength={5}
+                      maxLength={4000}
+                      required
+                    />
+                  </label>
+                  <button className="button button-primary">
+                    Ajouter une note interne
+                  </button>
+                </ActionForm>
+              )}
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

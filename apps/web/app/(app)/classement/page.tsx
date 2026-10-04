@@ -1,35 +1,516 @@
 import Link from "next/link";
-import { EmptyState, MoneyDisplay, PageHeader, SectionHeader } from "@koeki/ui";
+import {
+  EmptyState,
+  MetricCard,
+  MoneyDisplay,
+  PageHeader,
+  SectionHeader,
+  StatusBadge,
+} from "@koeki/ui";
 import { getWeeklyRanking } from "@/lib/ranking-service";
+import { formatReportDate } from "@/lib/report-period";
 import { closeRanking } from "./actions";
 import { RankingSubmitButton } from "./submit-button";
 
-const date = (value: Date | string) => new Date(value).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" });
-const kindLabel = { PAYMENT: "Paiement fiscal", DONATION: "Don", BUYBACK: "Rachat" };
+const date = (value: Date | string) =>
+  new Date(value).toLocaleString("fr-FR", {
+    timeZone: "Europe/Paris",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+const day = (value: Date) =>
+  value.toLocaleDateString("fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "numeric",
+    month: "long",
+  });
+const number = new Intl.NumberFormat("fr-FR");
+const kindLabel = {
+  PAYMENT: "Paiement fiscal",
+  DONATION: "Don",
+  BUYBACK: "Rachat",
+};
+const comparison = (value: number | null) =>
+  value === null
+    ? "Non comparable"
+    : value === 0
+      ? "Position stable"
+      : `${value > 0 ? "+" : ""}${value} place${Math.abs(value) === 1 ? "" : "s"}`;
 
-export default async function RankingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function RankingPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const params = await searchParams;
-  const data = await getWeeklyRanking(typeof params.semaine === "string" ? params.semaine : undefined, typeof params.version === "string" ? Number(params.version) : undefined);
-  const query = typeof params.q === "string" ? params.q.trim().toLocaleLowerCase("fr") : "";
-  const rows = data.manager && query ? data.rows.filter((row) => row.name.toLocaleLowerCase("fr").includes(query)) : data.rows;
-  return <div className="page-wrap">
-    <PageHeader eyebrow="Activité du service" title="Classement hebdomadaire" description="Une opération métier validée = une contribution. Aucun versement ni point de fidélité n’est attribué par ce classement." />
-    <nav className="page-actions" aria-label="Choisir une semaine"><Link className="button button-ghost" href={`/classement?semaine=${data.previousKey}`}>← Semaine précédente</Link><Link className="button button-ghost" href="/classement">Semaine courante</Link>{data.week.key !== data.currentKey && <Link className="button button-ghost" href={`/classement?semaine=${data.nextKey}`}>Semaine suivante →</Link>}</nav>
-    {typeof params.erreur === "string" && <p className="notice notice-error" role="alert">{params.erreur}</p>}
-    {params.succes && <p className="notice" role="status">Le classement a été vérifié. Sa version publiée est indiquée ci-dessous.</p>}
-    <section className="panel"><SectionHeader title={`${data.week.key} · ${data.closed ? `Version ${data.version}` : "Provisoire"}`} description={`Du ${date(data.week.startsAt)} inclus au ${date(data.week.endsAt)} exclu · Europe/Paris`} />
-      <div className="panel-body"><p>{data.coverageComplete ? "Période couverte par des preuves de première validation." : "Historique incomplet : ce résultat ne constitue pas un classement officiel complet. Les dates et participations inconnues ne sont pas inventées."}</p>
-        <p>Calculé le {date(data.calculatedAt)}. Formule V1 : paiements + dons + rachats validés et distincts. Montants informatifs, sans pondération.</p>
-        {data.excludedUnknown > 0 && <p>{data.excludedUnknown} opération(s) avec une preuve historique insuffisante, exclue(s).</p>}
-        {data.correctionNeeded && <p role="status" className="notice">Une opération ou une participation a changé depuis la clôture. La version publiée est conservée ; une correction motivée est nécessaire.</p>}
-        {data.own ? <p><strong>Ma position : {data.own.rank}{data.own.rank === 1 ? "er" : "e"}</strong> · {data.own.operations ? `${data.own.operations} contribution(s)` : "Aucune opération"} · {data.own.comparison === null ? "Pas de comparaison" : `Évolution : ${data.own.comparison > 0 ? "+" : ""}${data.own.comparison} place(s)`}</p> : <p>Aucune participation au classement n’est enregistrée pour votre compte sur cette période.</p>}
+  const data = await getWeeklyRanking(
+    typeof params.semaine === "string" ? params.semaine : undefined,
+    typeof params.version === "string" ? Number(params.version) : undefined,
+  );
+  const query =
+    data.manager && typeof params.q === "string"
+      ? params.q.trim().toLocaleLowerCase("fr")
+      : "";
+  const matchingRows = query
+    ? data.rows.filter((row) =>
+        row.name.toLocaleLowerCase("fr").includes(query),
+      )
+    : data.rows;
+  const pageSize = 20;
+  const pageCount = Math.max(1, Math.ceil(matchingRows.length / pageSize));
+  const requestedPage =
+    typeof params.page === "string" ? Number(params.page) : 1;
+  const page = Math.min(
+    pageCount,
+    Number.isSafeInteger(requestedPage) && requestedPage > 0
+      ? requestedPage
+      : 1,
+  );
+  const offset = (page - 1) * pageSize;
+  const rows = matchingRows.slice(offset, offset + pageSize);
+  const rankingQuery = new URLSearchParams({
+    semaine: data.week.key,
+    ...(data.version !== null ? { version: String(data.version) } : {}),
+    ...(query ? { q: query } : {}),
+  });
+  const pageHref = (targetPage: number) => {
+    const target = new URLSearchParams(rankingQuery);
+    target.set("page", String(targetPage));
+    return `/classement?${target}`;
+  };
+  const agentPeriod = new URLSearchParams({
+    du: formatReportDate(data.week.startsAt),
+    au: formatReportDate(new Date(data.week.endsAt.getTime() - 1)),
+  });
+  const totals = data.rows.reduce(
+    (sum, row) => ({
+      operations: sum.operations + row.operations,
+      payments: sum.payments + row.payments,
+      donations: sum.donations + row.donations,
+      buybacks: sum.buybacks + row.buybacks,
+    }),
+    { operations: 0, payments: 0, donations: 0, buybacks: 0 },
+  );
+
+  return (
+    <div className="page-wrap ranking-page">
+      <PageHeader
+        eyebrow="Pilotage"
+        title="Classement"
+        description="Les contributions validées de chaque agent, semaine après semaine. Un paiement, un don ou un rachat compte pour une opération."
+      />
+
+      <div className="period-toolbar">
+        <div>
+          <strong>{data.week.key}</strong>
+          <p>
+            Du {day(data.week.startsAt)} au{" "}
+            {day(new Date(data.week.endsAt.getTime() - 1))} · heure de Paris
+          </p>
+        </div>
+        <nav className="page-actions" aria-label="Choisir une semaine">
+          <Link
+            className="button button-ghost"
+            href={`/classement?semaine=${data.previousKey}`}
+            aria-label="Semaine précédente"
+          >
+            ← Précédente
+          </Link>
+          {data.week.key !== data.currentKey && (
+            <>
+              <Link className="button button-ghost" href="/classement">
+                Cette semaine
+              </Link>
+              <Link
+                className="button button-ghost"
+                href={`/classement?semaine=${data.nextKey}`}
+                aria-label="Semaine suivante"
+              >
+                Suivante →
+              </Link>
+            </>
+          )}
+        </nav>
       </div>
-      {data.manager && <form className="filter-bar" method="get"><input type="hidden" name="semaine" value={data.week.key} /><label>Identité RP <input name="q" defaultValue={query} placeholder="Rechercher un agent" /></label><button className="button button-secondary" type="submit">Filtrer</button></form>}
-      {rows.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Classement des agents"><table><thead><tr><th>Rang</th><th>Identité RP</th><th className="num">Opérations</th><th className="num">Paiements</th><th className="num">Dons</th><th className="num">Rachats</th><th className="num">Encaissé</th><th>Comparaison</th></tr></thead><tbody>{rows.map((row) => <tr key={row.userId}><td>{row.rank}</td><th scope="row">{data.manager ? <Link href={`/equipe/${row.userId}`}>{row.name}</Link> : row.name}</th><td className="num">{row.operations || "Aucune opération"}</td><td className="num">{row.payments}</td><td className="num">{row.donations}</td><td className="num">{row.buybacks}</td><td className="num"><MoneyDisplay amount={BigInt(row.collected)} /></td><td>{row.comparison === null ? "Pas de comparaison" : row.comparison === 0 ? "Position stable" : `${row.comparison > 0 ? "+" : ""}${row.comparison} place(s)`}</td></tr>)}</tbody></table></div> : <EmptyState title={data.demo ? "Démonstration : aucune donnée de classement" : "Aucun agent sur cette période"} description="Les responsables renseignent les périodes de participation depuis l’espace Équipe. Une absence d’activité ne signifie pas une faute." />}
-    </section>
-    <section className="panel"><SectionHeader title={data.manager ? "Contributions vérifiables de l’équipe" : "Mes contributions vérifiables"} description="Les opérations de collègues ne sont détaillées qu’aux responsables." />{data.sources.length ? <div className="table-scroll" tabIndex={0} role="region" aria-label="Contributions vérifiables"><table><thead><tr><th>Type</th><th>Référence métier</th><th>Première validation</th><th className="num">Montant</th></tr></thead><tbody>{data.sources.map((source) => <tr key={`${source.kind}:${source.id}`}><td>{kindLabel[source.kind]}</td><td><Link href={`/classement/contributions/${source.kind}/${source.id}`}>{source.id}</Link></td><td>{date(source.validatedAt)}</td><td className="num"><MoneyDisplay amount={BigInt(source.amount)} /></td></tr>)}</tbody></table></div> : <p className="panel-body">Aucune contribution éligible.</p>}</section>
-    <section className="panel"><SectionHeader title="Comprendre le classement" /><div className="panel-body"><p>Les brouillons, attentes, imports, écritures techniques et opérations annulées ou inversées sont exclus. Un don et son entrée en stock ne comptent qu’une fois. L’auteur d’origine reçoit la contribution, jamais le simple approbateur.</p><p>Les ex æquo partagent leur rang (1, 1, 3). La comparaison exige deux semaines clôturées et complètes, la même population et une participation couvrant les deux semaines. Les comptages et stocks restent des indicateurs séparés dans les statistiques.</p><p>Les comptes techniques ne participent pas automatiquement. Une sortie du service ne supprime pas les contributions des semaines précédentes.</p></div></section>
-    {data.versions.length > 0 && <section className="panel"><SectionHeader title="Versions conservées" /><div className="panel-body">{data.versions.map((v) => <p key={v.version}><Link href={`/classement?semaine=${data.week.key}&version=${v.version}`}>Version {v.version}</Link> · {date(v.createdAt)}{"reason" in v && v.reason ? ` · ${v.reason}` : ""}</p>)}</div></section>}
-    {data.manager && data.week.endsAt <= new Date() && <section className="panel"><SectionHeader title={data.closed ? "Publier une correction" : "Clôturer la semaine"} description="Les versions précédentes sont conservées. Une semaine ouverte ne peut jamais être clôturée." /><form action={closeRanking} className="panel-body"><input type="hidden" name="week" value={data.week.key} /><input type="hidden" name="version" value={data.latestVersion ?? ""} />{data.closed && <label>Motif de correction<textarea name="reason" required minLength={10} maxLength={2000} /></label>}<RankingSubmitButton correction={data.closed} disabled={data.demo || (data.closed && !data.correctionNeeded)} /></form></section>}
-  </div>;
+      {typeof params.erreur === "string" && (
+        <p className="notice notice-error" role="alert">
+          {params.erreur}
+        </p>
+      )}
+      {params.succes && (
+        <p className="notice" role="status">
+          La semaine a été vérifiée. La version publiée figure ci-dessous.
+        </p>
+      )}
+
+      <div className="ranking-context">
+        <StatusBadge status={data.closed ? "paid" : "pending"}>
+          {data.closed
+            ? `Publié · version ${data.version}`
+            : "Semaine provisoire"}
+        </StatusBadge>
+        {(data.correctionNeeded || !data.coverageComplete) && (
+          <StatusBadge status="warning">
+            {data.correctionNeeded
+              ? "Correction à publier"
+              : "Historique incomplet"}
+          </StatusBadge>
+        )}
+        {!data.coverageComplete && (
+          <p>
+            Les preuves historiques ne couvrent pas toute la période. Ce
+            résultat ne constitue pas un classement officiel complet.
+          </p>
+        )}
+        {data.correctionNeeded && (
+          <p role="status">
+            Des sources ont changé depuis la clôture. La version publiée reste
+            visible jusqu’à sa correction motivée.
+          </p>
+        )}
+        {data.closed && data.version !== data.latestVersion && (
+          <p>
+            Vous consultez une ancienne version.{" "}
+            <Link href={`/classement?semaine=${data.week.key}`}>
+              Voir la dernière publication →
+            </Link>
+          </p>
+        )}
+      </div>
+
+      <section
+        className="metric-grid ranking-summary"
+        aria-label="Contributions de la semaine"
+      >
+        <MetricCard
+          label="Agents participants"
+          value={number.format(data.rows.length)}
+          detail="Y compris sans opération"
+        />
+        <MetricCard
+          label="Opérations validées"
+          value={number.format(totals.operations)}
+          detail="Références métier distinctes"
+        />
+        <MetricCard
+          label="Paiements fiscaux"
+          value={number.format(totals.payments)}
+          detail="Une contribution par paiement"
+        />
+        <MetricCard
+          label="Dons et rachats"
+          value={number.format(totals.donations + totals.buybacks)}
+          detail={`${number.format(totals.donations)} don(s) · ${number.format(totals.buybacks)} rachat(s)`}
+        />
+      </section>
+
+      <section className="panel">
+        <SectionHeader
+          title="Contributions par agent"
+          description="Ordre établi par nombre d’opérations · les ex æquo partagent leur rang"
+        />
+        {data.own && (
+          <div className="panel-body ranking-own">
+            <strong>
+              Ma position : {data.own.rank}
+              {data.own.rank === 1 ? "er" : "e"}
+            </strong>
+            <span>
+              {number.format(data.own.operations)} opération(s) ·{" "}
+              {comparison(data.own.comparison)}
+            </span>
+          </div>
+        )}
+        {data.manager && (
+          <form className="filter-bar" method="get">
+            <input type="hidden" name="semaine" value={data.week.key} />
+            {data.version !== null && (
+              <input type="hidden" name="version" value={data.version} />
+            )}
+            <label>
+              Rechercher un agent
+              <input name="q" defaultValue={query} placeholder="Identité RP" />
+            </label>
+            <button className="button button-secondary" type="submit">
+              Rechercher
+            </button>
+            {query && (
+              <Link
+                className="button button-ghost"
+                href={`/classement?semaine=${data.week.key}${data.version !== null ? `&version=${data.version}` : ""}`}
+              >
+                Effacer
+              </Link>
+            )}
+          </form>
+        )}
+        {rows.length ? (
+          <div
+            className="table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label="Classement des agents"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Rang</th>
+                  <th scope="col">Agent</th>
+                  <th scope="col" className="num">
+                    Opérations
+                  </th>
+                  <th scope="col" className="num">
+                    Paiements
+                  </th>
+                  <th scope="col" className="num">
+                    Dons
+                  </th>
+                  <th scope="col" className="num">
+                    Rachats
+                  </th>
+                  <th scope="col">Évolution</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr
+                    key={row.userId}
+                    className={
+                      row.userId === data.own?.userId
+                        ? "ranking-current-user"
+                        : undefined
+                    }
+                  >
+                    <td>{row.rank}</td>
+                    <th scope="row">
+                      {data.manager ? (
+                        <Link href={`/equipe/${row.userId}?${agentPeriod}`}>
+                          {row.name}
+                        </Link>
+                      ) : (
+                        row.name
+                      )}
+                      {row.userId === data.own?.userId && (
+                        <small className="ranking-you"> Vous</small>
+                      )}
+                    </th>
+                    <td className="num">
+                      <strong>{number.format(row.operations)}</strong>
+                    </td>
+                    <td className="num">{number.format(row.payments)}</td>
+                    <td className="num">{number.format(row.donations)}</td>
+                    <td className="num">{number.format(row.buybacks)}</td>
+                    <td>{comparison(row.comparison)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyState
+            title={
+              query
+                ? "Aucun agent ne correspond"
+                : data.demo
+                  ? "Aucune donnée de classement en démonstration"
+                  : "Aucun participant sur cette semaine"
+            }
+            description={
+              query
+                ? "Essayez une autre identité ou effacez la recherche."
+                : "Les responsables renseignent les périodes de participation dans l’espace Équipe."
+            }
+          />
+        )}
+        {matchingRows.length > 0 && (
+          <footer className="table-footer">
+            <span>
+              {number.format(offset + 1)}–{number.format(offset + rows.length)}{" "}
+              sur {number.format(matchingRows.length)} agents · Page {page} sur{" "}
+              {pageCount}
+            </span>
+            <nav className="page-actions" aria-label="Pagination du classement">
+              {page > 1 && (
+                <Link
+                  className="button button-ghost"
+                  href={pageHref(page - 1)}
+                  aria-label="Page précédente du classement"
+                >
+                  ← Précédent
+                </Link>
+              )}
+              {page < pageCount && (
+                <Link
+                  className="button button-ghost"
+                  href={pageHref(page + 1)}
+                  aria-label="Page suivante du classement"
+                >
+                  Suivant →
+                </Link>
+              )}
+            </nav>
+          </footer>
+        )}
+        <p className="chart-summary">
+          Les montants ne pondèrent pas le rang. Zéro opération décrit
+          l’activité enregistrée sur la période et ne constitue pas une
+          sanction.
+        </p>
+      </section>
+
+      <section
+        className="panel ranking-details"
+        aria-label="Sources et règles du classement"
+      >
+        <details>
+          <summary>
+            {data.manager
+              ? "Vérifier les contributions de l’équipe"
+              : "Vérifier mes contributions"}{" "}
+            · {number.format(data.sources.length)}
+          </summary>
+          {data.sources.length ? (
+            <div
+              className="table-scroll"
+              tabIndex={0}
+              role="region"
+              aria-label="Contributions vérifiables"
+            >
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Type</th>
+                    <th scope="col">Référence</th>
+                    <th scope="col">Première validation</th>
+                    <th scope="col" className="num">
+                      Montant
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.sources.map((source) => (
+                    <tr key={`${source.kind}:${source.id}`}>
+                      <td>{kindLabel[source.kind]}</td>
+                      <td>
+                        <Link
+                          href={`/classement/contributions/${source.kind}/${source.id}`}
+                        >
+                          {source.id}
+                        </Link>
+                      </td>
+                      <td>{date(source.validatedAt)}</td>
+                      <td className="num">
+                        <MoneyDisplay amount={BigInt(source.amount)} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p>Aucune contribution éligible sur cette période.</p>
+          )}
+        </details>
+        <details>
+          <summary>Règles de calcul et qualité des données</summary>
+          <p>
+            Les paiements, dons et rachats validés comptent une fois par
+            référence. Un don et son entrée en stock ne font pas deux
+            contributions. La contribution revient à l’auteur d’origine, jamais
+            au seul approbateur.
+          </p>
+          <p>
+            Les brouillons, attentes, imports, écritures techniques et
+            opérations annulées ou inversées sont exclus. Aucun point ninja ni
+            récompense n’est attribué par ce classement.
+          </p>
+          <p>
+            L’évolution exige deux semaines clôturées et couvertes, une
+            population identique et une participation complète sans absence
+            déclarée. Sinon, la mention « Non comparable » remplace la
+            variation.
+          </p>
+          <p>
+            Du {date(data.week.startsAt)} inclus au {date(data.week.endsAt)}{" "}
+            exclu. Calcul du {date(data.calculatedAt)} · formule V1.
+          </p>
+          {data.excludedUnknown > 0 && (
+            <p>
+              {number.format(data.excludedUnknown)} opération(s) exclue(s) faute
+              de preuve historique suffisante.
+            </p>
+          )}
+          {!data.own && (
+            <p>
+              Aucune participation n’est enregistrée pour votre compte sur cette
+              période.
+            </p>
+          )}
+        </details>
+        {data.versions.length > 0 && (
+          <details>
+            <summary>
+              Historique des publications · {data.versions.length}
+            </summary>
+            {data.versions.map((v) => (
+              <p key={v.version}>
+                <Link
+                  href={`/classement?semaine=${data.week.key}&version=${v.version}`}
+                >
+                  Version {v.version}
+                </Link>{" "}
+                · {date(v.createdAt)}
+                {"reason" in v && v.reason ? ` · ${v.reason}` : ""}
+              </p>
+            ))}
+          </details>
+        )}
+      </section>
+
+      {data.manager && data.week.endsAt <= new Date() && (
+        <section className="panel">
+          <SectionHeader
+            title={
+              data.closed
+                ? "Publication et correction"
+                : "Clôturer cette semaine"
+            }
+            description={
+              data.closed
+                ? "Une correction motivée crée une nouvelle version et conserve les précédentes."
+                : "La clôture conserve les contributions, la population et les rangs de la semaine."
+            }
+          />
+          <form action={closeRanking} className="panel-body">
+            <input type="hidden" name="week" value={data.week.key} />
+            <input
+              type="hidden"
+              name="version"
+              value={data.latestVersion ?? ""}
+            />
+            {data.closed && data.correctionNeeded && (
+              <label>
+                Motif de correction
+                <textarea
+                  name="reason"
+                  required
+                  minLength={10}
+                  maxLength={2000}
+                  placeholder="Décrivez les sources corrigées et la raison de cette publication."
+                />
+              </label>
+            )}
+            {data.closed && !data.correctionNeeded ? (
+              <p>La dernière publication est à jour.</p>
+            ) : (
+              <RankingSubmitButton
+                correction={data.closed}
+                disabled={data.demo}
+              />
+            )}
+          </form>
+        </section>
+      )}
+    </div>
+  );
 }
