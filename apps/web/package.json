@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --configLoader runner --exclude e2e/**",
+    "test": "vitest run --configLoader runner",
     "test:e2e": "playwright test"
   },
   "dependencies": {

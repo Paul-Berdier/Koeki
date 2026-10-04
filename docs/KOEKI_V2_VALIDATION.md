@@ -146,7 +146,8 @@ sont préparées mais n’ont pas été exécutées sur un runner distant dans c
   [mesures PostgreSQL](KOEKI_V2_PERFORMANCE.md) détaillent portée et limites.
 - L’audit de dépendances conserve un avis élevé `deepmerge-ts` via Prisma/config,
   analysé dans [SECURITY.md](SECURITY.md). Il n’est pas présenté comme un audit propre.
-- Le pipeline GitHub, Railway et la restauration distante n’ont pas été exécutés.
+- À la fin de la validation locale initiale, le pipeline GitHub n’avait pas encore
+  été exécuté (voir le suivi ci-dessous). Railway et la restauration distante n’ont pas été exécutés.
   La [procédure de retour arrière](ROLLBACK.md) préserve les écritures et interdit
   une restauration ancienne sans rapprochement.
 
@@ -192,3 +193,13 @@ node node_modules/@playwright/test/cli.js test --workers 2
 Le serveur de démonstration a été arrêté après cette vérification. Le build a
 été relancé après la correction du lien de tâche sur l’accueil : il ouvre
 directement la tâche filtrée même si elle n’est pas dans la première page.
+
+## Suivi de publication GitHub
+
+La [PR #2](https://github.com/Paul-Berdier/Koeki/pull/2) publie ce lot à la demande
+explicite de l’utilisateur. Le premier passage Ubuntu a réussi installation,
+génération, migrations, lint, typecheck et les 94 tests domaine. Il a ensuite
+révélé l’expansion du glob non cité `--exclude e2e/**` par le shell Unix avant
+Vitest. L’argument redondant a été retiré : `vitest.config.ts` conserve l’exclusion
+et n’inclut que les fichiers `*.test.ts`. Le statut final du workflow est attaché
+à la PR ; aucune fusion ne doit contourner un contrôle en échec.
