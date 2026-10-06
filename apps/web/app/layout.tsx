@@ -8,10 +8,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, nocache: true }
 };
 
-export const viewport: Viewport = { colorScheme: "dark", themeColor: "#17140f" };
+export const viewport: Viewport = { colorScheme: "dark", themeColor: "#101714" };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // A per-request CSP nonce can only be attached while rendering dynamically.
   await connection();
-  return <html lang="fr"><body>{children}</body></html>;
+  return <html lang="fr" data-theme="dark"><body>{children}</body></html>;
 }
