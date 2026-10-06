@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { prisma, type Prisma } from "@koeki/database";
 import { z } from "zod";
-import { activePrice, lockResources, writeAudit } from "./finance";
+import { activePrice, writeAudit } from "./finance";
 import { assertTeamActor } from "./team-service";
 import { demoMode, hasPermission, type SessionInfo } from "./session";
 
@@ -31,10 +31,16 @@ export async function saveResourceValues(session: SessionInfo, input: unknown) {
   if (demoMode || !hasPermission(session, "settings:manage")) throw new Error("FORBIDDEN");
   const data = resourceValuesSchema.parse(input);
   return prisma.$transaction(async (tx) => {
-    // Serialize role/revocation changes, then lock the resource as the existing price editor does.
     await assertTeamActor(tx, session.userId, "settings:manage");
-    const locked = await lockResources(tx, [data.resourceId]);
-    if (!locked.has(data.resourceId)) throw new Error("VALIDATION:Ressource introuvable");
+    // This form edits exactly one resource. Bind that ID directly and acquire
+    // the same PostgreSQL row lock used by inventory/price mutations. Avoid
+    // carrying a composed SQL/Set result across the Next.js module boundary.
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "Resource"
+      WHERE "id" = ${data.resourceId}
+      FOR UPDATE
+    `;
+    if (locked.length !== 1) throw new Error("VALIDATION:Ressource introuvable");
     const resource = await tx.resource.findUniqueOrThrow({ where: { id: data.resourceId } });
     const previousPrice = await activePrice(tx, data.resourceId);
     if (resourceValuesRevision(resource, previousPrice) !== data.revision) {
