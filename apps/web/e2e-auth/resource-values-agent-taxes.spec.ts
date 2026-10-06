@@ -12,11 +12,17 @@ let resourceId: string, resourceName: string, ninjaId: string, ninjaName: string
 const day = "2026-06-10";
 let browserErrors: string[] = [];
 
-async function identity(label: string, role: RoleCode): Promise<Identity> {
+async function identity(label: string, role: RoleCode, gradeId: string): Promise<Identity> {
   const name = `${label} ${run}`;
   const user = await prisma.user.create({ data: { name } });
   const record = await prisma.role.upsert({ where: { code: role }, create: { code: role, label: role }, update: {} });
   await prisma.userRole.create({ data: { userId: user.id, roleId: record.id } });
+  // The real app requires a linked RP identity. Complete that prerequisite in
+  // fixtures instead of weakening the production onboarding/access guard.
+  await prisma.ninjaProfile.create({ data: {
+    code: `BROWSER-${randomUUID()}`, firstName: label, lastName: run,
+    currentGradeId: gradeId, userId: user.id,
+  } });
   const token = randomUUID() + randomUUID();
   await prisma.session.create({ data: { userId: user.id, sessionToken: token, sessionVersion: 1, expires: new Date(Date.now() + 3600_000) } });
   return { id: user.id, name, token };
@@ -38,9 +44,9 @@ test.beforeEach(({ page }) => {
 test.afterEach(() => { expect(browserErrors, "No browser runtime or hydration errors").toEqual([]); });
 test.beforeAll(async () => {
   const refs = await ensureReferential();
-  manager = await identity("Gestionnaire barème", "KOEKI_MANAGER");
-  first = await identity("Collecteur Alpha", "ECONOMIC_AGENT");
-  second = await identity("Collecteur Beta", "ECONOMIC_AGENT");
+  manager = await identity("Gestionnaire barème", "KOEKI_MANAGER", refs.grade.id);
+  first = await identity("Collecteur Alpha", "ECONOMIC_AGENT", refs.grade.id);
+  second = await identity("Collecteur Beta", "ECONOMIC_AGENT", refs.grade.id);
   resourceName = `Cuivre barème ${run}`;
   const resource = await createTestResource({ categoryId: refs.category.id, unitId: refs.unite.id, name: resourceName });
   resourceId = resource.id;

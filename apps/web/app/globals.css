@@ -1,5 +1,6 @@
-/* Shared layouts first; the dark theme is the final semantic colour layer. */
+/* Shared layouts first; semantic colours and responsive workflow refinements follow. */
 @import "./styles/modules.css";
 @import "./styles/foundations.css";
 @import "./styles/workspace.css";
 @import "./styles/dark.css";
+@import "./styles/shared-workflows.css";
