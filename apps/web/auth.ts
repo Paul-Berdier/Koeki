@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import Discord from "next-auth/providers/discord";
+import { createDiscordProvider } from "@/lib/discord-provider";
 import { cookies } from "next/headers";
 import { hashInvitationToken, isInvitationUsable } from "@koeki/auth";
 import { prisma } from "@koeki/database";
@@ -28,7 +28,7 @@ async function consumeInvitation(userId: string, token: string) {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: accessControlledAdapter,
   session: { strategy: "database", maxAge: 60 * 60 * 12, updateAge: 60 * 15 },
-  providers: [Discord({ clientId: process.env.DISCORD_CLIENT_ID ?? "", clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "", authorization: { params: { scope: "identify guilds" } } })],
+  providers: [createDiscordProvider()],
   pages: { signIn: "/connexion", error: "/access-denied" },
   cookies: { sessionToken: { name: process.env.NODE_ENV === "production" ? "__Secure-koeki.session-token" : "koeki.session-token", options: { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV === "production" } } },
   callbacks: {

@@ -2,6 +2,7 @@
   "name": "@koeki/database",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "generate": "prisma generate",
@@ -12,6 +13,7 @@
     "invite": "tsx scripts/create-invitation.ts",
     "invite:bootstrap": "tsx scripts/bootstrap-invite.ts",
     "import:legacy": "tsx scripts/import-legacy.ts",
+    "test": "tsx scripts/runtime-smoke.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json"
   },

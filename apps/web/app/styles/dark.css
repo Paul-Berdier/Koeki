@@ -1,0 +1,382 @@
+/* Kōeki — Encre, forêt et or. Applied on the server, without a light flash.
+   Keep layout rules in foundations/workspace and all theme colours here. */
+:root {
+  color-scheme: dark;
+  --canvas: #101714;
+  --surface: #18221d;
+  --surface-muted: #202d25;
+  --surface-hover: #2b3b30;
+  --surface-raised: #26362c;
+  --text: #e8eee6;
+  --text-secondary: #b0bcae;
+  --accent: #e1bc77;
+  --accent-soft: #352f21;
+  --success: #a8d7b0;
+  --success-soft: #213a2a;
+  --warning: #ecc781;
+  --warning-soft: #392f21;
+  --danger: #f0a299;
+  --danger-soft: #392620;
+  --action: #bfd0aa;
+  --action-hover: #d4e2c3;
+  --action-text: #17241b;
+  --border: #344638;
+  --border-strong: #68806c;
+  --border-gold: #9e814d;
+  --hairline: #2c3b31;
+  --shadow-sm: 0 2px 8px #0000001f;
+  --shadow-md: 0 10px 32px #00000030;
+  --shadow-lg: 0 24px 80px #00000066;
+  --chart-payments: #a8d7b0;
+  --chart-donations: #e1bc77;
+  --chart-buybacks: #a4bde8;
+  /* Bridge the original stock, equipment, fiscal and report modules. */
+  --ink-950: var(--canvas);
+  --ink-900: var(--canvas);
+  --ink-850: var(--surface);
+  --ink-800: var(--surface-muted);
+  --ink-750: var(--surface-raised);
+  --ink-700: var(--surface-hover);
+  --paper-100: var(--text);
+  --paper-50: #f5f7f2;
+  --sand-600: var(--text-secondary);
+  --sand-500: var(--text-secondary);
+  --sand-400: #bfcbba;
+  --sand-300: #cad5c5;
+  --sand-200: #dbe3d6;
+  --gold-600: #bd995a;
+  --gold-500: #d0ab68;
+  --gold-400: var(--accent);
+  --gold-300: #eaca91;
+  --gold-200: #f2ddaf;
+  --bronze-500: #b89965;
+  --bronze-300: #d0bd98;
+  --olive-500: #8cba91;
+  --olive-300: var(--success);
+  --amber-500: #d6b06b;
+  --amber-300: var(--warning);
+  --terracotta-500: #d08377;
+  --terracotta-300: var(--danger);
+  --slate-400: #a4bde8;
+}
+
+html {
+  scrollbar-color: var(--border-strong) var(--canvas);
+}
+::selection {
+  background: var(--accent);
+  color: var(--action-text);
+}
+:focus-visible,
+.form-grid input:focus-visible,
+.form-grid select:focus-visible,
+.form-grid textarea:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.skip-link {
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+/* Actions, native controls and data tables. */
+.button-primary {
+  color: var(--action-text);
+  background: var(--action);
+  border-color: var(--action);
+  box-shadow: var(--shadow-sm);
+}
+.button-primary:hover {
+  color: var(--action-text);
+  background: var(--action-hover);
+  border-color: var(--action-hover);
+}
+.button-danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--terracotta-500);
+}
+.button-danger:hover {
+  background: #4a2e27;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+select,
+textarea,
+.drawer-form input,
+.drawer-form select,
+.drawer-form textarea {
+  color: var(--text);
+  background: var(--canvas);
+  border-color: var(--border-strong);
+  caret-color: var(--accent);
+}
+select option,
+select optgroup {
+  color: var(--text);
+  background: var(--surface);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+input[type="checkbox"],
+input[type="radio"],
+.form-grid input[type="checkbox"] {
+  accent-color: var(--action);
+}
+th {
+  background: var(--surface-muted);
+}
+tbody th {
+  background: transparent;
+}
+tbody tr:hover,
+tbody tr:focus-within {
+  background: var(--surface-hover);
+}
+.table-footer a,
+.table-footer button,
+.view-switch button,
+.account-more-actions > button {
+  color: var(--text);
+  background: var(--surface);
+}
+.table-footer a:hover,
+.table-footer button:hover,
+.view-switch button:hover,
+.account-more-actions > button:hover {
+  background: var(--surface-hover);
+}
+.grade-badge,
+.status-pending,
+.status-draft {
+  color: var(--text-secondary);
+  background: var(--surface-muted);
+  border-color: var(--border);
+}
+.status-paid {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: #4e7555;
+}
+.status-overdue {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: #925e52;
+}
+.status-due,
+.status-warning {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: var(--border-gold);
+}
+.count,
+.avatar-fallback,
+.assignment-icon {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.avatar {
+  border-color: var(--border-strong);
+}
+.demo-banner {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: var(--border-gold);
+}
+
+/* Navigation and workspace chrome, including the mobile drawer. */
+.sidebar {
+  background: #131e17;
+  border-right: 1px solid var(--border);
+}
+.sidebar nav a.active {
+  background: #2d4030;
+  color: #e3eed8;
+  border-color: #688060;
+}
+.sidebar nav .active .nav-role-dot {
+  background: var(--action);
+}
+.workspace-header,
+.workspace-tabs,
+.mobile-menu {
+  color: var(--text);
+  background: var(--surface);
+}
+.workspace-tabs a[aria-current],
+.view-tabs a[aria-current] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.view-tabs a > span {
+  color: var(--success);
+  background: var(--success-soft);
+}
+.period-presets,
+.segmented-control {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+}
+.period-presets a {
+  color: var(--text-secondary);
+}
+.period-presets a.selected,
+.segmented-control button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+/* Agent management, reports, rankings and everyday operations. */
+.chart-legend button[aria-pressed="false"] {
+  color: var(--text-secondary);
+}
+.chart-legend button[aria-pressed="true"] {
+  border-bottom-color: var(--border-strong);
+}
+.chart-message {
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.attention-count {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+.attention-count.danger {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.load-track {
+  background: var(--surface-raised);
+}
+.load-track span {
+  background: var(--success);
+}
+.bureau-intro {
+  background: linear-gradient(125deg, #273b2b, var(--surface));
+  border-color: var(--border-strong);
+}
+.bureau-intro .eyebrow,
+.bureau-emblem {
+  color: var(--accent);
+}
+.bureau-intro p {
+  color: var(--text-secondary);
+}
+.bureau-emblem > span {
+  border-color: var(--border-gold);
+}
+.quick-actions > a,
+.workflow-card,
+.report-card,
+.settings-tabs a {
+  background: var(--surface);
+}
+.quick-actions > a:hover,
+.workflow-card:hover {
+  background: var(--surface-muted);
+  border-color: var(--border-gold);
+}
+.quick-action-icon {
+  color: var(--success);
+  border-color: var(--border-strong);
+}
+.quick-actions > a > svg {
+  color: var(--text-secondary);
+}
+.task-indicator {
+  border-color: var(--border-strong);
+}
+.task-indicator.blocked {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.workflow-card strong {
+  color: var(--success);
+}
+.operation-primary,
+.report-actions {
+  background: var(--surface-muted);
+}
+.settings-tabs a[aria-current],
+.ranking-you {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: var(--border-strong);
+}
+.ranking-own {
+  color: var(--text);
+  background: var(--success-soft);
+  border-color: var(--border-strong);
+}
+.ranking-current-user {
+  background: var(--success-soft);
+}
+.economy-progress,
+.economy-progress::-webkit-progress-bar {
+  background: var(--surface-raised);
+  accent-color: var(--success);
+}
+.economy-progress::-webkit-progress-value {
+  background: var(--success);
+}
+.economy-progress::-moz-progress-bar {
+  background: var(--success);
+}
+
+/* Dialogs and signed-out pages use the same palette as the private workspace. */
+.dialog-overlay,
+.account-dialog-overlay,
+.navigation-overlay {
+  background: #050a07c9;
+}
+.dialog-content,
+.account-dialog {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+.invite-page {
+  background: radial-gradient(ellipse at 50% 15%, #283d2c 0%, var(--canvas) 65%);
+}
+.invite-card {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+.auth-error-card {
+  width: min(560px, 100%);
+  padding: clamp(24px, 5vw, 40px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+.auth-error-card h1 {
+  margin: 14px 0 18px;
+  font-size: clamp(26px, 4vw, 34px);
+  line-height: 1.2;
+}
+.auth-error-card > p {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+}
+.auth-error-card .button {
+  margin-top: 10px;
+}
+.state-error > svg {
+  color: var(--danger);
+}
+@media (max-width: 480px) {
+  .auth-error-card .button {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
