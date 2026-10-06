@@ -13,6 +13,7 @@
     "invite": "tsx scripts/create-invitation.ts",
     "invite:bootstrap": "tsx scripts/bootstrap-invite.ts",
     "import:legacy": "tsx scripts/import-legacy.ts",
+    "test": "tsx scripts/runtime-smoke.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json"
   },
