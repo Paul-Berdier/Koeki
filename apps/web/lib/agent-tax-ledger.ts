@@ -5,10 +5,12 @@ import { resolveTeamPeriod } from "./team-analytics";
 import { agentName } from "./team-service";
 
 export type TaxBucket = "collected" | "history" | "excluded";
+const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
 /** Cash receipts only. Credits/exemptions are not money received by an agent. */
 export function taxBucket(payment: { status: string; operationOrigin: string; method: string; validatedAt: Date | null }): TaxBucket {
   if (payment.status !== "VALIDATED" || !payment.validatedAt) return "excluded";
-  if (!["RYO", "CASH"].includes(payment.method)) return "excluded";
+  if (!["ryo", "cash", "especes"].includes(normalize(payment.method))) return "excluded";
   if (["BUSINESS", "SELF_DECLARED"].includes(payment.operationOrigin)) return "collected";
   if (["UNKNOWN", "IMPORT", "LEGACY"].includes(payment.operationOrigin)) return "history";
   return "excluded";
@@ -35,7 +37,13 @@ export interface TaxReceiptRow {
   status: string;
   bucket: TaxBucket;
 }
-export interface TaxLedgerFilters { from?: string | undefined; to?: string | undefined; agentId?: string | undefined; page?: string | undefined; q?: string | undefined }
+export interface TaxLedgerFilters {
+  from?: string | undefined;
+  to?: string | undefined;
+  agentId?: string | undefined;
+  page?: string | undefined;
+  q?: string | undefined;
+}
 
 /** Read-only journal. Neither dossier ownership nor an approver can change attribution. */
 export async function getAgentTaxLedger(session: SessionInfo, filters: TaxLedgerFilters = {}) {
@@ -52,27 +60,44 @@ export async function getAgentTaxLedger(session: SessionInfo, filters: TaxLedger
   };
   if (demoMode) return blank;
   return prisma.$transaction(async (tx) => {
-    const actor = await tx.user.findUnique({ where: { id: session.userId }, select: { revokedAt: true, roles: { select: { role: { select: { code: true } } } } } });
+    const actor = await tx.user.findUnique({
+      where: { id: session.userId },
+      select: { revokedAt: true, roles: { select: { role: { select: { code: true } } } } },
+    });
     if (!actor || actor.revokedAt || !canAny(actor.roles.map(({ role }) => role.code), "team:read")) throw new Error("FORBIDDEN");
     const range = { gte: period.startsAt, lt: period.endsAtExclusive };
+    const activityDate: Prisma.TaxPaymentWhereInput = {
+      OR: [{ validatedAt: range }, { validatedAt: null, createdAt: range }],
+    };
     const groups = await tx.taxPayment.groupBy({
       by: ["recordedById", "operationOrigin", "method"],
       where: { status: "VALIDATED", validatedAt: range },
       _sum: { amount: true }, _count: true,
     });
-    const authorIds = [...new Set(groups.map((group) => group.recordedById))];
+    // Former agents with only cancelled or undated receipts must remain discoverable.
+    const authors = await tx.taxPayment.findMany({
+      where: activityDate, select: { recordedById: true }, distinct: ["recordedById"],
+    });
     const users = await tx.user.findMany({
-      where: { AND: [
-        { OR: [{ email: null }, { email: { not: "systeme@koeki.local" } }] },
-        { OR: [{ roles: { some: { role: { code: { in: ["ECONOMIC_AGENT", "KOEKI_MANAGER"] } } } }, { participations: { some: {} } }, { id: { in: authorIds } }] },
-      ] },
+      where: {
+        AND: [
+          { OR: [{ email: null }, { email: { not: "systeme@koeki.local" } }] },
+          {
+            OR: [
+              { roles: { some: { role: { code: { in: ["ECONOMIC_AGENT", "KOEKI_MANAGER"] } } } } },
+              { participations: { some: {} } },
+              { id: { in: authors.map((author) => author.recordedById) } },
+            ],
+          },
+        ],
+      },
       select: { id: true, name: true, revokedAt: true, ninjaProfile: { select: { firstName: true, lastName: true } } },
       orderBy: [{ name: "asc" }, { id: "asc" }],
     });
-    const rows = new Map(users.map((user) => [user.id, {
-      id: user.id, name: agentName(user), disabled: Boolean(user.revokedAt), collected: 0n,
-      payments: 0, historical: 0n, historicalPayments: 0,
-    } satisfies TaxAgentRow]));
+    const rows = new Map<string, TaxAgentRow>(users.map((user) => [user.id, {
+      id: user.id, name: agentName(user), disabled: Boolean(user.revokedAt),
+      collected: 0n, payments: 0, historical: 0n, historicalPayments: 0,
+    }]));
     let unattributed = 0n;
     for (const group of groups) {
       const bucket = taxBucket({ ...group, status: "VALIDATED", validatedAt: period.startsAt });
@@ -84,27 +109,25 @@ export async function getAgentTaxLedger(session: SessionInfo, filters: TaxLedger
       else { row.historical += amount; row.historicalPayments += group._count; }
     }
     const allRows = [...rows.values()].sort((a, b) => a.collected === b.collected ? a.name.localeCompare(b.name, "fr") : a.collected > b.collected ? -1 : 1);
-    const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const agents = q ? allRows.filter((row) => normalize(row.name).includes(normalize(q))) : allRows;
     const selected = filters.agentId ? rows.get(filters.agentId) ?? null : null;
     const unknownDates = await tx.taxPayment.count({ where: {
       status: "VALIDATED", validatedAt: null, createdAt: range,
-      ...(selected ? { recordedById: selected.id } : { recordedById: { in: users.map((user) => user.id) } }),
+      recordedById: selected ? selected.id : { in: users.map((user) => user.id) },
     } });
-    const where: Prisma.TaxPaymentWhereInput = {
-      recordedById: selected?.id ?? "",
-      OR: [{ validatedAt: range }, { validatedAt: null, createdAt: range }],
-    };
+    const where: Prisma.TaxPaymentWhereInput = { recordedById: selected?.id ?? "", ...activityDate };
     const receiptCount = selected ? await tx.taxPayment.count({ where }) : 0;
     const pageCount = Math.max(1, Math.ceil(receiptCount / 25));
     const requested = Number(filters.page ?? 1);
     const page = Math.min(pageCount, Number.isSafeInteger(requested) && requested > 0 ? requested : 1);
-    const payments = selected ? await tx.taxPayment.findMany({ where,
+    const payments = selected ? await tx.taxPayment.findMany({
+      where,
       orderBy: [{ validatedAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * 25, take: 25,
       select: { id: true, receiptNumber: true, ninjaId: true, amount: true, method: true, operationOrigin: true, status: true, validatedAt: true, createdAt: true, ninja: { select: { firstName: true, lastName: true } } },
     }) : [];
-    return { ...blank, agents, selected, selectedMissing: Boolean(filters.agentId && !selected),
+    return {
+      ...blank, agents, selected, selectedMissing: Boolean(filters.agentId && !selected),
       choices: allRows.map(({ id, name }) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "fr")),
       totalCollected: allRows.reduce((sum, row) => sum + row.collected, 0n),
       totalPayments: allRows.reduce((sum, row) => sum + row.payments, 0),
