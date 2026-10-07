@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -21,6 +21,8 @@ const series = [
 
 export function ActivityChart({ days }: { days: AnalyticsDay[] }) {
   const id = useId();
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
   const [visible, setVisible] = useState<string[]>(
     series.map((item) => item.key),
   );
@@ -139,7 +141,9 @@ export function ActivityChart({ days }: { days: AnalyticsDay[] }) {
         {days.length} jours · jours calendaires, Europe/Paris. Cliquez sur une
         légende pour afficher ou masquer sa courbe.
       </p>
-      <details className="chart-data">
+      {/* Native details can toggle before React hydrates. Keep the initial DOM
+          stable until the effect runs; do not suppress hydration diagnostics. */}
+      <details className="chart-data" inert={!hydrated}>
         <summary>Voir les données de la courbe</summary>
         <div
           className="table-scroll"
