@@ -31,7 +31,7 @@ describe.skipIf(!dbReady)("account access and sessions (PostgreSQL)", () => {
   });
   afterAll(async () => { await prisma.$disconnect(); });
 
-  it("revokes atomically, preserves financial authors, moves work and does not resurrect old cookies", async () => {
+  it("revokes atomically, preserves authors and ninja history, transfers only tasks and never resurrects cookies", async () => {
     const ninja = await prisma.ninjaProfile.create({ data: { firstName: "Fixture", lastName: "Comptes", code: `ACCOUNT-${randomUUID()}`, currentGradeId: gradeId, userId: agent.id, referenceAgentId: agent.id } });
     const task = await prisma.followUpTask.create({ data: { title: "Suivi à transférer", description: "Test", assigneeId: agent.id, createdById: manager.id, ninjaId: ninja.id } });
     const participation = await prisma.agentParticipation.create({ data: { userId: agent.id, startsAt: new Date("2026-01-01T00:00:00Z") } });
@@ -46,29 +46,31 @@ describe.skipIf(!dbReady)("account access and sessions (PostgreSQL)", () => {
     expect(await accessControlledAdapter.getSessionAndUser!(token)).toBeNull();
     expect(await prisma.session.count({ where: { userId: agent.id } })).toBe(0);
     expect(await prisma.auditLog.count({ where: { entityId: agent.id, action: "USER_ACCESS_REVOKED" } })).toBe(1);
-    expect(await prisma.ninjaProfile.findUnique({ where: { id: ninja.id } })).toMatchObject({ userId: agent.id, referenceAgentId: replacement.id });
+    // Legacy reference metadata is preserved, but is neither active ownership nor transferred work.
+    expect(await prisma.ninjaProfile.findUnique({ where: { id: ninja.id } })).toMatchObject({ userId: agent.id, referenceAgentId: agent.id });
     expect(await prisma.followUpTask.findUnique({ where: { id: task.id } })).toMatchObject({ assigneeId: replacement.id });
-    expect(await prisma.assignmentHistory.count({ where: { previousAgentId: agent.id, assignedAgentId: replacement.id } })).toBe(2);
+    expect(await prisma.assignmentHistory.count({ where: { previousAgentId: agent.id, assignedAgentId: replacement.id } })).toBe(1);
+    expect(await prisma.assignmentHistory.count({ where: { ninjaId: ninja.id } })).toBe(0);
     expect((await prisma.agentParticipation.findUniqueOrThrow({ where: { id: participation.id } })).endsAt).not.toBeNull();
     expect(await prisma.taxPayment.findUnique({ where: { id: payment.id } })).toMatchObject({ recordedById: agent.id, amount: 250n });
     expect(await prisma.agentReport.findUnique({ where: { id: report.id } })).toMatchObject({ authorId: agent.id });
     await expect(accessControlledAdapter.createSession!({ sessionToken: randomUUID(), userId: agent.id, expires: new Date(Date.now() + 3_600_000) })).rejects.toThrow("SESSION_REVOKED");
     await changeAccount({ actorId: manager.id, targetId: agent.id, operation: "reactivate", reason });
     expect(await accessControlledAdapter.getSessionAndUser!(token)).toBeNull();
-    expect(await prisma.ninjaProfile.findUnique({ where: { id: ninja.id } })).toMatchObject({ referenceAgentId: replacement.id });
+    expect(await prisma.ninjaProfile.findUnique({ where: { id: ninja.id } })).toMatchObject({ referenceAgentId: agent.id });
     const newToken = randomUUID();
     await accessControlledAdapter.createSession!({ sessionToken: newToken, userId: agent.id, expires: new Date(Date.now() + 3_600_000) });
     expect(await accessControlledAdapter.getSessionAndUser!(newToken)).not.toBeNull();
   });
 
-  it("removing the agent role leaves personal access and puts unfinished work in À attribuer", async () => {
+  it("removing the agent role leaves personal access and unassigns only unfinished tasks", async () => {
     const target = await user("Retrait agent", ["NINJA", "ECONOMIC_AGENT"]);
     const ninja = await prisma.ninjaProfile.create({ data: { firstName: "Personnel", lastName: "Préservé", code: `ROLE-${randomUUID()}`, currentGradeId: gradeId, userId: target.id, referenceAgentId: target.id } });
     const task = await prisma.followUpTask.create({ data: { title: "À attribuer", description: "Test", assigneeId: target.id, createdById: manager.id } });
     await changeAccount({ actorId: manager.id, targetId: target.id, operation: "remove-agent", reason });
     expect(await prisma.userRole.findMany({ where: { userId: target.id }, include: { role: true } })).toMatchObject([{ role: { code: "NINJA" } }]);
     expect(await prisma.user.findUnique({ where: { id: target.id } })).toMatchObject({ revokedAt: null });
-    expect(await prisma.ninjaProfile.findUnique({ where: { id: ninja.id } })).toMatchObject({ userId: target.id, referenceAgentId: null });
+    expect(await prisma.ninjaProfile.findUnique({ where: { id: ninja.id } })).toMatchObject({ userId: target.id, referenceAgentId: target.id });
     expect(await prisma.followUpTask.findUnique({ where: { id: task.id } })).toMatchObject({ assigneeId: null });
   });
 
@@ -106,7 +108,6 @@ describe.skipIf(!dbReady)("account access and sessions (PostgreSQL)", () => {
       expect(current.serviceRole).toBe("ECONOMIC_AGENT");
       expect(current.rankingEligible).toBe(false);
       const task = await prisma.followUpTask.create({ data: { title: "Dossier responsable", description: "Test", assigneeId: leader.id, createdById: superAdmin.id } });
-      // Directly establish the pre-existing manager-only case as a fixture.
       await prisma.userRole.deleteMany({ where: { userId: leader.id, role: { code: "ECONOMIC_AGENT" } } });
       await changeAccount({ actorId: superAdmin.id, targetId: leader.id, operation: "roles", roles: ["NINJA"], reason });
       expect((await prisma.agentParticipation.findUniqueOrThrow({ where: { id: participation.id } })).endsAt).not.toBeNull();
