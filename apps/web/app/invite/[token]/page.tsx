@@ -2,13 +2,13 @@ import Link from "next/link";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { checkInvitation } from "@/lib/invitation-check";
 import { getAuthErrorMessage } from "@/lib/auth-error-message";
-import { beginInvitation } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Invitation Kōeki", robots: { index: false, follow: false }, referrer: "no-referrer" as const };
 
 export default async function InvitationPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  // No loading/Suspense boundary here: the usable form must render even without JS.
   const check = await checkInvitation(token);
   if (!check.ok) {
     const message = getAuthErrorMessage(check.error);
@@ -25,7 +25,10 @@ export default async function InvitationPage({ params }: { params: Promise<{ tok
     <p>Le service économique de Suna vous ouvre ses registres.</p>
     <p className="notice"><strong>Un lien = une personne.</strong> Cette invitation sera associée au compte Discord qui l’accepte. Elle ne pourra pas servir à inviter une deuxième personne.</p>
     <p>Vérifiez votre compte Discord avant de continuer. Le compte doit appartenir au serveur autorisé par le service.</p>
-    <form action={beginInvitation.bind(null, token)}><button className="button button-primary" type="submit"><KeyRound size={17} aria-hidden="true" /> Continuer avec Discord</button></form>
+    <form method="post" action="/api/connexion/discord">
+      <input type="hidden" name="intent" value="invitation" /><input type="hidden" name="token" value={token} />
+      <button className="button button-primary" type="submit"><KeyRound size={17} aria-hidden="true" /> Continuer avec Discord</button>
+    </form>
     <p className="field-help">Terminez la connexion dans les 10 minutes, dans le même navigateur. Si ce délai est dépassé, rouvrez ce lien tant que l’invitation reste valable.</p>
     <p className="field-help">Invitation valable jusqu’au {check.expiresAt.toLocaleString("fr-FR", { timeZone: "Europe/Paris" })} (heure de Paris).</p>
     <Link className="text-link" href="/connexion">J’ai déjà un accès Kōeki</Link>

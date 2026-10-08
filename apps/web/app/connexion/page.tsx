@@ -1,16 +1,14 @@
 import { KeyRound, ShieldCheck } from "lucide-react";
-import { signIn } from "@/auth";
 
 export const metadata = { title: "Connexion", robots: { index: false, follow: false } };
 
 export default function SignInPage() {
-  async function connect() { "use server"; await signIn("discord", { redirectTo: "/" }); }
   return <main className="invite-page">
     <section className="invite-card">
       <div className="brand-mark" aria-hidden="true"><span /></div>
       <p className="eyebrow">Service économique de Suna</p><h1>KŌEKI</h1>
       <p>Vous avez déjà accepté une invitation ? Retrouvez vos registres avec le même compte Discord.</p>
-      <form action={connect}><button className="button button-primary" type="submit"><KeyRound size={17} aria-hidden="true" /> Se connecter avec Discord</button></form>
+      <form method="post" action="/api/connexion/discord"><input type="hidden" name="intent" value="connexion" /><button className="button button-primary" type="submit"><KeyRound size={17} aria-hidden="true" /> Se connecter avec Discord</button></form>
       <section className="notice" aria-labelledby="first-connection-title">
         <h2 id="first-connection-title">Première connexion ?</h2>
         <p>Ouvrez votre <strong>lien d’invitation individuel</strong> reçu d’un responsable, puis cliquez sur « Continuer avec Discord » sur cette page d’invitation.</p>
