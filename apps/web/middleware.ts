@@ -1,13 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-function createContentSecurityPolicy(nonce: string) {
+function createContentSecurityPolicy(nonce: string, isAuthPage: boolean) {
   const scriptSources = [
     "'self'",
     `'nonce-${nonce}'`,
     "'strict-dynamic'",
     ...(process.env.NODE_ENV === "development" ? ["'unsafe-eval'"] : [])
   ];
-
   return [
     "default-src 'self'",
     `script-src ${scriptSources.join(" ")}`,
@@ -18,23 +17,27 @@ function createContentSecurityPolicy(nonce: string) {
     "object-src 'none'",
     ...(process.env.DEMO_MODE === "true" ? [] : ["frame-ancestors 'none'"]),
     "base-uri 'self'",
-    "form-action 'self'"
+    // Native form POSTs can redirect to Discord before JS loads (or without JS).
+    // Only authentication pages may redirect a form to this canonical OAuth origin.
+    `form-action 'self'${isAuthPage ? " https://discord.com" : ""}`
   ].join("; ");
 }
 
 export function middleware(request: NextRequest) {
   const nonce = crypto.randomUUID().replaceAll("-", "");
-  const contentSecurityPolicy = createContentSecurityPolicy(nonce);
+  const isInvitation = request.nextUrl.pathname.startsWith("/invite/");
+  const contentSecurityPolicy = createContentSecurityPolicy(nonce, isInvitation || request.nextUrl.pathname === "/connexion");
   const requestHeaders = new Headers(request.headers);
-
-  // Next.js reads the request CSP and adds this nonce to its generated scripts.
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
   requestHeaders.set("x-nonce", nonce);
-  // Lets server layouts know the current path (used to force profile linking on first login).
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
-
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
+  if (isInvitation) {
+    response.headers.set("Referrer-Policy", "no-referrer");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    response.headers.set("Cache-Control", "private, no-store");
+  }
   return response;
 }
 
