@@ -1,28 +1,25 @@
 import NextAuth from "next-auth";
 import { createDiscordProvider } from "@/lib/discord-provider";
 import { cookies } from "next/headers";
-import { hashInvitationToken, isInvitationUsable } from "@koeki/auth";
 import { prisma } from "@koeki/database";
 import { consumeInvitationAccess } from "@/lib/invitation-service";
 import { accessControlledAdapter } from "@/lib/auth-session-adapter";
+import { checkInvitation } from "@/lib/invitation-check";
+import { INVITATION_COOKIE, type InvitationFailure } from "@/lib/invitation-state";
 
-const refuse = (reason: string) => { console.warn(`[auth] connexion refusée : ${reason}`); return false; };
+type Refusal = InvitationFailure | "InvitationRequired" | "AccountRevoked" | "DiscordMembershipRequired" | "DiscordUnavailable";
+const refuse = (code: Refusal) => {
+  console.warn(`[auth] connexion refusée : ${code}`);
+  return `/access-denied?error=${code}`;
+};
+async function readInviteToken() { return (await cookies()).get(INVITATION_COOKIE)?.value ?? null; }
 
-async function readInviteToken() { return (await cookies()).get("koeki_invite")?.value ?? null; }
-
-async function findUsableInvitation(token: string) {
-  const pepper = process.env.INVITE_TOKEN_PEPPER;
-  if (!pepper) return null;
-  const invitation = await prisma.invitation.findUnique({ where: { tokenHash: hashInvitationToken(token, pepper) } });
-  return invitation && isInvitationUsable(invitation) ? invitation : null;
-}
-
-/** Single-use consumption: assigns the invited role and links the ninja profile. Caller guarantees the user row exists. */
 async function consumeInvitation(userId: string, token: string) {
-  const invitation = await findUsableInvitation(token);
-  if (!invitation) throw new Error("INVITATION_UNUSABLE");
-  await consumeInvitationAccess(userId, invitation.id);
-  (await cookies()).delete("koeki_invite");
+  const check = await checkInvitation(token);
+  if (!check.ok) throw new Error(check.error);
+  // The transaction rechecks status, expiry, creator rights and the ninja reservation.
+  await consumeInvitationAccess(userId, check.id);
+  // Cookie cleanup belongs to the successful signIn event, not this transaction.
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -34,24 +31,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ user, account }) {
       const existing = user.id ? await prisma.user.findUnique({ where: { id: user.id }, include: { roles: true } }) : null;
-      if (existing?.revokedAt) return refuse("compte révoqué");
+      if (existing?.revokedAt) return refuse("AccountRevoked");
+      // Existing authorized accounts do not need another invitation.
       if (existing?.roles.length) return true;
-      if (account?.provider !== "discord" || !account.access_token) return refuse("jeton d’accès Discord absent");
+      if (account?.provider !== "discord" || !account.access_token) return refuse("DiscordUnavailable");
       const token = await readInviteToken();
-      if (!token) return refuse("cookie d’invitation absent ou expiré — rouvrir le lien d’invitation");
-      if (!process.env.INVITE_TOKEN_PEPPER) return refuse("INVITE_TOKEN_PEPPER manquant côté serveur");
+      if (!token) return refuse("InvitationRequired");
+      const check = await checkInvitation(token);
+      if (!check.ok) return refuse(check.error);
       const guildId = process.env.DISCORD_GUILD_ID;
-      if (guildId) {
-        const response = await fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${account.access_token}` }, cache: "no-store" });
-        if (!response.ok) return refuse(`vérification du serveur Discord impossible (HTTP ${response.status})`);
-        const guilds = await response.json() as Array<{ id: string }>;
-        if (!guilds.some((guild) => guild.id === guildId)) return refuse(`le compte n’appartient pas au serveur ${guildId} (${guilds.length} serveur${guilds.length > 1 ? "s" : ""} visibles)`);
+      if (!guildId) return refuse("Configuration");
+      try {
+        const response = await fetch("https://discord.com/api/users/@me/guilds", {
+          headers: { Authorization: `Bearer ${account.access_token}` }, cache: "no-store", signal: AbortSignal.timeout(8_000),
+        });
+        if (!response.ok) return refuse("DiscordUnavailable");
+        const guilds: unknown = await response.json();
+        if (!Array.isArray(guilds) || !guilds.every((guild) => guild && typeof guild.id === "string")) return refuse("DiscordUnavailable");
+        if (!guilds.some((guild) => guild.id === guildId)) return refuse("DiscordMembershipRequired");
+      } catch { return refuse("DiscordUnavailable"); }
+      if (existing) {
+        try { await consumeInvitation(existing.id, token); }
+        catch {
+          const latest = await checkInvitation(token);
+          return refuse(latest.ok ? "InvitationUnavailable" : latest.error);
+        }
       }
-      const invitation = await findUsableInvitation(token);
-      if (!invitation) return refuse("invitation introuvable, expirée, révoquée ou déjà utilisée");
-      // Existing account without role: the user row exists, consume immediately.
-      if (existing) { try { await consumeInvitation(existing.id, token); } catch { return refuse("invitation déjà consommée par un autre compte"); } }
-      // New account: the user row does not exist yet — consumption happens in events.createUser.
+      // New users are created by Auth.js next; never consume against a nonexistent user.
       return true;
     },
     async session({ session, user }) {
@@ -60,22 +66,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = current.id;
       (session.user as typeof session.user & { roles: string[] }).roles = current.roles.map((entry) => entry.role.code);
       return session;
-    }
+    },
   },
   events: {
     async createUser({ user }) {
-      const token = await readInviteToken();
       try {
+        const token = await readInviteToken();
         if (!user.id || !token) throw new Error("INVITE_COOKIE_MISSING");
         await consumeInvitation(user.id, token);
-      } catch (error) {
-        // Without a consumed invitation the account must not survive: revoke it immediately.
-        console.warn(`[auth] consommation d’invitation impossible pour le nouveau compte : ${error instanceof Error ? error.message : String(error)}`);
-        if (user.id) await prisma.user.update({ where: { id: user.id }, data: { revokedAt: new Date() } }).catch(() => {});
+      } catch {
+        console.warn("[auth] création interrompue : invitation non consommée ; aucune session autorisée");
+        if (user.id) await prisma.user.update({ where: { id: user.id }, data: { revokedAt: new Date() } });
       }
+    },
+    async signIn() {
+      // A cleanup failure must not revoke a user whose invitation committed successfully.
+      try { (await cookies()).delete(INVITATION_COOKIE); }
+      catch { console.warn("[auth] nettoyage du cookie d’invitation différé"); }
     },
     async linkAccount({ user, account }) {
       if (account.provider === "discord" && user.id) await prisma.user.update({ where: { id: user.id }, data: { discordId: account.providerAccountId } }).catch(() => {});
-    }
-  }
+    },
+  },
 });
