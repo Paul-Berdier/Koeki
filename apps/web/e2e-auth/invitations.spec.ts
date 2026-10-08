@@ -32,6 +32,28 @@ async function invite() {
   return { token, row, path: `/invite/${token}` };
 }
 
+// strict-origin intentionally permits only the public origin, never an invite
+// path or query. Chromium's redirected request may expose this origin in CDP
+// even though the 303 also requests no-referrer. Both safe values are explicit.
+function redactedReferer(value: string | undefined) {
+  return value === undefined || value === "http://localhost:3100/";
+}
+
+test("the OAuth privacy assertion rejects every invitation path, query and foreign origin", () => {
+  expect(redactedReferer(undefined)).toBe(true);
+  expect(redactedReferer("http://localhost:3100/")).toBe(true);
+  for (const value of [
+    "http://localhost:3100/invite/synthetic-token",
+    "http://localhost:3100/?token=synthetic-token",
+    "http://localhost:3100/%69nvite/synthetic-token",
+    "http://localhost:3100/connexion",
+    "https://foreign.example/",
+    "http://localhost:3100.foreign.example/",
+    "http://localhost:3100/#synthetic-token",
+    "",
+  ]) expect(redactedReferer(value)).toBe(false);
+});
+
 type PausedRequest = {
   requestId: string;
   resourceType: string;
@@ -60,7 +82,7 @@ async function mockDiscord(context: BrowserContext, id: string, options: { guild
     expect(event.resourceType, "OAuth must use document navigation, not an RSC fetch").toBe("Document");
     expect(event.request.method).toBe("GET");
     const headers = Object.fromEntries(Object.entries(event.request.headers).map(([key, value]) => [key.toLowerCase(), value]));
-    expect(headers.referer, "The invitation URL must not leak to Discord").toBeUndefined();
+    expect(redactedReferer(headers.referer), "Referer may contain only the public origin; no invitation path or token").toBe(true);
     expect(authorization.searchParams.has("_rsc")).toBe(false);
     expect(authorization.searchParams.get("client_id")).toBe("999999999999999998");
     const callback = authorization.searchParams.get("redirect_uri");
