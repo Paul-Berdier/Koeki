@@ -9,12 +9,14 @@ import { createInvitationToken } from "@koeki/auth";
 let managerId: string, roleId: string;
 const discordId = () => String(100_000_000_000_000_000n + BigInt(`0x${randomBytes(7).toString("hex")}`));
 const errors = new WeakMap<Page, string[]>();
-test.beforeEach(async ({ page }) => {
+function trackBrowserErrors(page: Page) {
   const messages: string[] = [];
   errors.set(page, messages);
   page.on("pageerror", (error) => messages.push(error.message));
   page.on("console", (message) => { if (message.type() === "error" && /hydration|cannot be a descendant|cannot contain|content security policy/i.test(message.text())) messages.push(message.text()); });
-});
+  return messages;
+}
+test.beforeEach(async ({ page }) => { trackBrowserErrors(page); });
 test.afterEach(({ page }) => { expect(errors.get(page) ?? [], "No browser runtime, hydration or CSP errors").toEqual([]); });
 test.beforeAll(async () => {
   if (process.env.E2E_EXTERNAL_SERVER === "true") throw new Error("Invitation OAuth tests require the isolated preload fixture server");
@@ -32,6 +34,10 @@ async function invite() {
 async function mockDiscord(context: BrowserContext, id: string, options: { guild?: string; loseInvite?: boolean; losePkce?: boolean } = {}) {
   await context.route(/^https:\/\/discord\.com\/(?:api\/)?oauth2\/authorize/, async (route) => {
     const authorization = new URL(route.request().url());
+    // A native navigation, not an RSC fetch; no invitation path is leaked to Discord.
+    expect(route.request().isNavigationRequest()).toBe(true);
+    expect(route.request().headers()["referer"]).toBeUndefined();
+    expect(authorization.searchParams.has("_rsc")).toBe(false);
     const callback = authorization.searchParams.get("redirect_uri");
     expect(callback).toBe("http://localhost:3100/api/auth/callback/discord");
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
@@ -63,7 +69,7 @@ test("first signup creates a session and consumes once; second visitor cannot re
   const id = discordId();
   await mockDiscord(context, id);
   const response = await page.goto(invitation.path);
-  expect(response?.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(response?.headers()["referrer-policy"]).toBe("strict-origin");
   await expect(page.getByRole("heading", { name: "Rejoindre KŌEKI" })).toBeVisible();
   await expect(page.getByText("Un lien = une personne.", { exact: true })).toBeVisible();
   await capture(page, "ready", info.project.name);
@@ -97,13 +103,16 @@ test("first signup works without JavaScript and without weakening the OAuth chec
   const context = await browser.newContext({ javaScriptEnabled: false, baseURL: "http://localhost:3100", viewport: { width: 390, height: 844 } });
   try {
     const page = await context.newPage();
+    const messages = trackBrowserErrors(page);
     const invitation = await invite();
     await mockDiscord(context, discordId());
     await page.goto(invitation.path);
+    await expect(page.getByRole("button", { name: "Continuer avec Discord" })).toBeVisible();
     await page.getByRole("button", { name: "Continuer avec Discord" }).click();
     await expect(page).toHaveURL(/\/profil$/);
     expect((await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.row.id } })).status).toBe("USED");
     await capture(page, "no-js-profile", info.project.name);
+    expect(messages, "No browser errors without JavaScript").toEqual([]);
   } finally { await context.close(); }
 });
 

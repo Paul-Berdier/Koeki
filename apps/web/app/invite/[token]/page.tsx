@@ -4,7 +4,7 @@ import { checkInvitation } from "@/lib/invitation-check";
 import { getAuthErrorMessage } from "@/lib/auth-error-message";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Invitation Kōeki", robots: { index: false, follow: false }, referrer: "no-referrer" as const };
+export const metadata = { title: "Invitation Kōeki", robots: { index: false, follow: false }, referrer: "strict-origin" as const };
 
 export default async function InvitationPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;

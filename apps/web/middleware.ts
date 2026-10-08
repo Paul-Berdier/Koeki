@@ -17,8 +17,7 @@ function createContentSecurityPolicy(nonce: string, isAuthPage: boolean) {
     "object-src 'none'",
     ...(process.env.DEMO_MODE === "true" ? [] : ["frame-ancestors 'none'"]),
     "base-uri 'self'",
-    // Native form POSTs can redirect to Discord before JS loads (or without JS).
-    // Only authentication pages may redirect a form to this canonical OAuth origin.
+    // Native form POSTs redirect to the canonical Discord OAuth origin.
     `form-action 'self'${isAuthPage ? " https://discord.com" : ""}`
   ].join("; ");
 }
@@ -34,7 +33,10 @@ export function middleware(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
   if (isInvitation) {
-    response.headers.set("Referrer-Policy", "no-referrer");
+    // Strip the bearer-token path while preserving Origin on native POSTs.
+    // no-referrer here would produce Origin:null and correctly fail the CSRF guard.
+    // The OAuth 303 response applies no-referrer before leaving the site.
+    response.headers.set("Referrer-Policy", "strict-origin");
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
     response.headers.set("Cache-Control", "private, no-store");
   }
