@@ -13,6 +13,8 @@ process.env.KOEKI_E2E_INVITE_PEPPER ??= randomBytes(32).toString("hex");
 process.env.KOEKI_E2E_OAUTH_SECRET ??= randomBytes(32).toString("hex");
 export default defineConfig({
   testDir: "./e2e-auth", timeout: 90_000, expect: { timeout: 20_000 }, workers: 1,
+  // A failure still fails the job. On success every scenario runs; no retries or exclusions.
+  maxFailures: process.env.CI ? 1 : 0,
   outputDir: "./test-results/authenticated",
   use: { baseURL: "http://localhost:3100", javaScriptEnabled: true, trace: "retain-on-failure" },
   ...(process.env.E2E_EXTERNAL_SERVER === "true" ? {} : {
