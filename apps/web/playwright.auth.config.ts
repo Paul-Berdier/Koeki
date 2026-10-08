@@ -16,7 +16,7 @@ export default defineConfig({
   // A failure still fails the job. On success every scenario runs; no retries or exclusions.
   maxFailures: process.env.CI ? 1 : 0,
   outputDir: "./test-results/authenticated",
-  use: { baseURL: "http://localhost:3100", javaScriptEnabled: true, trace: "retain-on-failure" },
+  use: { baseURL: "http://localhost:3100", javaScriptEnabled: true, serviceWorkers: "block", trace: "retain-on-failure" },
   ...(process.env.E2E_EXTERNAL_SERVER === "true" ? {} : {
     webServer: {
       command: "node --import ./e2e-auth/discord-fetch-fixture.mjs node_modules/next/dist/bin/next dev --port 3100",

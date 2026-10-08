@@ -5,7 +5,7 @@ import { prisma } from "@koeki/database";
 import { createInvitationToken } from "@koeki/auth";
 
 // Real Next/Auth.js/Prisma flow, starting without a session cookie.
-// Only Discord's external endpoints are replaced by the local process fixture.
+// Only Discord's browser consent and external endpoints are simulated.
 let managerId: string, roleId: string;
 const discordId = () => String(100_000_000_000_000_000n + BigInt(`0x${randomBytes(7).toString("hex")}`));
 const errors = new WeakMap<Page, string[]>();
@@ -31,13 +31,38 @@ async function invite() {
   const row = await prisma.invitation.create({ data: { tokenHash, roleId, createdById: managerId, expiresAt: new Date(Date.now() + 3_600_000) } });
   return { token, row, path: `/invite/${token}` };
 }
-async function mockDiscord(context: BrowserContext, id: string, options: { guild?: string; loseInvite?: boolean; losePkce?: boolean } = {}) {
-  await context.route(/^https:\/\/discord\.com\/(?:api\/)?oauth2\/authorize/, async (route) => {
-    const authorization = new URL(route.request().url());
-    // A native navigation, not an RSC fetch; no invitation path is leaked to Discord.
-    expect(route.request().isNavigationRequest()).toBe(true);
-    expect(route.request().headers()["referer"]).toBeUndefined();
+
+type PausedRequest = {
+  requestId: string;
+  resourceType: string;
+  request: { url: string; method: string; headers: Record<string, string> };
+};
+
+async function mockDiscord(context: BrowserContext, id: string, options: { guild?: string; loseInvite?: boolean; losePkce?: boolean; rejectAuthorization?: boolean } = {}) {
+  // Playwright route handlers only see the first URL in a redirected request.
+  // The first URL is now our real native POST, not Discord. Intercept the
+  // external hop with Chromium Fetch instead, keeping the original HTTP 303,
+  // browser cookies, CSP, and subsequent Auth.js callback entirely unchanged.
+  // All projects in playwright.auth.config.ts explicitly use Chromium.
+  expect(context.browser()?.browserType().name()).toBe("chromium");
+  const pages = context.pages();
+  expect(pages).toHaveLength(1);
+  const page = pages[0]!;
+  const messages = errors.get(page) ?? trackBrowserErrors(page);
+  const session = await context.newCDPSession(page);
+  const observed = { authorizations: 0 };
+  async function intercept(event: PausedRequest) {
+    const authorization = new URL(event.request.url);
+    expect(authorization.origin, "Never contact a real Discord endpoint in this fixture").toBe("https://discord.com");
+    expect(["/api/oauth2/authorize", "/oauth2/authorize"]).toContain(authorization.pathname);
+    observed.authorizations++;
+    expect(options.rejectAuthorization ?? false, "This invalid invitation must not start OAuth").toBe(false);
+    expect(event.resourceType, "OAuth must use document navigation, not an RSC fetch").toBe("Document");
+    expect(event.request.method).toBe("GET");
+    const headers = Object.fromEntries(Object.entries(event.request.headers).map(([key, value]) => [key.toLowerCase(), value]));
+    expect(headers.referer, "The invitation URL must not leak to Discord").toBeUndefined();
     expect(authorization.searchParams.has("_rsc")).toBe(false);
+    expect(authorization.searchParams.get("client_id")).toBe("999999999999999998");
     const callback = authorization.searchParams.get("redirect_uri");
     expect(callback).toBe("http://localhost:3100/api/auth/callback/discord");
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
@@ -52,9 +77,29 @@ async function mockDiscord(context: BrowserContext, id: string, options: { guild
     destination.searchParams.set("iss", "https://discord.com");
     const state = authorization.searchParams.get("state");
     if (state) destination.searchParams.set("state", state);
-    await route.fulfill({ status: 302, headers: { location: destination.toString() }, body: "" });
+    await session.send("Fetch.fulfillRequest", {
+      requestId: event.requestId,
+      responseCode: 302,
+      responseHeaders: [
+        { name: "Location", value: destination.toString() },
+        { name: "Cache-Control", value: "no-store" },
+        { name: "Referrer-Policy", value: "no-referrer" },
+      ],
+      body: "",
+    });
+  }
+  session.on("Fetch.requestPaused", (event: PausedRequest) => {
+    // An asynchronous CDP listener must report failures to the test explicitly.
+    // Abort instead of continuing on failure: no fallback to the real service.
+    void intercept(event).catch(async (error: unknown) => {
+      messages.push(`Discord fixture: ${error instanceof Error ? error.message : String(error)}`);
+      await session.send("Fetch.failRequest", { requestId: event.requestId, errorReason: "Failed" }).catch(() => {});
+    });
   });
+  await session.send("Fetch.enable", { patterns: [{ urlPattern: "*://discord.com/*", requestStage: "Request" }] });
+  return observed;
 }
+
 async function noAccount(id: string) {
   expect(await prisma.account.count({ where: { provider: "discord", providerAccountId: id } })).toBe(0);
 }
@@ -67,7 +112,7 @@ async function capture(page: Page, name: string, project: string) {
 test("first signup creates a session and consumes once; second visitor cannot reuse; existing account can reconnect", async ({ page, context }, info) => {
   const invitation = await invite();
   const id = discordId();
-  await mockDiscord(context, id);
+  const observed = await mockDiscord(context, id);
   const response = await page.goto(invitation.path);
   expect(response?.headers()["referrer-policy"]).toBe("strict-origin");
   await expect(page.getByRole("heading", { name: "Rejoindre KŌEKI" })).toBeVisible();
@@ -78,8 +123,11 @@ test("first signup creates a session and consumes once; second visitor cannot re
   expect(preview.ok()).toBe(true);
   expect((await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.row.id } })).status).toBe("PENDING");
   expect((await context.cookies()).some((cookie) => cookie.name.includes("session-token"))).toBe(false);
+  const startResponse = page.waitForResponse((entry) => new URL(entry.url()).pathname === "/api/connexion/discord" && entry.request().method() === "POST");
   await page.getByRole("button", { name: "Continuer avec Discord" }).click();
+  expect((await startResponse).status(), "The real server must issue a native 303").toBe(303);
   await expect(page).toHaveURL(/\/profil$/);
+  expect(observed.authorizations).toBe(1);
   const used = await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.row.id } });
   expect(used.status).toBe("USED");
   expect(used.consumedById).not.toBeNull();
@@ -92,24 +140,27 @@ test("first signup creates a session and consumes once; second visitor cannot re
   await page.goto(invitation.path);
   await expect(page.getByRole("heading", { name: "Invitation déjà utilisée" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continuer avec Discord" })).toHaveCount(0);
+  expect(observed.authorizations).toBe(1);
   await capture(page, "used", info.project.name);
   await page.goto("/connexion");
   await page.getByRole("button", { name: "Se connecter avec Discord" }).click();
   await expect(page).toHaveURL(/\/profil$/);
+  expect(observed.authorizations).toBe(2);
   expect(await prisma.auditLog.count({ where: { entityId: used.id, action: "INVITATION_CONSUMED" } })).toBe(1);
 });
 
 test("first signup works without JavaScript and without weakening the OAuth checks", async ({ browser }, info) => {
-  const context = await browser.newContext({ javaScriptEnabled: false, baseURL: "http://localhost:3100", viewport: { width: 390, height: 844 } });
+  const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", baseURL: "http://localhost:3100", viewport: { width: 390, height: 844 } });
   try {
     const page = await context.newPage();
     const messages = trackBrowserErrors(page);
     const invitation = await invite();
-    await mockDiscord(context, discordId());
+    const observed = await mockDiscord(context, discordId());
     await page.goto(invitation.path);
     await expect(page.getByRole("button", { name: "Continuer avec Discord" })).toBeVisible();
     await page.getByRole("button", { name: "Continuer avec Discord" }).click();
     await expect(page).toHaveURL(/\/profil$/);
+    expect(observed.authorizations).toBe(1);
     expect((await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.row.id } })).status).toBe("USED");
     await capture(page, "no-js-profile", info.project.name);
     expect(messages, "No browser errors without JavaScript").toEqual([]);
@@ -135,8 +186,7 @@ test("missing invitation on ordinary login and lost invitation cookie yield acti
 });
 
 test("invalid, expired and revoked links stop before Discord; a stale rendered form is rechecked", async ({ page, context }) => {
-  let externalRequests = 0;
-  await context.route("https://discord.com/**", async (route) => { externalRequests++; await route.abort(); });
+  const observed = await mockDiscord(context, discordId(), { rejectAuthorization: true });
   for (const status of ["EXPIRED", "REVOKED"] as const) {
     const invitation = await invite();
     await prisma.invitation.update({ where: { id: invitation.row.id }, data: status === "EXPIRED" ? { expiresAt: new Date(Date.now() - 1000) } : { status, revokedAt: new Date() } });
@@ -152,7 +202,7 @@ test("invalid, expired and revoked links stop before Discord; a stale rendered f
   await prisma.invitation.update({ where: { id: invitation.row.id }, data: { status: "REVOKED", revokedAt: new Date() } });
   await page.getByRole("button", { name: "Continuer avec Discord" }).click();
   await expect(page).toHaveURL(/error=InvitationRevoked/);
-  expect(externalRequests).toBe(0);
+  expect(observed.authorizations).toBe(0);
   expect((await context.cookies()).some((cookie) => cookie.name === "koeki_invite")).toBe(false);
 });
 
