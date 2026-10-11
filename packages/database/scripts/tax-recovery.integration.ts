@@ -26,7 +26,6 @@ async function main() {
     created = true;
     const target = new URL(configured); target.pathname = `/${name}`;
     const connectionString = target.toString();
-    // pnpm runs this package script with packages/database as its working directory.
     execFileSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["exec", "prisma", "migrate", "deploy"], {
       cwd: process.cwd(), env: { ...process.env, DATABASE_URL: connectionString }, stdio: "inherit", timeout: 120_000
     });
@@ -86,13 +85,18 @@ async function main() {
     assert.equal(repeat1.created + repeat2.created, 0, "concurrent retry must never duplicate a weekly invoice");
     await assert.rejects(generateTaxWeeks(db, { now, fromRpYear: 60 }), /already-opened/);
     await assert.rejects(generateTaxWeeks(db, { now, fromRpYear: 56, expectedRpYear: 60 }), /week changed/);
+    // The existing domain rule calls an unpaid CURRENT-week invoice DUE even
+    // before its due date; the three current nonzero invoices must be normalized.
+    assert.equal((await refreshTaxStatuses(db, now)).updated, 3);
+    assert.equal(await db.taxAssessment.count({ where: { taxYear: { rpYear: 59 }, status: "DUE" } }), 3);
+    assert.equal((await refreshTaxStatuses(db, now)).updated, 0);
     const overdue = await db.taxAssessment.findFirstOrThrow({ where: { ninjaId: promoted.id, taxYear: { rpYear: 58 } } });
     await db.taxAssessment.update({ where: { id: overdue.id }, data: { status: "UPCOMING" } });
     assert.equal((await refreshTaxStatuses(db, now)).updated, 1);
     assert.equal((await db.taxAssessment.findUniqueOrThrow({ where: { id: overdue.id } })).status, "OVERDUE");
     assert.equal((await refreshTaxStatuses(db, now)).updated, 0);
     assert.deepEqual(await db.taxPayment.findUnique({ where: { id: payment.id } }), payment, "status sweep must not alter payments");
-    console.log("Fiscal PostgreSQL integration OK: read-only preview, historical grades/policies, 12 recovered invoices, preserved payment, concurrent retries, status reconciliation");
+    console.log("Fiscal PostgreSQL integration OK: read-only preview, historical grades/policies, 12 recovered invoices, preserved payment, concurrent retries, current-week and stale-status reconciliation");
   } finally {
     await db?.$disconnect();
     if (created) await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);
