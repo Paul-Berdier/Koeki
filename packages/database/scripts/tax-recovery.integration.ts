@@ -60,7 +60,7 @@ if (!configured) {
     const assessment = await db.taxAssessment.create({ data: { ninjaId: paid.id, taxYearId: year.id, taxPolicyId: policy.id, gradeCodeSnapshot: low.code, gradeLabelSnapshot: low.label, originalAmount: 10_000n, dueAt: year.dueAt, status: "PAID" } });
     const actor = await db.user.create({ data: { name: "Fiscal fixture", email: "fiscal@example.test" } });
     const payment = await db.taxPayment.create({ data: { ninjaId: paid.id, recordedById: actor.id, amount: 10_000n, status: "VALIDATED", method: "RYO", idempotencyKey: randomUUID(), receiptNumber: "TEST-FISCAL-PAID", balanceBefore: 10_000n, balanceAfter: 0n } });
-    await db.taxPaymentAllocation.create({ data: { assessmentId: assessment.id, paymentId: payment.id, amount: 10_000n } });
+    await db.taxPaymentAllocation.create({ data: { assessmentId: assessment.id, paymentId: payment.id, amount: 10_000n, allocationOrder: 1 } });
     const before = { assessments: await db.taxAssessment.count(), years: await db.taxYear.count(), audit: await db.auditLog.count(), marker: await db.appSetting.findUnique({ where: { key: "taxGeneration" } }) };
     const preview = await generateTaxWeeks(db, { now, fromRpYear: 56, expectedRpYear: 59, dryRun: true });
     assert.equal(preview.created, 0);
