@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -9,11 +8,12 @@ import { createRpTimeService } from "@koeki/domain";
 import { generateTaxWeeks } from "../src/tax-generation";
 import { refreshTaxStatuses } from "../src/tax-status-sweep";
 
-const configured = process.env.DATABASE_URL_TEST;
-if (!configured) {
-  if (process.env.REQUIRE_TEST_DATABASE === "true") throw new Error("DATABASE_URL_TEST is required for fiscal integration tests");
-  console.log("Fiscal integration tests skipped: no DATABASE_URL_TEST");
-} else {
+async function main() {
+  const configured = process.env.DATABASE_URL_TEST;
+  if (!configured) {
+    if (process.env.REQUIRE_TEST_DATABASE === "true") throw new Error("DATABASE_URL_TEST is required for fiscal integration tests");
+    console.log("Fiscal integration tests skipped: no DATABASE_URL_TEST"); return;
+  }
   const source = new URL(configured);
   if (!["localhost", "127.0.0.1", "[::1]"].includes(source.hostname) || !source.pathname.includes("test")) throw new Error("Fiscal tests require an explicitly local test database");
   const name = `koeki_tax_recovery_test_${randomUUID().replaceAll("-", "")}`;
@@ -22,14 +22,13 @@ if (!configured) {
   let created = false;
   let db: PrismaClient | undefined;
   try {
-    // Only this newly generated test database is ever created or dropped.
     await admin.query(`CREATE DATABASE "${name}"`);
     created = true;
     const target = new URL(configured); target.pathname = `/${name}`;
     const connectionString = target.toString();
+    // pnpm runs this package script with packages/database as its working directory.
     execFileSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["exec", "prisma", "migrate", "deploy"], {
-      cwd: fileURLToPath(new URL("..", import.meta.url)),
-      env: { ...process.env, DATABASE_URL: connectionString }, stdio: "inherit", timeout: 120_000
+      cwd: process.cwd(), env: { ...process.env, DATABASE_URL: connectionString }, stdio: "inherit", timeout: 120_000
     });
     db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
     const config = { timezone: "Europe/Paris", dueDelayMs: 604_800_000, realAnchorAt: "2026-01-04T23:00:00.000Z", rpAnchorYear: 20, fiscalYearStartOffsetMs: 0, realMillisecondsPerRpYear: 604_800_000 };
@@ -100,3 +99,4 @@ if (!configured) {
     await admin.end();
   }
 }
+main().catch((error) => { console.error(error); process.exitCode = 1; });
