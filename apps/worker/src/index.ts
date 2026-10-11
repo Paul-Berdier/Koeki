@@ -1,93 +1,44 @@
 import { randomUUID } from "node:crypto";
 import { closeCompletedRankings, prisma, sendReportReminders, type Prisma } from "@koeki/database";
 import { assessmentSettlementBreakdown, calculateNextPenalty, createRpTimeService, defaultRpTimeConfig, deriveStockState, deriveTaxAssessmentStatus, exemptionUse, parseExemptionPolicy, rpTimeConfigSchema, ryo } from "@koeki/domain";
+import { generateTaxWeeks } from "../../../packages/database/src/tax-generation";
+import { refreshTaxStatuses } from "../../../packages/database/src/tax-status-sweep";
 
 const isUniqueViolation = (error: unknown) => (error as { code?: string } | null)?.code === "P2002";
 
 /** Serializes lifecycle-sensitive writes with administrative status changes. */
 async function lockNinja(tx: Prisma.TransactionClient, ninjaId: string) {
   const rows = await tx.$queryRaw<Array<{ status: string; userId: string | null }>>`
-    SELECT "status", "userId"
-    FROM "NinjaProfile"
-    WHERE "id" = ${ninjaId}
-    FOR UPDATE
+    SELECT "status", "userId" FROM "NinjaProfile" WHERE "id" = ${ninjaId} FOR UPDATE
   `;
   return rows[0] ?? null;
 }
 
 async function rpService() {
   const setting = await prisma.appSetting.findUnique({ where: { key: "rpTime" } });
-  const parsed = setting ? rpTimeConfigSchema.safeParse(setting.value) : null;
-  return createRpTimeService(parsed?.success ? parsed.data : defaultRpTimeConfig);
+  return createRpTimeService(setting ? rpTimeConfigSchema.parse(setting.value) : defaultRpTimeConfig);
 }
 
 async function generateTaxes() {
-  const service = await rpService(), rpYear = service.currentRpYear();
-  const generation = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(621714423)`;
-    const policy = await tx.taxPolicy.findFirst({ where: { isActive: true }, include: { rates: { include: { grade: true } } } });
-    if (!policy) throw new Error("No active tax policy");
-    await tx.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"
-      FROM "NinjaProfile"
-      ORDER BY "id"
-      FOR UPDATE
-    `;
-    const ninjas = await tx.ninjaProfile.findMany({ where: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } }, include: { currentGrade: true } });
-    const rates = new Map(policy.rates.map((rate) => [rate.gradeId, rate.amount]));
-    const missingRate = ninjas.find((ninja) => !rates.has(ninja.currentGradeId));
-    if (missingRate) throw new Error(`No tax rate configured for grade ${missingRate.currentGrade.code}`);
-    // Catch-up is bounded by the last week this job actually billed (imported
-    // legacy weeks are not billing runs), so a missed Sunday is filled in
-    // without ever back-billing history.
-    const marker = await tx.appSetting.findUnique({ where: { key: "taxGeneration" } });
-    const lastBilled = (marker?.value as { lastRpYear?: number } | undefined)?.lastRpYear;
-    // Revisit the current week on every run so an activation missed by an
-    // earlier run can be caught safely by createMany(skipDuplicates).
-    const firstYear = lastBilled ? Math.max(Math.min(lastBilled + 1, rpYear), rpYear - 12) : rpYear;
-    let created = 0, repaired = 0;
-    const years: number[] = [];
-    for (let year = firstYear; year <= rpYear; year++) {
-      const taxYear = await tx.taxYear.upsert({ where: { rpYear: year }, create: { rpYear: year, taxPolicyId: policy.id, startsAt: service.startOfRpYear(year), endsAt: service.endOfRpYear(year), dueAt: service.dueAt(year), generatedAt: new Date() }, update: {} });
-      if (!taxYear.generatedAt) await tx.taxYear.update({ where: { id: taxYear.id }, data: { generatedAt: new Date() } });
-      if (year === rpYear) {
-        const reconciled = await tx.$queryRaw<Array<{ id: string }>>`
-          UPDATE "TaxAssessment" AS "assessment"
-          SET "taxPolicyId" = ${policy.id},
-              "gradeCodeSnapshot" = "grade"."code",
-              "gradeLabelSnapshot" = "grade"."label",
-              "originalAmount" = "rate"."amount",
-              "dueAt" = ${taxYear.dueAt},
-              "status" = (CASE WHEN "rate"."amount" = 0 THEN 'PAID' WHEN ${taxYear.dueAt} > CURRENT_TIMESTAMP THEN 'UPCOMING' ELSE 'DUE' END)::"TaxAssessmentStatus",
-              "version" = "assessment"."version" + 1
-          FROM "NinjaProfile" AS "ninja"
-          JOIN "NinjaGrade" AS "grade" ON "grade"."id" = "ninja"."currentGradeId"
-          JOIN "TaxPolicyGradeRate" AS "rate" ON "rate"."gradeId" = "grade"."id" AND "rate"."taxPolicyId" = ${policy.id}
-          WHERE "assessment"."taxYearId" = ${taxYear.id}
-            AND "assessment"."ninjaId" = "ninja"."id"
-            AND "ninja"."status" = 'ACTIVE'
-            AND "grade"."code" <> 'UNKNOWN'
-            AND "assessment"."gradeCodeSnapshot" = 'UNKNOWN'
-            AND "assessment"."originalAmount" = 0
-            AND "assessment"."status" IN ('UPCOMING', 'DUE', 'OVERDUE', 'PARTIALLY_PAID', 'PAID')
-            AND NOT EXISTS (SELECT 1 FROM "TaxPaymentAllocation" WHERE "assessmentId" = "assessment"."id")
-            AND NOT EXISTS (SELECT 1 FROM "TaxExemption" WHERE "assessmentId" = "assessment"."id")
-            AND NOT EXISTS (SELECT 1 FROM "TaxPenalty" WHERE "assessmentId" = "assessment"."id")
-            AND NOT EXISTS (SELECT 1 FROM "TaxAdjustment" WHERE "assessmentId" = "assessment"."id")
-          RETURNING "assessment"."id"
-        `;
-        repaired += reconciled.length;
-      }
-      const result = await tx.taxAssessment.createMany({ data: ninjas.map((ninja) => ({ ninjaId: ninja.id, taxYearId: taxYear.id, taxPolicyId: policy.id, gradeCodeSnapshot: ninja.currentGrade.code, gradeLabelSnapshot: ninja.currentGrade.label, originalAmount: rates.get(ninja.currentGradeId) ?? 0n, dueAt: taxYear.dueAt, status: taxYear.dueAt > new Date() ? "UPCOMING" : "DUE" })), skipDuplicates: true });
-      created += result.count;
-      if (result.count > 0) years.push(year);
-    }
-    const value = { lastRpYear: rpYear, at: new Date().toISOString() };
-    await tx.appSetting.upsert({ where: { key: "taxGeneration" }, create: { key: "taxGeneration", value }, update: { value, version: { increment: 1 } } });
-    return { created, repaired, years };
-  }, { timeout: 180_000, maxWait: 15_000 });
-  const exempted = await autoApplyExemptions(rpYear);
-  return { command: "taxes:generate", rpYear, ...generation, exempted };
+  const generation = await generateTaxWeeks(prisma);
+  const exempted = await autoApplyExemptions(generation.rpYear);
+  return { command: "taxes:generate", ...generation, exempted };
+}
+
+/** Recovery is read-only unless both an explicit apply and reviewed RP year are supplied. */
+async function recoverTaxes() {
+  const args = process.argv.slice(3);
+  if (args.some((arg) => arg !== "--apply" && arg !== "--dry-run" && !/^--(?:from-rp-year|expect-rp-year)=-?\d+$/.test(arg))) throw new Error("Unknown tax recovery argument");
+  const read = (name: string) => {
+    const values = args.filter((arg) => arg.startsWith(`--${name}=`));
+    if (values.length > 1) throw new Error(`Duplicate ${name}`);
+    return values[0] === undefined ? undefined : Number(values[0].split("=")[1]);
+  };
+  const fromRpYear = read("from-rp-year"), expectedRpYear = read("expect-rp-year");
+  const apply = args.includes("--apply");
+  if (apply && (args.includes("--dry-run") || fromRpYear === undefined || expectedRpYear === undefined)) throw new Error("Apply requires --from-rp-year=N --expect-rp-year=N and no --dry-run");
+  // No automatic penalty or exemption is applied by a historical repair.
+  return { command: "taxes:recover", ...await generateTaxWeeks(prisma, { dryRun: !apply, ...(fromRpYear === undefined ? {} : { fromRpYear }), ...(expectedRpYear === undefined ? {} : { expectedRpYear }) }) };
 }
 
 /** Applies stored exemption credit only up to the administrative weekly ceiling.
@@ -125,9 +76,7 @@ async function autoApplyExemptions(rpYear: number) {
         const balance = (await tx.exemptionLedgerEntry.aggregate({ where: { ninjaId: assessment.ninjaId }, _sum: { amount: true } }))._sum.amount ?? 0n;
         if (balance <= 0n) return false;
         const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
-        const gross = assessment.originalAmount
-          + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n)
-          + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
+        const gross = assessment.originalAmount + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n) + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
         const alreadyExempted = assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
         const remaining = gross - alreadyExempted - paid;
         if (remaining <= 0n) return false;
@@ -135,16 +84,7 @@ async function autoApplyExemptions(rpYear: number) {
         if (use <= 0n) return false;
         await tx.exemptionLedgerEntry.create({ data: { ninjaId: assessment.ninjaId, amount: -use, sourceType: "TaxAssessment", sourceId: ledgerSourceId, reason: `Exonération automatique — taxe année RP ${rpYear}` } });
         await tx.taxExemption.create({ data: { assessmentId: assessment.id, amount: use, reason: "Exonération automatique (crédit de dons/rachats)", grantedById: systemUser.id } });
-        const status = deriveTaxAssessmentStatus({
-          storedStatus: assessment.status,
-          remaining: remaining - use,
-          settled: paid + alreadyExempted + use,
-          preserveLegacyOverdue: false,
-          dueAt: assessment.dueAt,
-          now: new Date(),
-          assessmentRpYear: rpYear,
-          currentRpYear: rpYear
-        });
+        const status = deriveTaxAssessmentStatus({ storedStatus: assessment.status, remaining: remaining - use, settled: paid + alreadyExempted + use, preserveLegacyOverdue: false, dueAt: assessment.dueAt, now: new Date(), assessmentRpYear: rpYear, currentRpYear: rpYear });
         if (status !== assessment.status) await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status, version: { increment: 1 } } });
         await tx.auditLog.create({ data: { action: "TAX_AUTO_EXEMPTED", entityType: "TaxAssessment", entityId: assessment.id, requestId: randomUUID(), reason: `${use.toLocaleString("fr-FR")} ¥ de crédit appliqués (année RP ${rpYear}, plafond ${(lockedPolicy.weeklyTaxCoverageBps / 100).toLocaleString("fr-FR")} %)` } });
         return true;
@@ -167,24 +107,13 @@ async function applyPenalties() {
       const committed = await prisma.$transaction(async (tx) => {
         const ninja = await lockNinja(tx, candidate.ninjaId);
         if (ninja?.status !== "ACTIVE") return false;
-        const assessment = await tx.taxAssessment.findFirst({
-          where: { id: candidate.id, originalAmount: { gt: 0 }, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } },
-          include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true, exemptions: true }
-        });
+        const assessment = await tx.taxAssessment.findFirst({ where: { id: candidate.id, originalAmount: { gt: 0 }, status: { in: ["OVERDUE", "PARTIALLY_PAID", "DUE"] }, dueAt: { lt: new Date() } }, include: { penalties: true, allocations: { include: { payment: { select: { status: true } } } }, adjustments: true, exemptions: true } });
         if (!assessment) return false;
         const paid = assessment.allocations.filter((item) => item.payment.status === "VALIDATED").reduce((sum, item) => sum + item.amount, 0n);
         const adjustments = assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
         const penaltyTotal = assessment.penalties.reduce((sum, item) => sum + item.amount, 0n);
         const exempted = assessment.exemptions.reduce((sum, item) => sum + item.amount, 0n);
-        const { currentDebt, remainingPrincipal } = assessmentSettlementBreakdown({
-          original: assessment.originalAmount,
-          penalties: penaltyTotal,
-          adjustments,
-          exemptions: exempted,
-          paid
-        });
-        // Never manufacture a penalty on a ledger-balanced tax whose stored status
-        // merely lagged behind its latest payment/exemption entry.
+        const { currentDebt, remainingPrincipal } = assessmentSettlementBreakdown({ original: assessment.originalAmount, penalties: penaltyTotal, adjustments, exemptions: exempted, paid });
         if (currentDebt <= 0n) {
           if (assessment.status !== "PAID") await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
           return false;
@@ -196,8 +125,7 @@ async function applyPenalties() {
         return true;
       });
       if (committed) created++;
-    }
-    catch (error) { if (!isUniqueViolation(error)) throw error; }
+    } catch (error) { if (!isUniqueViolation(error)) throw error; }
   }
   return { command: "penalties:apply", created, disabled: false };
 }
@@ -206,6 +134,7 @@ const assessmentStatusLabels: Record<string, string> = { DUE: "à payer", OVERDU
 
 async function sendReminders() {
   const reportReminders = await sendReportReminders(prisma);
+  const service = await rpService();
   const taskReminderSetting = await prisma.appSetting.findUnique({ where: { key: "taskReminders" } });
   let taskReminders = 0;
   if ((taskReminderSetting?.value as { enabled?: boolean } | undefined)?.enabled !== false) {
@@ -218,62 +147,31 @@ async function sendReminders() {
         const user = await tx.user.findUnique({ where: { id: task.assigneeId }, select: { revokedAt: true } });
         if (!user || user.revokedAt) return;
         const dedupeKey = `task-due:${task.id}:${task.assigneeId}:${task.dueAt.toISOString()}`;
-        const exists = await tx.notification.findUnique({ where: { dedupeKey }, select: { id: true } });
-        if (exists) return;
+        if (await tx.notification.findUnique({ where: { dedupeKey }, select: { id: true } })) return;
         await tx.notification.create({ data: { userId: task.assigneeId, title: "Échéance de tâche dépassée", body: task.title, href: `/taches?id=${task.id}`, dedupeKey } });
         taskReminders++;
       });
     }
   }
-  const overdueCandidates = await prisma.taxAssessment.findMany({
-    where: { ninja: { status: "ACTIVE" }, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID"] }, originalAmount: { gt: 0 } },
-    select: { id: true, ninjaId: true }
-  });
-  let swept = 0;
-  for (const candidate of overdueCandidates) {
-    const updated = await prisma.$transaction(async (tx) => {
-      const ninja = await lockNinja(tx, candidate.ninjaId);
-      if (ninja?.status !== "ACTIVE") return false;
-      const assessment = await tx.taxAssessment.findFirst({
-        where: { id: candidate.id, ninjaId: candidate.ninjaId, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID"] } },
-        include: { penalties: true, adjustments: true, exemptions: true, allocations: { include: { payment: { select: { status: true } } } } }
-      });
-      if (!assessment) return false;
-      const paid = assessment.allocations.filter((entry) => entry.payment.status === "VALIDATED").reduce((sum, entry) => sum + entry.amount, 0n);
-      const remaining = assessment.originalAmount
-        + assessment.penalties.reduce((sum, entry) => sum + entry.amount, 0n)
-        + assessment.adjustments.reduce((sum, entry) => sum + entry.amount, 0n)
-        - assessment.exemptions.reduce((sum, entry) => sum + entry.amount, 0n)
-        - paid;
-      if (remaining <= 0n) {
-        await tx.taxAssessment.update({ where: { id: assessment.id }, data: { status: "PAID", version: { increment: 1 } } });
-        return false;
-      }
-      const result = await tx.taxAssessment.updateMany({ where: { id: candidate.id, ninjaId: candidate.ninjaId, dueAt: { lt: new Date() }, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID"] }, originalAmount: { gt: 0 } }, data: { status: "OVERDUE", version: { increment: 1 } } });
-      return result.count === 1;
-    });
-    if (updated) swept++;
-  }
-  const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } }, include: { taxYear: { select: { rpYear: true } } } });
+  const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } }, select: { id: true, ninjaId: true } });
   let sent = 0;
   for (const assessment of assessments) {
     const notified = await prisma.$transaction(async (tx) => {
       const ninja = await lockNinja(tx, assessment.ninjaId);
       if (ninja?.status !== "ACTIVE" || !ninja.userId) return false;
-      const current = await tx.taxAssessment.findFirst({
-        where: { id: assessment.id, ninjaId: assessment.ninjaId, status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } },
-        include: { taxYear: { select: { rpYear: true } } }
-      });
+      const current = await tx.taxAssessment.findFirst({ where: { id: assessment.id, ninjaId: assessment.ninjaId, status: { in: ["DUE", "OVERDUE", "PARTIALLY_PAID"] } }, include: { taxYear: { select: { rpYear: true } } } });
       if (!current) return false;
       const title = `Taxe année RP ${current.taxYear.rpYear} ${assessmentStatusLabels[current.status] ?? "à traiter"}`;
-      const existing = await tx.notification.findFirst({ where: { userId: ninja.userId, title, status: "UNREAD" } });
+      // At most one reminder per assessment/recipient/RP week, even after reading it.
+      const dedupeKey = `tax-due:${current.id}:${ninja.userId}:${service.currentRpYear()}`;
+      const existing = await tx.notification.findFirst({ where: { OR: [{ dedupeKey }, { userId: ninja.userId, title, status: "UNREAD" }] } });
       if (existing) return false;
-      await tx.notification.create({ data: { userId: ninja.userId, title, body: `Le service économique de Suna vous rappelle votre taxe de l’année RP ${current.taxYear.rpYear} (échéance ${current.dueAt.toISOString().slice(0, 10)}).` } });
+      await tx.notification.create({ data: { userId: ninja.userId, title, dedupeKey, body: `Le service économique de Suna vous rappelle votre taxe de l’année RP ${current.taxYear.rpYear} (échéance ${current.dueAt.toISOString().slice(0, 10)}).` } });
       return true;
     });
     if (notified) sent++;
   }
-  return { command: "reminders:send", eligible: assessments.length, sent, statusSweep: swept, taskReminders, reportReminders };
+  return { command: "reminders:send", eligible: assessments.length, sent, taskReminders, reportReminders };
 }
 
 async function checkInventory() {
@@ -285,7 +183,6 @@ async function checkInventory() {
   const alerts: Array<{ resource: string; stock: number; level: string }> = [];
   for (const resource of resources) {
     const stock = stocks.get(resource.id) ?? 0;
-    // Single threshold rule shared with the register (a never-counted resource never alerts).
     const state = deriveStockState({ inventoryStatus: resource.inventoryStatus, quantity: stock, minimumStock: Number(resource.minimumStock), criticalStock: Number(resource.criticalStock) });
     const level = state === "CRITICAL" || state === "OUT_OF_STOCK" ? "critical" : state === "LOW" ? "low" : null;
     if (!level) continue;
@@ -301,7 +198,6 @@ async function checkInventory() {
 async function refreshStats() {
   const service = await rpService(), rpYear = service.currentRpYear();
   const assessments = await prisma.taxAssessment.findMany({ where: { ninja: { status: "ACTIVE" }, taxYear: { rpYear }, status: { notIn: ["EXEMPT", "WAIVED", "SUSPENDED", "CANCELLED", "DRAFT"] } }, include: { penalties: true, adjustments: true, exemptions: true, allocations: { include: { payment: { select: { status: true } } } } } });
-  // Expected stays gross; taxes covered by exemption credit count as settled alongside ryō payments.
   let expected = 0n, collected = 0n, exempted = 0n;
   for (const assessment of assessments) {
     expected += assessment.originalAmount + assessment.penalties.reduce((sum, item) => sum + item.amount, 0n) + assessment.adjustments.reduce((sum, item) => sum + item.amount, 0n);
@@ -317,16 +213,13 @@ async function refreshStats() {
   return { command: "stats:refresh", ...value };
 }
 
-/** Ledger truth (SUM of movements) versus the cached Resource.currentQuantity. A mismatch is
- *  reported to managers and audited once a day — never corrected silently (see docs/INVENTORY.md). */
+/** Ledger truth versus cached stock. Never silently correct inventory. */
 async function reconcileInventory() {
   const mismatches = await prisma.$queryRaw<Array<{ id: string; code: string; name: string; ledger: number; cache: number }>>`
     SELECT r."id", r."code", r."name", COALESCE(SUM(m."quantity"), 0)::float8 AS "ledger", r."currentQuantity"::float8 AS "cache"
-    FROM "Resource" r
-    LEFT JOIN "InventoryMovement" m ON m."resourceId" = r."id"
+    FROM "Resource" r LEFT JOIN "InventoryMovement" m ON m."resourceId" = r."id"
     GROUP BY r."id", r."code", r."name", r."currentQuantity"
-    HAVING COALESCE(SUM(m."quantity"), 0) <> r."currentQuantity"
-    ORDER BY r."name"
+    HAVING COALESCE(SUM(m."quantity"), 0) <> r."currentQuantity" ORDER BY r."name"
   `;
   const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
   const managers = mismatches.length ? await prisma.user.findMany({ where: { revokedAt: null, roles: { some: { role: { code: { in: ["SUPER_ADMIN", "KOEKI_MANAGER"] } } } } }, select: { id: true } }) : [];
@@ -341,15 +234,30 @@ async function reconcileInventory() {
   return { command: "inventory:reconcile", mismatches: mismatches.map((row) => ({ code: row.code, ledger: row.ledger, cache: row.cache })), alerted };
 }
 
-const commands: Record<string, () => Promise<unknown>> = { "taxes:generate": generateTaxes, "penalties:apply": applyPenalties, "reminders:send": sendReminders, "inventory:check": checkInventory, "inventory:reconcile": reconcileInventory, "stats:refresh": refreshStats, "ranking:close": () => closeCompletedRankings(prisma) };
+const commands: Record<string, () => Promise<unknown>> = {
+  "taxes:generate": generateTaxes,
+  "taxes:statuses": () => refreshTaxStatuses(prisma),
+  "penalties:apply": applyPenalties,
+  "reminders:send": sendReminders,
+  "inventory:check": checkInventory,
+  "inventory:reconcile": reconcileInventory,
+  "stats:refresh": refreshStats,
+  "ranking:close": () => closeCompletedRankings(prisma)
+};
 async function main() {
   const command = process.argv[2] ?? "all";
-  const selected = command === "all" ? Object.values(commands) : [commands[command]];
-  if (selected.some((item) => !item)) throw new Error(`Unknown worker command: ${command}`);
-  // Each job runs independently so one failure never cancels the rest of the weekly batch.
-  for (const run of selected) {
+  if (command === "taxes:recover") { console.log(JSON.stringify(await recoverTaxes())); return; }
+  if (process.argv.length > 3) throw new Error("Unexpected worker arguments");
+  const selected = command === "all" ? Object.entries(commands) : [[command, commands[command]] as const];
+  if (selected.some(([, run]) => !run)) throw new Error(`Unknown worker command: ${command}`);
+  const startedAt = new Date().toISOString(), failures: string[] = [];
+  console.log(JSON.stringify({ command: "worker:started", requested: command, startedAt }));
+  for (const [name, run] of selected) {
     try { console.log(JSON.stringify(await run!())); }
-    catch (error) { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; }
+    catch (error) { failures.push(name); console.error(JSON.stringify({ command: name, failed: true, message: error instanceof Error ? error.message : String(error) })); process.exitCode = 1; }
   }
+  const value = { startedAt, finishedAt: new Date().toISOString(), requested: command, success: failures.length === 0, failures };
+  if (command === "all") await prisma.appSetting.upsert({ where: { key: "workerHealth" }, create: { key: "workerHealth", value }, update: { value, version: { increment: 1 } } });
+  console.log(JSON.stringify({ command: "worker:finished", ...value }));
 }
 main().catch((error) => { console.error(error instanceof Error ? error.message : error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

@@ -3,7 +3,7 @@
   "build": { "builder": "DOCKERFILE" },
   "deploy": {
     "startCommand": "pnpm worker all",
-    "cronSchedule": "5 23 * * 0",
+    "cronSchedule": "5 * * * *",
     "restartPolicyType": "NEVER"
   }
 }

@@ -15,7 +15,9 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
-RUN pnpm db:generate && pnpm build
+# TypeScript checking alone did not catch the Oct 4 ESM worker import crash.
+# Run the no-database runtime smoke in the exact image used by Railway.
+RUN pnpm db:generate && pnpm build && pnpm --filter @koeki/worker test
 
 FROM base AS runner
 ENV NODE_ENV=production
