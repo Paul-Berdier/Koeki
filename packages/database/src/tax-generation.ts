@@ -23,13 +23,12 @@ export function gradeForTaxWeek(profile: TaxProfile, week: TaxWeek, now: Date): 
   const initial = matches[0];
   if (!initial) return null;
   if (initial.grade.code !== "UNKNOWN") return initial.grade;
-  // Preserve grade-resolution semantics: the first real grade within this week.
   return history.find((h) => h.grade.code !== "UNKNOWN" && h.effectiveFrom.getTime() >= start && h.effectiveFrom.getTime() <= end)?.grade ?? null;
 }
 
 export interface TaxGenerationOptions { now?: Date; fromRpYear?: number; dryRun?: boolean; expectedRpYear?: number }
 export interface TaxGenerationResult {
-  rpYear: number; fromRpYear: number; dryRun: boolean; created: number; repaired: number;
+  rpYear: number; fromRpYear: number; dryRun: boolean; created: number; repaired: number; repairsPlanned: number;
   years: Array<{ rpYear: number; missing: number; created: number; amount: string; held: number }>;
   held: Array<{ rpYear: number; ninjaId: string; reason: string }>;
 }
@@ -70,10 +69,9 @@ export async function generateTaxWeeks(db: PrismaClient, options: TaxGenerationO
     const earliest = new Date(Math.min(service.startOfRpYear(from).getTime(), ...oldWeeks.map((w) => w.startsAt.getTime())));
     const events = await tx.auditLog.findMany({ where: { entityType: "NinjaProfile", createdAt: { gte: earliest, lte: now } }, select: { entityId: true, action: true, createdAt: true, previousValues: true, newValues: true } });
     const changes = events.filter(hasLifecycleChange);
-    const result: TaxGenerationResult = { rpYear: current, fromRpYear: from, dryRun: options.dryRun === true, created: 0, repaired: 0, years: [], held: [] };
+    const result: TaxGenerationResult = { rpYear: current, fromRpYear: from, dryRun: options.dryRun === true, created: 0, repaired: 0, repairsPlanned: 0, years: [], held: [] };
     for (let year = from; year <= current; year++) {
       const stored = oldWeeks.find((w) => w.rpYear === year);
-      // Do not turn an old imported calendar row into a billing run on first use.
       if (options.fromRpYear === undefined && typeof last === "number" && year < last && !stored?.generatedAt) continue;
       const week: TaxWeek = stored ?? { rpYear: year, startsAt: service.startOfRpYear(year), endsAt: service.endOfRpYear(year), dueAt: service.dueAt(year) };
       const policy = policies.find((p) => p.effectiveFromRpYear <= year && (p.effectiveToRpYear === null || p.effectiveToRpYear > year));
@@ -94,6 +92,21 @@ export async function generateTaxWeeks(db: PrismaClient, options: TaxGenerationO
         if (!rate) throw new Error(`Missing tax rate for grade ${grade.code} in RP ${year}`);
         planned.push({ ninjaId: profile.id, grade, amount: rate.amount });
       }
+      // Preview the same narrowly scoped UNKNOWN repairs that an apply performs.
+      const placeholders = year === current && stored ? await tx.taxAssessment.findMany({
+        where: { taxYearId: stored.id, gradeCodeSnapshot: "UNKNOWN", originalAmount: 0n,
+          status: { in: ["UPCOMING", "DUE", "OVERDUE", "PARTIALLY_PAID", "PAID"] },
+          ninja: { status: "ACTIVE", diedAt: null, currentGrade: { code: { not: "UNKNOWN" } } },
+          allocations: { none: {} }, exemptions: { none: {} }, penalties: { none: {} }, adjustments: { none: {} } },
+        include: { ninja: { include: { currentGrade: true } } }
+      }) : [];
+      const repairs = placeholders.map((assessment) => {
+        const grade = assessment.ninja.currentGrade;
+        const rate = policy.rates.find((r) => r.gradeId === grade.id);
+        if (!rate) throw new Error(`Missing tax rate for resolved grade ${grade.code}`);
+        return { id: assessment.id, grade, amount: rate.amount };
+      });
+      result.repairsPlanned += repairs.length;
       let created = 0;
       if (!options.dryRun) {
         const taxYear = await tx.taxYear.upsert({ where: { rpYear: year }, create: { rpYear: year, taxPolicyId: policy.id, startsAt: week.startsAt, endsAt: week.endsAt, dueAt: week.dueAt, generatedAt: now }, update: { generatedAt: stored?.generatedAt ?? now } });
@@ -102,17 +115,10 @@ export async function generateTaxWeeks(db: PrismaClient, options: TaxGenerationO
           created = inserted.count;
           if (created > 0) await tx.auditLog.create({ data: { action: "TAX_WEEK_RECOVERED", entityType: "TaxYear", entityId: taxYear.id, requestId: randomUUID(), reason: `RP ${year}: ${created} missing invoices restored without modifying settlements`, newValues: { rpYear: year, created, taxPolicyId: policy.id, ninjaIds: planned.map((p) => p.ninjaId) } } });
         }
-        // Retain the existing, narrowly scoped current-week UNKNOWN placeholder repair.
-        if (year === current) {
-          const placeholders = await tx.taxAssessment.findMany({ where: { taxYearId: taxYear.id, gradeCodeSnapshot: "UNKNOWN", originalAmount: 0n, status: { in: ["UPCOMING", "DUE", "OVERDUE", "PARTIALLY_PAID", "PAID"] }, ninja: { status: "ACTIVE", currentGrade: { code: { not: "UNKNOWN" } } }, allocations: { none: {} }, exemptions: { none: {} }, penalties: { none: {} }, adjustments: { none: {} } }, include: { ninja: { include: { currentGrade: true } } } });
-          for (const assessment of placeholders) {
-            const grade = assessment.ninja.currentGrade;
-            const rate = policy.rates.find((r) => r.gradeId === grade.id);
-            if (!rate) throw new Error(`Missing tax rate for resolved grade ${grade.code}`);
-            await tx.taxAssessment.update({ where: { id: assessment.id }, data: { taxPolicyId: policy.id, gradeCodeSnapshot: grade.code, gradeLabelSnapshot: grade.label, originalAmount: rate.amount, dueAt: week.dueAt, status: rate.amount === 0n ? "PAID" : week.dueAt <= now ? "OVERDUE" : "UPCOMING", version: { increment: 1 } } });
-            result.repaired++;
-            await tx.auditLog.create({ data: { action: "TAX_GRADE_RESOLVED", entityType: "TaxAssessment", entityId: assessment.id, requestId: randomUUID(), previousValues: { grade: "UNKNOWN", amount: "0" }, newValues: { grade: grade.code, amount: String(rate.amount) } } });
-          }
+        for (const repair of repairs) {
+          await tx.taxAssessment.update({ where: { id: repair.id }, data: { taxPolicyId: policy.id, gradeCodeSnapshot: repair.grade.code, gradeLabelSnapshot: repair.grade.label, originalAmount: repair.amount, dueAt: week.dueAt, status: repair.amount === 0n ? "PAID" : week.dueAt <= now ? "OVERDUE" : "UPCOMING", version: { increment: 1 } } });
+          result.repaired++;
+          await tx.auditLog.create({ data: { action: "TAX_GRADE_RESOLVED", entityType: "TaxAssessment", entityId: repair.id, requestId: randomUUID(), previousValues: { grade: "UNKNOWN", amount: "0" }, newValues: { grade: repair.grade.code, amount: String(repair.amount) } } });
         }
       }
       result.created += created;
