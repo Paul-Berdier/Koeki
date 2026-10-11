@@ -66,7 +66,7 @@ async function autoApplyExemptions(rpYear: number) {
         if (lockedPolicy.weeklyTaxCoverageBps <= 0) return false;
         const assessment = await tx.taxAssessment.findFirst({
           where: { id: candidate.id, ninjaId: candidate.ninjaId, status: { in: ["UPCOMING", "DUE", "PARTIALLY_PAID", "OVERDUE"] } },
-          include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } } } }
+          include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } } }
         });
         if (!assessment) return false;
         const first = await tx.exemptionLedgerEntry.findUnique({ where: { sourceType_sourceId: { sourceType: "TaxAssessment", sourceId: assessment.id } } });
