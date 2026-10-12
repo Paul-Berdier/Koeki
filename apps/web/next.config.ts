@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "@prisma/adapter-pg"],
   poweredByHeader: false,
   devIndicators: false,
+  compress: false,
   experimental: { optimizePackageImports: ["lucide-react"] },
   async headers() {
     return [
