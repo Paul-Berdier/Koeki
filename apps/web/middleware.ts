@@ -23,6 +23,23 @@ function createContentSecurityPolicy(nonce: string, isAuthPage: boolean) {
 }
 
 export function middleware(request: NextRequest) {
+  // Next 15.5 internally fetches an action's redirect target as RSC, forwarding
+  // the x-action-redirect response header to that synthetic GET. In production
+  // the combined Flight response can remain pending after the write commits.
+  // Decline ONLY this optional inline render. Next keeps its original redirect
+  // and performs a fresh document GET (its built-in non-Flight fallback).
+  // This header is NOT an authorization signal: a spoofed GET only receives an
+  // empty, uncacheable response. POST actions and actual page GETs still execute
+  // all existing session, CSRF and permission checks. Never replay a mutation.
+  if (process.env.NODE_ENV === "production" && request.method === "GET"
+    && request.headers.get("rsc") === "1" && request.headers.has("x-action-redirect")) {
+    return new NextResponse(null, { status: 204, headers: {
+      "Cache-Control": "private, no-store, max-age=0",
+      "Vary": "RSC, X-Action-Redirect",
+      "X-Content-Type-Options": "nosniff"
+    } });
+  }
+
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const isInvitation = request.nextUrl.pathname.startsWith("/invite/");
   const contentSecurityPolicy = createContentSecurityPolicy(nonce, isInvitation || request.nextUrl.pathname === "/connexion");
