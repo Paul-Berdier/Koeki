@@ -6,6 +6,7 @@ beforeEach(() => { vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("DEMO_MODE",
 afterEach(() => vi.unstubAllEnvs());
 const request = (headers: Record<string, string> = {}, method = "GET", path = "/ninjas/test") =>
   new NextRequest(`https://koeki.example.test${path}`, { method, headers });
+const ordinaryHeaders: Record<string, string>[] = [{}, { rsc: "1" }, { "x-action-redirect": "/ninjas/test;push" }];
 
 describe("post-action document navigation fallback", () => {
   it("declines only the optional synthetic Flight redirect GET", async () => {
@@ -14,7 +15,7 @@ describe("post-action document navigation fallback", () => {
     expect(await response.text()).toBe("");
     expect(response.headers.get("cache-control")).toContain("private, no-store");
     expect(response.headers.get("vary")).toBe("RSC, X-Action-Redirect");
-    expect(response.headers.get("content-type")).not.toContain("text/x-component");
+    expect(response.headers.get("content-type") ?? "").not.toContain("text/x-component");
     expect(response.headers.get("location")).toBeNull();
   });
   it("never intercepts a real POST mutation, even with forged redirect headers", () => {
@@ -22,7 +23,7 @@ describe("post-action document navigation fallback", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(response.headers.get("content-security-policy")).toContain("'strict-dynamic'");
   });
-  it.each([{}, { rsc: "1" }, { "x-action-redirect": "/ninjas/test;push" }])("preserves ordinary page rendering and strict CSP for %o", (headers) => {
+  it.each(ordinaryHeaders)("preserves ordinary page rendering and strict CSP for %o", (headers) => {
     const response = middleware(request(headers));
     expect(response.headers.get("x-middleware-next")).toBe("1");
     const csp = response.headers.get("content-security-policy");
