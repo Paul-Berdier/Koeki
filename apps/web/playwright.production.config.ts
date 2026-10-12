@@ -10,8 +10,10 @@ process.env.DEMO_MODE = "false";
 
 export default defineConfig({
   testDir: "./e2e-production", timeout: 45_000, expect: { timeout: 10_000 }, workers: 1,
-  retries: 0, reporter: "list", outputDir: "./test-results/production",
-  use: { baseURL: "http://localhost:3101", javaScriptEnabled: true, serviceWorkers: "block", trace: "retain-on-failure", screenshot: "only-on-failure" },
+  retries: 0, repeatEach: 3,
+  reporter: [["list"], ["json", { outputFile: "./test-results/production/results.json" }]],
+  outputDir: "./test-results/production",
+  use: { baseURL: "http://localhost:3101", javaScriptEnabled: true, serviceWorkers: "block", trace: "retain-on-failure", screenshot: "on" },
   webServer: {
     command: "node node_modules/next/dist/bin/next start --port 3101",
     url: "http://localhost:3101/connexion", reuseExistingServer: false, timeout: 60_000,
