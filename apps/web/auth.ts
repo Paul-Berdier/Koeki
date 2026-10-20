@@ -40,9 +40,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const existing = linked?.user ?? null;
       if (existing && (!ownsDiscordIdentity(existing, account.providerAccountId) || user.id !== existing.id)) return refuse("AccountIdentityMismatch");
       if (existing?.revokedAt) return refuse("AccountRevoked");
-      if (existing?.roles.length) return true;
-      if (!account.access_token) return refuse("DiscordUnavailable");
       const token = await readInviteToken();
+      if (existing?.roles.length) {
+        if (token) {
+          // A known Discord account may otherwise skip invitation handling and
+          // silently open its old character after a different one was confirmed.
+          const check = await checkInvitation(token);
+          if (!check.ok) return refuse(check.error);
+          const invitation = await prisma.invitation.findUnique({ where: { id: check.id }, select: { ninjaProfileId: true, ninjaProfile: { select: { userId: true } } } });
+          if (!invitation) return refuse("InvitationUnavailable");
+          if (invitation.ninjaProfileId && invitation.ninjaProfile?.userId !== existing.id) return refuse("AccountIdentityMismatch");
+        }
+        return true;
+      }
+      if (!account.access_token) return refuse("DiscordUnavailable");
       if (!token) return refuse("InvitationRequired");
       const check = await checkInvitation(token);
       if (!check.ok) return refuse(check.error);
