@@ -2,7 +2,7 @@ export const ROLES = ["SUPER_ADMIN", "KOEKI_MANAGER", "ECONOMIC_AGENT", "NINJA",
 export type Role = typeof ROLES[number];
 export type Permission =
   | "users:manage" | "settings:manage" | "ninjas:write" | "taxes:write" | "payments:write"
-  | "users:read" | "users:revoke" | "users:reactivate" | "users:roles" | "users:leadership" | "users:identity"
+  | "users:read" | "users:revoke" | "users:reactivate" | "users:roles" | "users:leadership"
   | "team:read" | "team:assign" | "team:notes" | "tasks:read" | "tasks:manage"
   | "ranking:read" | "ranking:manage" | "business:read" | "statistics:read"
   // Inventory: read the register, record entries/exits, run physical counts, adjust/correct
@@ -11,7 +11,7 @@ export type Permission =
   | "inventory:read" | "inventory:write" | "inventory:count" | "inventory:adjust" | "inventory:catalog" | "inventory:export"
   | "reports:read" | "reports:read-all" | "reports:write" | "reports:review" | "audit:read" | "self:read";
 const INVENTORY_ALL: Permission[] = ["inventory:read", "inventory:write", "inventory:count", "inventory:adjust", "inventory:catalog", "inventory:export"];
-const LEADERSHIP: Permission[] = ["users:read", "users:revoke", "users:reactivate", "users:roles", "users:identity", "team:read", "team:assign", "team:notes", "tasks:read", "tasks:manage", "ranking:read", "ranking:manage", "business:read", "statistics:read"];
+const LEADERSHIP: Permission[] = ["users:read", "users:revoke", "users:reactivate", "users:roles", "team:read", "team:assign", "team:notes", "tasks:read", "tasks:manage", "ranking:read", "ranking:manage", "business:read", "statistics:read"];
 const matrix: Record<Role, ReadonlySet<Permission>> = {
   SUPER_ADMIN: new Set<Permission>(["users:manage","users:leadership",...LEADERSHIP,"settings:manage","ninjas:write","taxes:write","payments:write",...INVENTORY_ALL,"reports:read","reports:read-all","reports:write","reports:review","audit:read","self:read"]),
   KOEKI_MANAGER: new Set<Permission>([...LEADERSHIP,"settings:manage","ninjas:write","taxes:write","payments:write",...INVENTORY_ALL,"reports:read","reports:read-all","reports:write","reports:review","audit:read","self:read"]),
