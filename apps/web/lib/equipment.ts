@@ -31,3 +31,7 @@ export const DEMO_EQUIPMENT_ROWS: EquipmentRow[] = [
   { id: "demo-eq-5", code: "NIN-000094", name: "Mina Sabaku", grade: "Jōnin", slots: loadout(["T3", "Armure"], ["T4", "Armure"], ["T3", "Jutsu"], null, ["T3", "Ténacité"], ["T2", "Armure"], null) },
   { id: "demo-eq-6", code: "NIN-000109", name: "Toshiro Makaze", grade: "Jōnin", slots: loadout(["T3", "Armure"], ["T3", "Jutsu"], ["T3", "Ténacité"], ["T3", "Jutsu"], ["T3", "Armure"], ["T3", "Jutsu"], ["T3", "Armure"]) }
 ];
+
+export type EquipmentSaveResult =
+  | { ok: true; ninjaId: string; slots: EquipmentRow["slots"]; message: string }
+  | { ok: false; error: string };

@@ -20,6 +20,11 @@ test.afterAll(async () => { await prisma.$disconnect(); });
 test.beforeEach(async ({ context, page }) => {
   errors.length = 0;
   await context.addCookies([{ name: "__Secure-koeki.session-token", value: token, domain: "localhost", path: "/", httpOnly: true, secure: true, sameSite: "Lax" }]);
+  await page.addInitScript(() => {
+    const state = window as typeof window & { __cspViolations?: string[] };
+    state.__cspViolations = [];
+    window.addEventListener("securitypolicyviolation", event => state.__cspViolations!.push(`${event.effectiveDirective}: ${event.blockedURI}`));
+  });
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
 });
@@ -27,6 +32,7 @@ test.afterEach(async ({ page }, info) => {
   console.log("dossier-browser-errors", JSON.stringify(errors));
   await info.attach("dossier-browser", { body: JSON.stringify({ errors, url: page.url() }), contentType: "application/json" });
   expect(errors).toEqual([]);
+  expect(await page.evaluate(() => (window as typeof window & { __cspViolations?: string[] }).__cspViolations ?? [])).toEqual([]);
 });
 
 test("editing a visited dossier twice shows fresh data and completes the redirect", async ({ page }) => {
@@ -47,4 +53,22 @@ test("editing a visited dossier twice shows fresh data and completes the redirec
     await expect(page.locator("main")).toContainText(alias);
     expect((await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: ninjaId } })).version).toBe(versionBefore + 1);
   }
+});
+
+test("invalid dossier submission returns an error and a corrected submission can succeed", async ({ page }) => {
+  const before = await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: ninjaId } });
+  await page.goto(`/ninjas/${ninjaId}/modifier`);
+  await page.locator('select[name="status"]').selectOption("DECEASED");
+  await page.locator('input[name="diedAt"]').fill("2099-01-01");
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/ninjas/${ninjaId}/modifier$`));
+  await expect(page.locator("main").getByRole("alert")).toContainText("futur");
+  expect((await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: ninjaId } })).version).toBe(before.version);
+  await expect(page.getByRole("button", { name: "Enregistrer", exact: true })).toBeEnabled();
+  await page.locator('select[name="status"]').selectOption("ACTIVE");
+  await page.getByRole("textbox", { name: "Pseudonyme", exact: true }).fill("Après correction");
+  await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/ninjas/${ninjaId}$`));
+  await expect(page.locator("main")).toContainText("Après correction");
+  expect((await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: ninjaId } })).version).toBe(before.version + 1);
 });

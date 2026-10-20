@@ -46,6 +46,7 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // Keep private navigation demand-driven: prefetch bursts can overlap form mutations.
   const modules = workspaceNavigation(allowed);
   const match = modules
     .flatMap((module) => module.routes.map((route) => ({ module, route })))
@@ -63,7 +64,7 @@ export function AppShell({
   function contents(mobile: boolean) {
     return (
       <>
-        <Link
+        <Link prefetch={false}
           href="/"
           className="brand-row"
           onClick={() => setOpen(false)}
@@ -94,7 +95,7 @@ export function AppShell({
           {modules.map((module) => {
             const Icon = icons[module.id];
             return (
-              <Link
+              <Link prefetch={false}
                 key={module.id}
                 href={module.routes[0]!.href}
                 className={active?.id === module.id ? "active" : undefined}
@@ -121,12 +122,12 @@ export function AppShell({
         </div>
         <div className="sidebar-footer">
           {allowed.includes("/notifications") && (
-            <Link href="/notifications" onClick={() => setOpen(false)}>
+            <Link prefetch={false} href="/notifications" onClick={() => setOpen(false)}>
               <Bell size={18} aria-hidden="true" />
               <span>Notifications</span>
             </Link>
           )}
-          <Link
+          <Link prefetch={false}
             href="/profil"
             className="sidebar-identity"
             onClick={() => setOpen(false)}
@@ -199,7 +200,7 @@ export function AppShell({
             aria-label={`Rubriques ${active.label}`}
           >
             {active.routes.map((route) => (
-              <Link
+              <Link prefetch={false}
                 href={route.href}
                 key={route.href}
                 aria-current={

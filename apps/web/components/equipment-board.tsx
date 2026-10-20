@@ -1,10 +1,11 @@
 "use client";
 
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { PageHeader } from "@koeki/ui";
 import Link from "next/link";
 import { CheckCircle2, Pencil, Search, SearchX, ShieldAlert } from "lucide-react";
 import { EquipmentEditor } from "@/components/equipment-editor";
-import { EQUIPMENT_SLOTS, type EquipmentRow } from "@/lib/equipment";
+import { EQUIPMENT_SLOTS, type EquipmentSaveResult, type EquipmentRow } from "@/lib/equipment";
 
 type Filter = "all" | "incomplete" | "empty" | "complete";
 
@@ -31,22 +32,25 @@ function SlotSummary({ row }: { row: EquipmentRow }) {
 export function EquipmentBoard({ rows, canEdit, action }: {
   rows: EquipmentRow[];
   canEdit: boolean;
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<EquipmentSaveResult>;
 }) {
+  const [currentRows, setCurrentRows] = useState(rows);
+  const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => { setCurrentRows(rows); setMessage(null); }, [rows]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
 
   const counts = useMemo(() => {
-    const complete = rows.filter((row) => equippedCount(row) === EQUIPMENT_SLOTS.length).length;
-    const empty = rows.filter((row) => equippedCount(row) === 0).length;
-    return { all: rows.length, incomplete: rows.length - complete, empty, complete };
-  }, [rows]);
+    const complete = currentRows.filter((row) => equippedCount(row) === EQUIPMENT_SLOTS.length).length;
+    const empty = currentRows.filter((row) => equippedCount(row) === 0).length;
+    return { all: currentRows.length, incomplete: currentRows.length - complete, empty, complete };
+  }, [currentRows]);
 
   const visibleRows = useMemo(() => {
     const needle = normalize(deferredQuery.trim());
-    return rows.filter((row) => {
+    return currentRows.filter((row) => {
       const count = equippedCount(row);
       const matchesFilter = filter === "all"
         || (filter === "incomplete" && count < EQUIPMENT_SLOTS.length)
@@ -54,7 +58,7 @@ export function EquipmentBoard({ rows, canEdit, action }: {
         || (filter === "complete" && count === EQUIPMENT_SLOTS.length);
       return matchesFilter && (!needle || normalize(`${row.name} ${row.code} ${row.grade}`).includes(needle));
     });
-  }, [deferredQuery, filter, rows]);
+  }, [deferredQuery, filter, currentRows]);
 
   const filters: Array<{ value: Filter; label: string }> = [
     { value: "all", label: "Tous" },
@@ -63,7 +67,12 @@ export function EquipmentBoard({ rows, canEdit, action }: {
     { value: "complete", label: "Complets" }
   ];
 
-  return <section className="panel equipment-panel">
+  return <>
+    <PageHeader eyebrow="Forces de Suna" title="Équipement des Jōnin"
+      description="Consultez les panoplies, repérez les slots manquants et mettez un ninja à jour sans quitter la liste."
+      metrics={[{ label: "Ninjas suivis", value: currentRows.length }, { label: "Panoplies complètes", value: counts.complete }, { label: "À renseigner", value: counts.empty }]} />
+    {message && <p className="notice" role="status">{message}</p>}
+    <section className="panel equipment-panel">
     <div className="equipment-toolbar">
       <div className="equipment-toolbar-heading">
         <div>
@@ -95,7 +104,7 @@ export function EquipmentBoard({ rows, canEdit, action }: {
         const isEditing = editingId === row.id;
         return <article className={`equipment-row ${empty ? "needs-attention" : ""} ${isEditing ? "is-editing" : ""}`} key={row.id}>
           <div className="equipment-row-summary">
-            <Link className="equipment-person ninja-record-link" href={`/ninjas/${row.id}`}>
+            <Link prefetch={false} className="equipment-person ninja-record-link" href={`/ninjas/${row.id}`}>
               <strong>{row.name}</strong>
               <span>{row.grade} · {row.code}</span>
             </Link>
@@ -108,9 +117,13 @@ export function EquipmentBoard({ rows, canEdit, action }: {
               <Pencil size={15} aria-hidden="true" />{isEditing ? "Fermer" : "Modifier"}
             </button>}
           </div>
-          {isEditing && <div className="equipment-inline-editor"><EquipmentEditor key={row.id} ninja={row} action={action} onCancel={() => setEditingId(null)} /></div>}
+          {isEditing && <div className="equipment-inline-editor"><EquipmentEditor key={row.id} ninja={row} action={action} onSaved={(result) => {
+            setCurrentRows((previous) => previous.map((item) => item.id === result.ninjaId ? { ...item, slots: result.slots } : item));
+            setMessage(result.message);
+            setEditingId(null);
+          }} onCancel={() => setEditingId(null)} /></div>}
         </article>;
       })}
     </div> : <div className="equipment-no-result"><SearchX size={25} aria-hidden="true" /><strong>Aucun ninja trouvé</strong><p>Modifiez la recherche ou choisissez un autre filtre.</p></div>}
-  </section>;
+  </section></>;
 }

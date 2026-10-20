@@ -8,13 +8,12 @@ const request = (headers: Record<string, string> = {}, method = "GET", path = "/
   new NextRequest(`https://koeki.example.test${path}`, { method, headers });
 const ordinaryHeaders: Record<string, string>[] = [{}, { rsc: "1" }, { "x-action-redirect": "/ninjas/test;push" }];
 
-describe("post-action document navigation fallback", () => {
-  it("declines only the optional synthetic Flight redirect GET", async () => {
+describe("server action navigation and strict CSP", () => {
+  it("lets Next render the synthetic Flight redirect GET", async () => {
     const response = middleware(request({ rsc: "1", "x-action-redirect": "/ninjas/test;push" }));
-    expect(response.status).toBe(204);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(await response.text()).toBe("");
-    expect(response.headers.get("cache-control")).toContain("private, no-store");
-    expect(response.headers.get("vary")).toBe("RSC, X-Action-Redirect");
+    expect(response.headers.get("content-security-policy")).toContain("'strict-dynamic'");
     expect(response.headers.get("content-type") ?? "").not.toContain("text/x-component");
     expect(response.headers.get("location")).toBeNull();
   });
@@ -33,7 +32,7 @@ describe("post-action document navigation fallback", () => {
   });
   it("does not interpret an untrusted redirect value as authority or a destination", async () => {
     const response = middleware(request({ rsc: "1", "x-action-redirect": "https://untrusted.example/" }));
-    expect(response.status).toBe(204);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(await response.text()).toBe("");
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("set-cookie")).toBeNull();

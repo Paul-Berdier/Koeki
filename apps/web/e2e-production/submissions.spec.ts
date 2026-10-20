@@ -54,15 +54,17 @@ test("saving equipment twice resolves the action and leaves navigation interacti
     if (!await editor.isVisible()) await row.getByRole("button", { name: "Modifier", exact: true }).click();
     await editor.locator('select[name="slot_haut_tier"]').selectOption(tier);
     await editor.locator('select[name="slot_haut_type"]').selectOption("Armure");
+    const auditsBefore = await prisma.auditLog.count({ where: { entityType: "NinjaEquipment", entityId: ninjaId } });
     await editor.getByRole("button", { name: "Enregistrer", exact: true }).click();
     await expect.poll(async () => {
       const record = await prisma.ninjaEquipment.findUnique({ where: { ninjaId } });
       return (record?.slots as Record<string, { tier?: string }> | undefined)?.haut?.tier;
     }, { message: "The real server action committed once to the isolated test database" }).toBe(tier);
     await expect(page.getByRole("status").filter({ hasText: "enregistrée" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Enregistrement…", exact: true })).toHaveCount(0);
+    await expect(row.locator(".equipment-editor")).toHaveCount(0);
     row = page.locator("article.equipment-row").filter({ has: page.locator(`a[href="/ninjas/${ninjaId}"]`) });
     await expect(row.locator(".equipment-slots .equipment-slot").first()).toContainText(tier);
+    expect(await prisma.auditLog.count({ where: { entityType: "NinjaEquipment", entityId: ninjaId } })).toBe(auditsBefore + 1);
   }
   await row.locator(`a[href="/ninjas/${ninjaId}"]`).click();
   await expect(page).toHaveURL(new RegExp(`/ninjas/${ninjaId}$`));
@@ -71,4 +73,32 @@ test("saving equipment twice resolves the action and leaves navigation interacti
   await expect(page.getByRole("heading", { name: "Équipement des Jōnin", exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Rechercher un ninja", exact: true }).fill("no-such-person");
   await expect(page.getByText("Aucun ninja trouvé", { exact: true })).toBeVisible();
+});
+
+test("a rejected equipment save leaves the editor usable for a corrected retry", async ({ page }) => {
+  await page.goto("/equipement");
+  const row = page.locator("article.equipment-row").filter({ has: page.locator(`a[href="/ninjas/${ninjaId}"]`) });
+  await row.getByRole("button", { name: "Modifier", exact: true }).click();
+  const editor = row.locator(".equipment-editor");
+  await editor.locator('select[name="slot_haut_tier"]').selectOption("T3");
+  await editor.locator('select[name="slot_haut_type"]').selectOption("Armure");
+  const previous = await prisma.ninjaEquipment.findUnique({ where: { ninjaId } });
+  const auditsBefore = await prisma.auditLog.count({ where: { entityType: "NinjaEquipment", entityId: ninjaId } });
+  // Simulate a concurrent administrative change after the editor was opened.
+  await prisma.ninjaProfile.update({ where: { id: ninjaId }, data: { status: "INACTIVE" } });
+  try {
+    await editor.getByRole("button", { name: "Enregistrer", exact: true }).click();
+    await expect(editor.getByRole("alert")).toContainText("inactif");
+    await expect(editor.getByRole("button", { name: "Enregistrer", exact: true })).toBeEnabled();
+    await expect(page).toHaveURL(/\/equipement$/);
+    expect((await prisma.ninjaEquipment.findUnique({ where: { ninjaId } }))?.slots).toEqual(previous?.slots);
+    expect(await prisma.auditLog.count({ where: { entityType: "NinjaEquipment", entityId: ninjaId } })).toBe(auditsBefore);
+  } finally {
+    await prisma.ninjaProfile.update({ where: { id: ninjaId }, data: { status: "ACTIVE" } });
+  }
+  await editor.getByRole("button", { name: "Enregistrer", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "enregistrée" })).toBeVisible();
+  await expect(row.locator(".equipment-editor")).toHaveCount(0);
+  await expect(row.locator(".equipment-slots .equipment-slot").first()).toContainText("T3");
+  expect(await prisma.auditLog.count({ where: { entityType: "NinjaEquipment", entityId: ninjaId } })).toBe(auditsBefore + 1);
 });

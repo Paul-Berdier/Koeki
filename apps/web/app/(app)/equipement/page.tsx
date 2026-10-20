@@ -1,17 +1,11 @@
 import { redirect } from "next/navigation";
-import { PageHeader } from "@koeki/ui";
 import { EquipmentBoard } from "@/components/equipment-board";
-import { DEMO_EQUIPMENT_ROWS, EQUIPMENT_SLOTS, type EquipmentRow } from "@/lib/equipment";
+import { DEMO_EQUIPMENT_ROWS, type EquipmentRow } from "@/lib/equipment";
 import { demoMode, hasPermission, requireSession } from "@/lib/session";
 import { prisma } from "@koeki/database";
 import { updateEquipment } from "./actions";
 
 const JONIN_PLUS = ["JONIN", "JONIN_COMMANDER", "KAGE", "SANIN"];
-
-const equippedCount = (row: EquipmentRow) => EQUIPMENT_SLOTS.filter(([slot]) => {
-  const tier = row.slots[slot]?.tier;
-  return tier && tier !== "Aucun";
-}).length;
 
 export default async function EquipmentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const session = await requireSession();
@@ -34,20 +28,7 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
     slots: (ninja.equipment?.slots ?? {}) as EquipmentRow["slots"]
   }));
 
-  const complete = rows.filter((row) => equippedCount(row) === EQUIPMENT_SLOTS.length).length;
-  const empty = rows.filter((row) => equippedCount(row) === 0).length;
-
   return <div className="page-wrap equipment-page">
-    <PageHeader
-      eyebrow="Forces de Suna"
-      title="Équipement des Jōnin"
-      description="Consultez les panoplies, repérez les slots manquants et mettez un ninja à jour sans quitter la liste."
-      metrics={[
-        { label: "Ninjas suivis", value: rows.length },
-        { label: "Panoplies complètes", value: complete },
-        { label: "À renseigner", value: empty }
-      ]}
-    />
     {demoMode && <p className="notice" role="status">Mode démonstration : les modifications sont désactivées.</p>}
     {info && <p className="notice" role="status">{info}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
