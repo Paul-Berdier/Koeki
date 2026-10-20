@@ -78,10 +78,8 @@ test("switching Discord identities in the same browser never merges accounts or 
   const anotherDevice = randomUUID();
   await prisma.session.create({ data: { userId: old.user.id, sessionToken: anotherDevice, sessionVersion: old.user.sessionVersion, expires: new Date(Date.now() + 3_600_000) } });
   const failures = await discord(context, page, next.discordId);
-  // The native POST also works when the browser already has an authorized session.
   await page.goto("/connexion");
-  // /connexion can redirect an authenticated visitor: submit a same-origin native
-  // document form to the public login endpoint without injecting application roles.
+  // A same-origin native form exercises account switching with a live old cookie.
   await page.evaluate(() => {
     const form = document.createElement("form"); form.method = "post"; form.action = "/api/connexion/discord";
     const input = document.createElement("input"); input.name = "intent"; input.value = "connexion"; form.append(input); document.body.append(form); form.submit();
@@ -115,8 +113,10 @@ test("ordinary login discards a stale invitation instead of silently granting it
   expect(failures).toEqual([]);
 });
 
-test("a targeted invitation displays the character and rejects missing or mismatched confirmation on the server", async ({ page, context }) => {
+test("a new targeted invite creates its own identity even when another account is still signed in", async ({ page, context }) => {
   const target = await sheet("PersonnageRéservé"), invite = await invitation(target.id), id = newDiscordId();
+  const previous = await account("SessionPrécédente", agentRoleId);
+  const previousToken = await browserSession(context, previous.user.id);
   const failures = await discord(context, page, id);
   await page.goto(`/invite/${invite.token}`);
   await expect(page.getByText(`Personnage réservé : ${target.firstName} ${target.lastName}`, { exact: true })).toBeVisible();
@@ -128,11 +128,20 @@ test("a targeted invitation displays the character and rejects missing or mismat
     expect(response.status()).toBe(400);
   }
   expect((await prisma.invitation.findUniqueOrThrow({ where: { id: invite.row.id } })).status).toBe("PENDING");
+  expect(await prisma.session.findUnique({ where: { sessionToken: previousToken } })).not.toBeNull();
   await page.getByRole("checkbox", { name: /Je confirme que/ }).check();
   await page.getByRole("button", { name: "Continuer avec Discord" }).click();
   await expect.poll(async () => (await prisma.invitation.findUniqueOrThrow({ where: { id: invite.row.id } })).status).toBe("USED");
   const oauth = await prisma.account.findUniqueOrThrow({ where: { provider_providerAccountId: { provider: "discord", providerAccountId: id } } });
+  expect(oauth.userId).not.toBe(previous.user.id);
   expect((await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: target.id } })).userId).toBe(oauth.userId);
+  expect((await prisma.invitation.findUniqueOrThrow({ where: { id: invite.row.id } })).consumedById).toBe(oauth.userId);
+  expect((await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: previous.profile!.id } })).userId).toBe(previous.user.id);
+  expect((await prisma.user.findUniqueOrThrow({ where: { id: previous.user.id } })).discordId).toBe(previous.discordId);
+  expect(await prisma.account.count({ where: { userId: previous.user.id } })).toBe(1);
+  expect(await prisma.session.findUnique({ where: { sessionToken: previousToken } })).toBeNull();
+  const roles = await prisma.userRole.findMany({ where: { userId: oauth.userId }, include: { role: true } });
+  expect(roles.map(({ role }) => role.code)).toEqual(["NINJA"]);
   expect(failures).toEqual([]);
 });
 
