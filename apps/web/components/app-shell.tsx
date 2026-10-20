@@ -127,7 +127,7 @@ export function AppShell({
             </Link>
           )}
           <Link
-            href="/profil"
+            href="/profil?identite=1"
             className="sidebar-identity"
             onClick={() => setOpen(false)}
           >
