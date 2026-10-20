@@ -16,7 +16,7 @@ describe.skipIf(!dbReady)("identity binding (isolated PostgreSQL)", () => {
   });
   afterAll(async () => { await prisma.$disconnect(); });
   async function user() { return prisma.user.create({ data: { name: `Identity fixture ${randomUUID()}`, roles: { create: { roleId } } } }); }
-  async function profile(firstName = "Fixture", lastName = randomUUID()) {
+  async function profile(firstName: string = "Fixture", lastName: string = randomUUID()) {
     const sequence = await prisma.$queryRaw<Array<{ value: bigint }>>`SELECT nextval('"NinjaProfile_code_seq"') AS value`;
     return prisma.ninjaProfile.create({ data: { code: `NIN-${String(sequence[0]!.value).padStart(6, "0")}`, firstName, lastName, currentGradeId: gradeId } });
   }
