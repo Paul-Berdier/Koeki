@@ -6,6 +6,7 @@ import { Prisma, prisma } from "@koeki/database";
 import { exemptionUse, planLegacySettlement } from "@koeki/domain";
 import { getRpService, loadNinjaFiscal } from "@/lib/data";
 import { awardPoints, businessOperationEvidence, grantExemption, isUniqueViolation, loadExemptionPolicy, nextPaymentReceipt, nextTransactionReceipt, refreshAssessmentStatus, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { assertActiveActor, lockAccountChanges } from "@/lib/account-service";
 import { billCurrentWeekAfterGradeResolution } from "@/lib/grade-tax";
 import { lockResources, recordMovement } from "@/lib/inventory-ledger";
 import { demoMode, getSession, hasPermission, requireWriteAccess } from "@/lib/session";
@@ -117,7 +118,7 @@ export async function createNinja(formData: FormData) {
   redirect(`/ninjas/${ninjaId}`);
 }
 
-/** Self-service: an invited agent registers their own ninja sheet, linked to their account. */
+/** Self-service creates a new sheet only; existing histories require a verified invitation or manager. */
 export async function createOwnProfile(formData: FormData) {
   if (demoMode) throw new Error("Mode démonstration : les écritures sont désactivées");
   const session = await getSession();
@@ -130,6 +131,8 @@ export async function createOwnProfile(formData: FormData) {
   let ninjaId = "";
   try {
     ninjaId = await prisma.$transaction(async (tx) => {
+      await lockAccountChanges(tx);
+      await assertActiveActor(tx, session.userId, "self:read");
       await lockNinjaRegistry(tx);
       const linked = await tx.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
       if (linked) throw new Error(`EXISTING:${linked.id}`);
@@ -139,57 +142,27 @@ export async function createOwnProfile(formData: FormData) {
       const code = await nextNinjaCode(tx);
       const ninja = await tx.ninjaProfile.create({ data: { code, firstName: parsed.data.firstName, lastName: parsed.data.lastName, alias: parsed.data.alias, clan: parsed.data.clan, currentGradeId: grade.id, userId: session.userId } });
       await tx.ninjaGradeHistory.create({ data: { ninjaId: ninja.id, gradeId: grade.id, effectiveFrom: new Date(), reason: "Auto-enregistrement à l’arrivée", changedById: session.userId } });
-      await writeAudit(tx, { actorId: session.userId, action: "NINJA_SELF_REGISTERED", entityType: "NinjaProfile", entityId: ninja.id, newValues: { code, firstName: parsed.data.firstName, lastName: parsed.data.lastName, grade: grade.code } });
+      await writeAudit(tx, { actorId: session.userId, action: "NINJA_SELF_REGISTERED", entityType: "NinjaProfile", entityId: ninja.id, newValues: { code, firstName: parsed.data.firstName, lastName: parsed.data.lastName, grade: grade.code, userId: session.userId } });
       return ninja.id;
     });
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("EXISTING:")) redirect(`/ninjas/${error.message.slice("EXISTING:".length)}`);
-    if (error instanceof Error && error.message.startsWith("VALIDATION:")) redirect(`/profil?erreur=${encodeURIComponent(`${error.message.slice("VALIDATION:".length)} — réclamez la fiche existante au lieu d’en créer une nouvelle`)}`);
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) redirect(`/profil?erreur=${encodeURIComponent(`${error.message.slice("VALIDATION:".length)} — demandez à un responsable de rattacher la fiche existante`)}`);
     if (isUniqueViolation(error)) redirect(`/profil?erreur=${encodeURIComponent("Cette fiche vient déjà d’être créée ou liée")}`);
     throw error;
   }
   redirect(`/ninjas/${ninjaId}`);
 }
 
-/** Links an existing unclaimed record to the signed-in account (imported registers have no linked users). */
+/** Keep old clients safe: knowing a name or record code does not prove ownership.
+ * Existing sheets can only be linked by a targeted invitation or the audited
+ * users:identity manager service. Never pick the first partial name match. */
 export async function claimOwnProfile(formData: FormData) {
   if (demoMode) throw new Error("Mode démonstration : les écritures sont désactivées");
   const session = await getSession();
   if (!session) throw new Error("UNAUTHENTICATED");
-  const existing = await prisma.ninjaProfile.findUnique({ where: { userId: session.userId } });
-  if (existing) redirect(`/ninjas/${existing.id}`);
-  const reference = formData.get("ninjaRef");
-  if (typeof reference !== "string" || !reference.trim()) redirect("/profil?erreur=Tapez%20le%20nom%20de%20votre%20fiche");
-  const code = /NIN-\d{6}/.exec(reference)?.[0];
-  const name = reference.split("·")[0]?.trim() ?? reference.trim();
-  const target = code
-    ? await prisma.ninjaProfile.findUnique({ where: { code } })
-    : await prisma.ninjaProfile.findFirst({ where: { status: "ACTIVE", userId: null, AND: name.split(/\s+/).map((part) => ({ OR: [{ firstName: { equals: part, mode: "insensitive" } }, { lastName: { contains: part, mode: "insensitive" } }] })) } });
-  if (!target) redirect(`/profil?erreur=${encodeURIComponent("Fiche introuvable — choisissez une proposition de la liste")}`);
-  let claimed = false;
-  try {
-    claimed = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT id FROM "NinjaProfile" WHERE id = ${target!.id} FOR UPDATE`;
-      const alreadyLinked = await tx.ninjaProfile.findUnique({ where: { userId: session.userId }, select: { id: true } });
-      if (alreadyLinked) throw new Error(`EXISTING:${alreadyLinked.id}`);
-      await tx.invitation.updateMany({
-        where: { ninjaProfileId: target!.id, status: "PENDING", expiresAt: { lte: new Date() } },
-        data: { status: "EXPIRED" }
-      });
-      const reservation = await tx.invitation.findFirst({ where: { ninjaProfileId: target!.id, status: "PENDING" }, select: { id: true } });
-      if (reservation) throw new Error("VALIDATION:Cette fiche est réservée par une invitation en cours");
-      const updated = await tx.ninjaProfile.updateMany({ where: { id: target!.id, userId: null, status: "ACTIVE" }, data: { userId: session.userId, version: { increment: 1 } } });
-      if (updated.count === 1) await writeAudit(tx, { actorId: session.userId, action: "NINJA_CLAIMED", entityType: "NinjaProfile", entityId: target!.id, reason: "Fiche existante liée au compte lors de l’arrivée" });
-      return updated.count === 1;
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("EXISTING:")) redirect(`/ninjas/${error.message.slice("EXISTING:".length)}`);
-    if (error instanceof Error && error.message.startsWith("VALIDATION:")) redirect(`/profil?erreur=${encodeURIComponent(error.message.slice("VALIDATION:".length))}`);
-    if (isUniqueViolation(error)) redirect(`/profil?erreur=${encodeURIComponent("Cette fiche ou votre compte vient déjà d’être lié")}`);
-    throw error;
-  }
-  if (!claimed) redirect("/profil?erreur=Cette%20fiche%20n%E2%80%99est%20plus%20disponible");
-  redirect(`/ninjas/${target!.id}`);
+  void formData;
+  redirect(`/profil?erreur=${encodeURIComponent("Pour protéger votre identité, un responsable doit valider le rattachement d’une fiche existante. Aucun nom ni historique n’a été modifié.")}`);
 }
 
 const updateNinjaSchema = createNinjaSchema.extend({
