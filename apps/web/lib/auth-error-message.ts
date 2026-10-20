@@ -41,6 +41,11 @@ const invitationMessages: Record<string, AuthErrorMessage> = {
     description: "Un problème technique empêche de vérifier votre compte auprès de Discord. Ce n’est pas une révocation d’accès.",
     help: "Réessayez plus tard depuis votre invitation. Ne créez pas un autre compte Discord pour contourner cette erreur.",
   },
+  AccountIdentityMismatch: {
+    title: "Identité du compte à vérifier",
+    description: "Le compte Discord utilisé ne correspond pas au personnage attendu pour cette connexion, ou son association doit être vérifiée. Aucun compte n’a été fusionné et aucune fiche n’a été déplacée.",
+    help: "Vérifiez le compte sélectionné dans Discord. Si votre compte est le bon, contactez un responsable pour contrôler le rattachement. Ne renommez pas la fiche d’un autre personnage et ne créez pas de doublon.",
+  },
   AccountRevoked: {
     title: "Accès désactivé",
     description: "L’accès de ce compte Kōeki a été désactivé.",
