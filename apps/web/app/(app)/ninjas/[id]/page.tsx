@@ -135,7 +135,7 @@ export default async function NinjaDetailPage({ params, searchParams }: { params
 
   return <div className="page-wrap">
     <PageHeader eyebrow={`Dossier ${data.code}`} title={data.name} description={`${data.grade.label}${data.alias ? ` · « ${data.alias} »` : ""} · ${data.statusLabel}`}
-      actions={<>{(canWrite || isOwner) && <Link prefetch={false} className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</Link>}<Link prefetch={false} className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
+      actions={<>{(canWrite || isOwner) && <a className="button button-ghost" href={`/ninjas/${data.id}/modifier`}><Pencil size={17} /> Modifier</a>}<Link prefetch={false} className="button button-ghost" href="/ninjas"><ArrowLeft size={17} /> Registre des ninjas</Link></>} />
     {receipt && <p className="notice" role="status">Paiement validé — reçu <code>{receipt}</code> enregistré et audité.</p>}
     {info && <p className="notice" role="status">{info}</p>}
     {error && <p className="notice error" role="alert">{error}</p>}

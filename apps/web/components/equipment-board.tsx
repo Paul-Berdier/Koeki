@@ -2,7 +2,6 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@koeki/ui";
-import Link from "next/link";
 import { CheckCircle2, Pencil, Search, SearchX, ShieldAlert } from "lucide-react";
 import { EquipmentEditor } from "@/components/equipment-editor";
 import { EQUIPMENT_SLOTS, type EquipmentSaveResult, type EquipmentRow } from "@/lib/equipment";
@@ -104,10 +103,10 @@ export function EquipmentBoard({ rows, canEdit, action }: {
         const isEditing = editingId === row.id;
         return <article className={`equipment-row ${empty ? "needs-attention" : ""} ${isEditing ? "is-editing" : ""}`} key={row.id}>
           <div className="equipment-row-summary">
-            <Link prefetch={false} className="equipment-person ninja-record-link" href={`/ninjas/${row.id}`}>
+            <a className="equipment-person ninja-record-link" href={`/ninjas/${row.id}`}>
               <strong>{row.name}</strong>
               <span>{row.grade} · {row.code}</span>
-            </Link>
+            </a>
             <div className={`equipment-progress ${complete ? "is-complete" : empty ? "is-empty" : ""}`}>
               <div><span>{complete ? <CheckCircle2 size={14} aria-hidden="true" /> : <ShieldAlert size={14} aria-hidden="true" />}{complete ? "Complet" : empty ? "À renseigner" : "En cours"}</span><strong>{count}/{EQUIPMENT_SLOTS.length}</strong></div>
               <i aria-hidden="true"><b style={{ width: `${count / EQUIPMENT_SLOTS.length * 100}%` }} /></i>

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { RedirectActionForm } from "@/components/redirect-action-form";
 import { notFound, redirect } from "next/navigation";
 import { ArchiveRestore, ArrowLeft, Save, Trash2 } from "lucide-react";
@@ -19,7 +18,7 @@ export default async function EditNinjaPage({ params, searchParams }: { params: 
   if (!demoMode && !canWrite && !isOwner) redirect("/access-denied");
   return <div className="page-wrap">
     <PageHeader eyebrow={ninja ? `Dossier ${ninja.code}` : "Mode démonstration"} title="Modifier le dossier" description="Chaque modification est auditée. Le changement de grade se fait depuis la fiche (motif obligatoire)."
-      actions={<Link prefetch={false} className="button button-ghost" href={`/ninjas/${id}`}><ArrowLeft size={17} /> Retour à la fiche</Link>} />
+      actions={<a className="button button-ghost" href={`/ninjas/${id}`}><ArrowLeft size={17} /> Retour à la fiche</a>} />
     {error && <p className="notice error" role="alert">{error}</p>}
     {demoMode || !ninja ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : ninja.status === "ARCHIVED" ? <section className="panel" style={{ maxWidth: 640 }}>
       <SectionHeader title="Dossier archivé" description="Son historique financier est conservé mais il n’apparaît plus dans les registres" />
