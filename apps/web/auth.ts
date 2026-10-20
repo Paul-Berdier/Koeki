@@ -4,10 +4,11 @@ import { cookies } from "next/headers";
 import { prisma } from "@koeki/database";
 import { consumeInvitationAccess } from "@/lib/invitation-service";
 import { accessControlledAdapter } from "@/lib/auth-session-adapter";
+import { ownsDiscordIdentity } from "@/lib/discord-identity";
 import { checkInvitation } from "@/lib/invitation-check";
 import { INVITATION_COOKIE, type InvitationFailure } from "@/lib/invitation-state";
 
-type Refusal = InvitationFailure | "InvitationRequired" | "AccountRevoked" | "DiscordMembershipRequired" | "DiscordUnavailable";
+type Refusal = InvitationFailure | "InvitationRequired" | "AccountRevoked" | "DiscordMembershipRequired" | "DiscordUnavailable" | "AccountIdentityMismatch";
 const refuse = (code: Refusal) => {
   console.warn(`[auth] connexion refusée : ${code}`);
   return `/access-denied?error=${code}`;
@@ -19,7 +20,6 @@ async function consumeInvitation(userId: string, token: string) {
   if (!check.ok) throw new Error(check.error);
   // The transaction rechecks status, expiry, creator rights and the ninja reservation.
   await consumeInvitationAccess(userId, check.id);
-  // Cookie cleanup belongs to the successful signIn event, not this transaction.
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -30,11 +30,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   cookies: { sessionToken: { name: process.env.NODE_ENV === "production" ? "__Secure-koeki.session-token" : "koeki.session-token", options: { httpOnly: true, sameSite: "lax", path: "/", secure: process.env.NODE_ENV === "production" } } },
   callbacks: {
     async signIn({ user, account }) {
-      const existing = user.id ? await prisma.user.findUnique({ where: { id: user.id }, include: { roles: true } }) : null;
+      if (account?.provider !== "discord" || !account.providerAccountId) return refuse("DiscordUnavailable");
+      // Resolve the authenticated provider id, not a supplied RP name, email,
+      // invitation target or a potentially unrelated browser session.
+      const linked = await prisma.account.findUnique({
+        where: { provider_providerAccountId: { provider: "discord", providerAccountId: account.providerAccountId } },
+        include: { user: { include: { roles: true, accounts: { where: { provider: "discord" }, select: { providerAccountId: true } } } } },
+      });
+      const existing = linked?.user ?? null;
+      if (existing && (!ownsDiscordIdentity(existing, account.providerAccountId) || user.id !== existing.id)) return refuse("AccountIdentityMismatch");
       if (existing?.revokedAt) return refuse("AccountRevoked");
-      // Existing authorized accounts do not need another invitation.
       if (existing?.roles.length) return true;
-      if (account?.provider !== "discord" || !account.access_token) return refuse("DiscordUnavailable");
+      if (!account.access_token) return refuse("DiscordUnavailable");
       const token = await readInviteToken();
       if (!token) return refuse("InvitationRequired");
       const check = await checkInvitation(token);
@@ -57,7 +64,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return refuse(latest.ok ? "InvitationUnavailable" : latest.error);
         }
       }
-      // New users are created by Auth.js next; never consume against a nonexistent user.
       return true;
     },
     async session({ session, user }) {
@@ -80,12 +86,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
     },
     async signIn() {
-      // A cleanup failure must not revoke a user whose invitation committed successfully.
       try { (await cookies()).delete(INVITATION_COOKIE); }
       catch { console.warn("[auth] nettoyage du cookie d’invitation différé"); }
     },
-    async linkAccount({ user, account }) {
-      if (account.provider === "discord" && user.id) await prisma.user.update({ where: { id: user.id }, data: { discordId: account.providerAccountId } }).catch(() => {});
-    },
+    // Account + canonical Discord id are now written atomically in linkAccount.
+    // Never overwrite discordId in an event or swallow a linking conflict.
   },
 });
