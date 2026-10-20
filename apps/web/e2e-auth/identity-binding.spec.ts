@@ -34,7 +34,7 @@ async function browserSession(context: BrowserContext, userId: string) {
 }
 async function invitation(ninjaProfileId?: string) {
   const { token, tokenHash } = createInvitationToken(process.env.KOEKI_E2E_INVITE_PEPPER!);
-  const row = await prisma.invitation.create({ data: { tokenHash, roleId: ninjaRoleId, createdById: managerId, ninjaProfileId, expiresAt: new Date(Date.now() + 3_600_000) } });
+  const row = await prisma.invitation.create({ data: { tokenHash, roleId: ninjaRoleId, createdById: managerId, ninjaProfileId: ninjaProfileId ?? null, expiresAt: new Date(Date.now() + 3_600_000) } });
   return { token, row };
 }
 
