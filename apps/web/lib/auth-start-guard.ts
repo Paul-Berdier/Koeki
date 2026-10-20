@@ -10,8 +10,6 @@ export function trustedAuthOrigin(value: string | undefined, production = proces
 }
 
 export function sameOriginAuthPost(headers: Headers, origin: string): boolean {
-  // A native POST sends Origin even without JavaScript. Fail closed if missing,
-  // opaque, same-site-but-cross-origin, or contradictory to Fetch Metadata.
   const site = headers.get("sec-fetch-site");
   return headers.get("origin") === origin && (site === null || site === "same-origin");
 }
@@ -35,8 +33,11 @@ export async function readAuthStartForm(request: Request): Promise<URLSearchPara
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     const data = new URLSearchParams(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-    if (data.getAll("intent").length !== 1 || data.getAll("token").length > 1) return null;
-    if ([...data.keys()].some((key) => key !== "intent" && key !== "token")) return null;
+    const allowed = ["intent", "token", "confirmIdentity", "confirmedNinjaId"];
+    if (data.getAll("intent").length !== 1 || allowed.some((key) => data.getAll(key).length > 1)) return null;
+    if ([...data.keys()].some((key) => !allowed.includes(key))) return null;
+    if (data.get("intent") !== "invitation" && (data.has("confirmIdentity") || data.has("confirmedNinjaId"))) return null;
+    if (data.has("confirmIdentity") && data.get("confirmIdentity") !== "on") return null;
     return data;
   } catch { return null; }
   finally { reader.releaseLock(); }
