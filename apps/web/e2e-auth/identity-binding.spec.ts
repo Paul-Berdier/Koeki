@@ -84,12 +84,13 @@ test("switching Discord identities in the same browser never merges accounts or 
     const form = document.createElement("form"); form.method = "post"; form.action = "/api/connexion/discord";
     const input = document.createElement("input"); input.name = "intent"; input.value = "connexion"; form.append(input); document.body.append(form); form.submit();
   });
-  await expect.poll(async () => (await (await context.request.get("/api/auth/session")).json()).user?.id).toBe(next.user.id);
+  await expect(page).toHaveURL(new RegExp(`/ninjas/${next.profile!.id}$`));
   expect(await prisma.session.findUnique({ where: { sessionToken: oldToken } })).toBeNull();
   expect(await prisma.session.findUnique({ where: { sessionToken: anotherDevice } })).not.toBeNull();
   expect(await prisma.account.count({ where: { userId: old.user.id } })).toBe(1);
   expect((await prisma.user.findUniqueOrThrow({ where: { id: old.user.id } })).discordId).toBe(old.discordId);
   const session = await (await context.request.get("/api/auth/session")).json();
+  expect(session?.user?.id).toBe(next.user.id);
   expect(session.user.roles).toEqual(["NINJA"]);
   await page.goto("/profil?identite=1");
   await expect(page.getByRole("heading", { name: "Vérifier mon identité" })).toBeVisible();
@@ -131,7 +132,8 @@ test("a new targeted invite creates its own identity even when another account i
   expect(await prisma.session.findUnique({ where: { sessionToken: previousToken } })).not.toBeNull();
   await page.getByRole("checkbox", { name: /Je confirme que/ }).check();
   await page.getByRole("button", { name: "Continuer avec Discord" }).click();
-  await expect.poll(async () => (await prisma.invitation.findUniqueOrThrow({ where: { id: invite.row.id } })).status).toBe("USED");
+  await expect(page).toHaveURL(new RegExp(`/ninjas/${target.id}$`));
+  expect((await prisma.invitation.findUniqueOrThrow({ where: { id: invite.row.id } })).status).toBe("USED");
   const oauth = await prisma.account.findUniqueOrThrow({ where: { provider_providerAccountId: { provider: "discord", providerAccountId: id } } });
   expect(oauth.userId).not.toBe(previous.user.id);
   expect((await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: target.id } })).userId).toBe(oauth.userId);
