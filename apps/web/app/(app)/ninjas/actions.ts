@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import type { RedirectActionResult } from "@/lib/action-result";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { exemptionUse, planLegacySettlement } from "@koeki/domain";
@@ -198,19 +199,19 @@ const updateNinjaSchema = createNinjaSchema.extend({
   diedAt: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("")]).optional()
 }).omit({ gradeId: true });
 
-export async function updateNinja(formData: FormData) {
+export async function updateNinja(formData: FormData): Promise<RedirectActionResult> {
   if (demoMode) throw new Error("Mode démonstration : les écritures sont désactivées");
   const session = await getSession();
   if (!session) throw new Error("UNAUTHENTICATED");
   const parsed = updateNinjaSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect(`/ninjas?erreur=${encodeURIComponent(parsed.error.issues[0]?.message ?? "Saisie invalide")}`);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
   const { ninjaId, diedAt: diedAtInput, ...data } = parsed.data!;
-  const back = (message: string): never => redirect(`/ninjas/${ninjaId}/modifier?erreur=${encodeURIComponent(message)}`);
-  if (data.status === "DECEASED" && !diedAtInput) back("La date du décès est obligatoire");
+  const back = (error: string): RedirectActionResult => ({ error });
+  if (data.status === "DECEASED" && !diedAtInput) return back("La date du décès est obligatoire");
   const diedAt = data.status === "DECEASED" ? new Date(`${diedAtInput}T12:00:00.000Z`) : null;
   if (diedAt) {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-    if (Number.isNaN(diedAt.getTime()) || diedAt.toISOString().slice(0, 10) !== diedAtInput || diedAtInput! > today) back("Date de décès invalide ou située dans le futur");
+    if (Number.isNaN(diedAt.getTime()) || diedAt.toISOString().slice(0, 10) !== diedAtInput || diedAtInput! > today) return back("Date de décès invalide ou située dans le futur");
   }
   const canWrite = hasPermission(session, "ninjas:write");
   try {
@@ -246,11 +247,11 @@ export async function updateNinja(formData: FormData) {
       }
     });
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
-    if (isUniqueViolation(error)) back("Une autre fiche porte déjà cette identité");
+    if (error instanceof Error && error.message.startsWith("VALIDATION:")) return back(error.message.slice("VALIDATION:".length));
+    if (isUniqueViolation(error)) return back("Une autre fiche porte déjà cette identité");
     throw error;
   }
-  redirect(`/ninjas/${ninjaId}`);
+  return { redirectTo: `/ninjas/${ninjaId}` };
 }
 
 export async function restoreNinja(formData: FormData) {

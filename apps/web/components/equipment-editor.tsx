@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useFormStatus } from "react-dom";
+import { ActionForm } from "@/components/action-form";
 import { Save, X } from "lucide-react";
-import { EQUIPMENT_SLOTS, type EquipmentRow } from "@/lib/equipment";
+import { EQUIPMENT_SLOTS, type EquipmentSaveResult, type EquipmentRow } from "@/lib/equipment";
 
 const TIERS = ["Aucun", "T1", "T2", "T3", "T4"];
 const TYPES = ["Armure", "Jutsu", "Ténacité"];
@@ -14,16 +14,16 @@ interface SlotFormValue {
 }
 
 function SaveButton() {
-  const { pending } = useFormStatus();
-  return <button className="button button-primary" type="submit" disabled={pending}>
+  return <button className="button button-primary" type="submit">
     <Save size={16} aria-hidden="true" />
-    {pending ? "Enregistrement…" : "Enregistrer"}
+    Enregistrer
   </button>;
 }
 
-export function EquipmentEditor({ ninja, action, onCancel }: {
+export function EquipmentEditor({ ninja, action, onSaved, onCancel }: {
   ninja: EquipmentRow;
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<EquipmentSaveResult>;
+  onSaved: (result: Extract<EquipmentSaveResult, { ok: true }>) => void;
   onCancel: () => void;
 }) {
   const [values, setValues] = useState<Record<string, SlotFormValue>>(() =>
@@ -33,7 +33,11 @@ export function EquipmentEditor({ ninja, action, onCancel }: {
     }))
   );
 
-  return <form action={action} className="equipment-editor">
+  return <ActionForm action={async (data) => {
+    const result = await action(data);
+    if (result.ok) onSaved(result);
+    else return { error: result.error };
+  }} className="equipment-editor">
     <input type="hidden" name="ninjaId" value={ninja.id} />
     <div className="equipment-editor-heading">
       <div>
@@ -81,5 +85,5 @@ export function EquipmentEditor({ ninja, action, onCancel }: {
       <button className="button button-ghost" type="button" onClick={onCancel}>Annuler</button>
       <SaveButton />
     </div>
-  </form>;
+  </ActionForm>;
 }
