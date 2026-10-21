@@ -79,11 +79,12 @@ export async function getTeamResourceJournal(session: SessionInfo, filters: Reso
   const q = (filters.q ?? "").trim().slice(0, 100);
   const type = filters.type === "DONATION" || filters.type === "BUYBACK" ? filters.type : undefined;
   const range = { gte: period.startsAt, lt: period.endsAtExclusive };
+  const operationFilter: Prisma.ResourceTransactionWhereInput[] = type ? [{ type }] : [];
   const where: Prisma.ResourceTransactionWhereInput = {
     AND: [
       { OR: [{ validatedAt: range }, { validatedAt: null, createdAt: range }] },
       ...(filters.agentId ? [{ OR: [{ recordedById: filters.agentId }, { recordedById: null, agentId: filters.agentId }] }] : []),
-      ...(type ? [{ type }] : []),
+      ...operationFilter,
       ...q.split(/\s+/).filter(Boolean).slice(0, 8).map((word) => ({ OR: [
         { receiptNumber: { contains: word, mode: "insensitive" as const } },
         { ninja: { OR: [{ firstName: { contains: word, mode: "insensitive" as const } }, { lastName: { contains: word, mode: "insensitive" as const } }, { code: { contains: word, mode: "insensitive" as const } }] } },
