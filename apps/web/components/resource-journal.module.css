@@ -65,9 +65,14 @@
   .scroll .table tbody tr > th,
   .scroll .table tbody tr > td {
     display: block;
+    flex: 0 0 auto;
     width: 100%;
     min-width: 0;
     max-width: none;
+    /* Global table cells have a 64px height. Cards must grow with every item
+       and expanded detail, otherwise the next cell covers the controls. */
+    height: auto;
+    min-height: 0;
     padding: 0;
     border: 0;
     text-align: left;
