@@ -1,0 +1,89 @@
+.scroll {
+  width: 100%;
+  max-width: 100%;
+}
+
+.scroll .table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.scroll .table th,
+.scroll .table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.scroll .table th:nth-child(3) {
+  width: 28%;
+}
+
+.scroll .table :global(.cell-detail) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .scroll {
+    overflow: visible;
+  }
+
+  .scroll .table,
+  .scroll .table tbody {
+    display: block;
+  }
+
+  .scroll .table caption {
+    display: block;
+    padding: 12px 18px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  /* Keep the semantic headers available to assistive technology. */
+  .scroll .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .scroll .table tbody tr {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 18px;
+    border-bottom: 1px solid var(--border-color, #334236);
+  }
+
+  .scroll .table tbody tr > th,
+  .scroll .table tbody tr > td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  /* The contents of a donation come first, not a receipt id or cash equivalent. */
+  .scroll .table tbody tr > :nth-child(3) {
+    order: -1;
+  }
+
+  .scroll .table tbody [data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0.75;
+  }
+}
