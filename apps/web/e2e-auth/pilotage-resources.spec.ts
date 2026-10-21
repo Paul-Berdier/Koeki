@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
+import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { prisma } from "@koeki/database";
@@ -11,6 +11,26 @@ async function login(context: BrowserContext, userId: string) {
   await prisma.session.create({ data: { sessionToken, userId, expires: new Date(Date.now() + 3_600_000) } });
   await context.clearCookies();
   await context.addCookies([{ name: "koeki.session-token", value: sessionToken, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+}
+
+/** toBeVisible alone allows an object hidden to the right of a scrolling table.
+ * Assert its horizontal position before any click can scroll it into view. */
+async function expectReadableObjects(page: Page, region: Locator, row: Locator) {
+  const object = row.getByText(`2 × ${metalName}`, { exact: true });
+  await expect(object).toBeVisible();
+  const box = await object.boundingBox();
+  expect(box).not.toBeNull();
+  const width = page.viewportSize()!.width;
+  expect(box!.x, "Objects must not start outside the screen").toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width, "Objects must not be clipped to the right").toBeLessThanOrEqual(width + 1);
+  expect(await region.evaluate((node) => node.scrollWidth - node.clientWidth), "No horizontal scroll needed to read a receipt").toBeLessThanOrEqual(1);
+  if (width <= 900) {
+    const itemsCell = await row.locator('[data-label="Objets et quantités"]').boundingBox();
+    const firstCell = await row.locator(":scope > :first-child").boundingBox();
+    expect(itemsCell).not.toBeNull();
+    expect(firstCell).not.toBeNull();
+    expect(itemsCell!.y, "On mobile, objects precede the receipt metadata").toBeLessThan(firstCell!.y);
+  }
 }
 
 test.beforeAll(async () => {
@@ -42,9 +62,10 @@ test("manager sees exact donated objects and their saved equivalent in the pilot
   await login(context, managerId);
   await page.goto(`/equipe?${period}&vue=ressources&q=${encodeURIComponent(receipt)}`);
   await expect(page.getByRole("heading", { name: "Dons et rachats — objets enregistrés" })).toBeVisible();
+  const region = page.getByRole("region", { name: "Contenu des dons et rachats" });
   const row = page.getByRole("row").filter({ hasText: receipt });
   await expect(row).toHaveCount(1);
-  await expect(row.getByText(`2 × ${metalName}`, { exact: true })).toBeVisible();
+  await expectReadableObjects(page, region, row);
   await expect(row.getByText(/5 × Bois/)).toBeVisible();
   await expect(row.getByText("Équivalent du don", { exact: true })).toBeVisible();
   await expect(row.getByText("Valorisation, pas un encaissement en Ryō.", { exact: true })).toBeVisible();
@@ -53,18 +74,21 @@ test("manager sees exact donated objects and their saved equivalent in the pilot
   await expect(row).not.toContainText("99 999");
   await row.getByText(/Mouvements de stock liés/).click();
   await expect(row.getByText(`Entrée : 2 × ${metalName}`, { exact: true })).toBeVisible();
+  await expectReadableObjects(page, region, row);
   await page.getByLabel("Objet, code, reçu ou ninja").fill(metalName);
   await page.getByRole("button", { name: "Filtrer les objets" }).click();
-  await expect(page.getByRole("row").filter({ hasText: receipt }).getByText(/5 × Bois/)).toBeVisible();
+  await expect(row.getByText(/5 × Bois/)).toBeVisible();
+  await expectReadableObjects(page, region, row);
   mkdirSync("../../docs/evidence", { recursive: true });
   await page.screenshot({ path: `../../docs/evidence/pilotage-resources-${info.project.name}.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await page.goto(`/equipe/${agentId}?${period}&vue=activite`);
   const agentRow = page.getByRole("row").filter({ hasText: receipt });
-  await expect(agentRow.getByText(`2 × ${metalName}`, { exact: true })).toBeVisible();
+  await expectReadableObjects(page, page.getByRole("region", { name: "Opérations de cet agent" }), agentRow);
   await expect(agentRow.getByText(/5 × Bois/)).toBeVisible();
   await expect(agentRow).toContainText("Donateur Pilotage");
   await expect(agentRow).toContainText("Équivalent du don");
+  await page.screenshot({ path: `../../docs/evidence/pilotage-agent-resources-${info.project.name}.png`, fullPage: true });
   expect(errors).toEqual([]);
 });
 
