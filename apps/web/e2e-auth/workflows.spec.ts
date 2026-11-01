@@ -663,13 +663,17 @@ test("automated accessibility scan and 200 percent layout", async ({
   await expect(
     page.getByRole("heading", { name: "Pilotage de l’équipe", exact: true }),
   ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth -
-        document.documentElement.clientWidth,
-    ),
-  ).toBeLessThanOrEqual(1);
+  // Recharts updates its pixel width through ResizeObserver after zoom changes.
+  // Check the completed reflow with the same strict document overflow limit.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
 });
 
 test("report and task follow-up use motivated reviews and preserve their history", async ({

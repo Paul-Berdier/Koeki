@@ -4,3 +4,60 @@
 @import "./styles/workspace.css";
 @import "./styles/shared-workflows.css";
 @import "./styles/dark.css";
+
+/* CSS zoom reduces the team's available space without changing viewport media
+   queries. Reflow these panels using their actual content width. */
+.management-page {
+  container: team-page / inline-size;
+}
+
+@container team-page (max-width: 800px) {
+  .management-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container team-page (max-width: 480px) {
+  .metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .period-control form {
+    width: 100%;
+    min-width: 0;
+  }
+  .period-control label {
+    display: grid;
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+  .period-control input {
+    width: 100%;
+    min-width: 0;
+  }
+  .period-control form > .button {
+    width: 100%;
+  }
+  .agent-filters > label {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  .agent-filters input,
+  .agent-filters select {
+    width: 100%;
+    max-width: 100%;
+  }
+  .attention-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The resource journal already becomes cards at mobile viewport widths. At
+   desktop zoom keep its columns readable inside its own scrollable region. */
+@media (min-width: 901px) {
+  .management-page #journal-ressources table {
+    min-width: 720px;
+  }
+}
