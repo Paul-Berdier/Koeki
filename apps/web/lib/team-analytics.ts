@@ -25,7 +25,6 @@ export interface AnalyticsMetrics {
   buybacks: number;
   total: number;
   collected: string;
-  dossiers: number;
   tasksOpen: number;
   tasksOverdue: number;
   tasksBlocked: number;
@@ -60,25 +59,18 @@ export interface TeamAnalytics {
     absentAgents: number;
     disabledAgents: number;
     noActivityAgents: number;
-    unassignedDossiers: number;
     unassignedTasks: number;
     reportsToReview: number;
   };
   workload: {
     id: string;
     name: string;
-    dossiers: number;
     tasksOpen: number;
     tasksOverdue: number;
     tasksBlocked: number;
   }[];
   attention: {
-    kind:
-      | "overdue"
-      | "blocked"
-      | "reports"
-      | "unassigned-dossiers"
-      | "unassigned-tasks";
+    kind: "overdue" | "blocked" | "reports" | "unassigned-tasks";
     label: string;
     count: number;
     href: string;
@@ -99,7 +91,6 @@ const noMetrics = (): AnalyticsMetrics => ({
   buybacks: 0,
   total: 0,
   collected: "0",
-  dossiers: 0,
   tasksOpen: 0,
   tasksOverdue: 0,
   tasksBlocked: 0,
@@ -151,7 +142,7 @@ const definitions: TeamAnalytics["definitions"] = [
     key: "workload",
     label: "Charge actuelle",
     description:
-      "Dossiers actifs affectés, tâches actuellement à faire, en cours ou bloquées. Le retard est une échéance passée à l’heure de lecture ; cette charge n’est pas filtrée par la période de l’activité.",
+      "Tâches actuellement à faire, en cours ou bloquées. Les dossiers ninjas sont communs au service et ne sont pas affectés à un agent. Le retard est une échéance passée à l’heure de lecture ; cette charge n’est pas filtrée par la période de l’activité.",
   },
   {
     key: "tasksDone",
@@ -217,7 +208,6 @@ function emptyResult(period: Period, now: Date): TeamAnalytics {
       absentAgents: 0,
       disabledAgents: 0,
       noActivityAgents: 0,
-      unassignedDossiers: 0,
       unassignedTasks: 0,
       reportsToReview: 0,
     },
@@ -299,6 +289,18 @@ async function loadAnalytics(
         )
       )
         throw new Error("FORBIDDEN");
+      // Historical authors remain discoverable after a role change. This does not
+      // infer a participation start or make them eligible for an official ranking.
+      const historicalAuthors = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+        SELECT "recordedById" AS "id" FROM "TaxPayment"
+        WHERE "recordedById" IS NOT NULL
+        UNION
+        SELECT "recordedById" AS "id" FROM "ResourceTransaction"
+        WHERE "recordedById" IS NOT NULL AND "operationOrigin" <> 'SELF_DECLARED'
+        UNION
+        SELECT "agentId" AS "id" FROM "ResourceTransaction"
+        WHERE "recordedById" IS NULL AND "agentId" IS NOT NULL AND "operationOrigin" <> 'SELF_DECLARED'
+      `);
       const users = await tx.user.findMany({
         where: {
           ...(userId ? { id: userId } : {}),
@@ -318,6 +320,7 @@ async function loadAnalytics(
                   },
                 },
                 { participations: { some: {} } },
+                { id: { in: historicalAuthors.map((author) => author.id) } },
               ],
             },
           ],
@@ -386,25 +389,18 @@ async function loadAnalytics(
         : [];
 
       const [
-        dossiers,
         taskStates,
         overdue,
         completed,
         reports,
         approved,
         toReview,
-        unassignedDossiers,
         unassignedTasks,
         excludedPayments,
         excludedTransactions,
         unknownPaymentDates,
         unknownResourceDates,
       ] = await Promise.all([
-        tx.ninjaProfile.groupBy({
-          by: ["referenceAgentId"],
-          where: { referenceAgentId: { in: ids }, status: "ACTIVE" },
-          _count: true,
-        }),
         tx.followUpTask.groupBy({
           by: ["assigneeId", "status"],
           where: { assigneeId: { in: ids }, status: { in: openStates } },
@@ -449,11 +445,6 @@ async function loadAnalytics(
         tx.agentReport.count({
           where: { authorId: { in: ids }, status: "SUBMITTED" },
         }),
-        !userId
-          ? tx.ninjaProfile.count({
-              where: { referenceAgentId: null, status: "ACTIVE" },
-            })
-          : 0,
         !userId
           ? tx.followUpTask.count({
               where: { assigneeId: null, status: { in: openStates } },
@@ -610,9 +601,6 @@ async function loadAnalytics(
             (values?.buybacks ?? 0),
           collected: (values?.collected ?? 0n).toString(),
           lastActivity: values?.lastActivity?.toISOString() ?? null,
-          dossiers:
-            dossiers.find((entry) => entry.referenceAgentId === user.id)
-              ?._count ?? 0,
           tasksOpen: ownTasks.reduce((sum, entry) => sum + entry._count, 0),
           tasksBlocked:
             ownTasks.find((entry) => entry.status === "BLOCKED")?._count ?? 0,
@@ -632,7 +620,6 @@ async function loadAnalytics(
         "donations",
         "buybacks",
         "total",
-        "dossiers",
         "tasksOpen",
         "tasksOverdue",
         "tasksBlocked",
@@ -658,28 +645,17 @@ async function loadAnalytics(
         ).length,
         noActivityAgents: result.agents.filter((agent) => agent.total === 0)
           .length,
-        unassignedDossiers,
         unassignedTasks,
         reportsToReview: toReview,
       });
       result.workload = result.agents
-        .map(
-          ({
-            id,
-            name,
-            dossiers: assigned,
-            tasksOpen,
-            tasksOverdue,
-            tasksBlocked,
-          }) => ({
-            id,
-            name,
-            dossiers: assigned,
-            tasksOpen,
-            tasksOverdue,
-            tasksBlocked,
-          }),
-        )
+        .map(({ id, name, tasksOpen, tasksOverdue, tasksBlocked }) => ({
+          id,
+          name,
+          tasksOpen,
+          tasksOverdue,
+          tasksBlocked,
+        }))
         .sort(
           (a, b) =>
             b.tasksOverdue - a.tasksOverdue ||
@@ -708,12 +684,6 @@ async function loadAnalytics(
         },
         ...(!userId
           ? [
-              {
-                kind: "unassigned-dossiers" as const,
-                label: "Dossiers sans référent",
-                count: unassignedDossiers,
-                href: "/equipe#sans-referent",
-              },
               {
                 kind: "unassigned-tasks" as const,
                 label: "Tâches à attribuer",

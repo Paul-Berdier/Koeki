@@ -40,6 +40,7 @@ jobs:
       - run: corepack pnpm typecheck
       - run: corepack pnpm test
       - run: corepack pnpm test:upgrade
+      - run: corepack pnpm test:ranking-backfill
       - run: corepack pnpm build
       - run: corepack pnpm --filter @koeki/web exec playwright install --with-deps chromium
       - run: corepack pnpm test:e2e

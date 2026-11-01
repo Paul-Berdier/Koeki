@@ -17,6 +17,33 @@ Ce lot corrige des chemins susceptibles de produire ou masquer une confusion d'i
 - Une première liaison ne peut pas remplacer une fiche déjà rattachée au compte ni prendre une fiche appartenant à quelqu'un d'autre. Les anciennes actions de sélection floue n'effectuent plus d'écriture. La confirmation est une protection contre les erreurs de sélection, pas une preuve externe que la personne possède le personnage : le périmètre métier du premier rattachement libre reste celui de l'application existante.
 - La soumission du nouveau formulaire affiche son état d'attente et son erreur ; le redirect de réussite reste hors du bloc catch et l'identité de la navigation est revalidée.
 
+## Complément du 30 octobre : comptes autorisés sans fiche
+
+Un compte responsable sans fiche conserve ses droits, mais le registre le redirige
+vers `/profil`. Cette page explique désormais pourquoi les opérations attendent
+le rattachement. La création d'une fiche actualise aussi l'identité dans la
+navigation, comme le fait déjà la confirmation d'une fiche existante.
+
+Une invitation ciblée peut maintenant rattacher sa fiche réservée à un compte
+déjà autorisé qui n'a aucune fiche. Le jeton confirmé, la disponibilité de la
+fiche et les droits du créateur sont revérifiés dans la transaction. Cette
+liaison ne change ni les rôles ni les participations du compte ; une invitation
+générale ne lui accorde aucun droit supplémentaire. Une fiche déjà liée ou un
+compte possédant un autre personnage restent refusés. Aucun rattachement réel
+n'est choisi automatiquement et aucune donnée de production n'a été modifiée.
+
+Les régressions couvrent les clics des responsables et des comptes multirôles
+dans les menus, la création et la liaison depuis `/profil`, ainsi que le parcours
+OAuth d'une invitation ciblée pour un compte déjà autorisé sans fiche.
+
+Validation locale ciblée : 20 tests PostgreSQL, 9 parcours de navigation et de
+rattachement sur ordinateur/tablette/mobile, et les 15 scénarios OAuth et
+d'identité sur ordinateur réussissent. Le test de changement de compte ouvre
+désormais l'ancienne fiche avant la reconnexion : il vérifie l'identité initiale
+et évite que la compilation locale de cette route consomme le délai de contrôle
+de la redirection. Les assertions sur les sessions, rôles et identités restent
+inchangées. Lint et TypeScript passent également.
+
 ## Vérification par la personne
 
 Le nom en bas de la barre latérale ouvre `/profil?identite=1`. Cette page privée n'accepte aucun identifiant d'un autre utilisateur : elle lit exclusivement le compte de la session et sa fiche. Le pseudo du compte de connexion est affiché uniquement à son propre utilisateur, jamais utilisé pour choisir la fiche RP. Il peut légitimement différer du nom RP.

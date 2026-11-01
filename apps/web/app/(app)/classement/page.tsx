@@ -48,7 +48,7 @@ export default async function RankingPage({
     typeof params.version === "string" ? Number(params.version) : undefined,
   );
   const query =
-    data.manager && typeof params.q === "string"
+    typeof params.q === "string"
       ? params.q.trim().toLocaleLowerCase("fr")
       : "";
   const matchingRows = query
@@ -99,6 +99,11 @@ export default async function RankingPage({
         title="Classement"
         description="Les contributions validées de chaque agent, semaine après semaine. Un paiement, un don ou un rachat compte pour une opération."
       />
+
+      <div className="page-actions">
+        <Link className="button button-secondary" href={`/classement/agents/${data.viewerId}`}>Mon historique complet</Link>
+        {data.manager && <Link className="button button-ghost" href="/equipe">Retrouver un agent et son historique</Link>}
+      </div>
 
       <div className="period-toolbar">
         <div>
@@ -159,7 +164,10 @@ export default async function RankingPage({
         {!data.coverageComplete && (
           <p>
             Les preuves historiques ne couvrent pas toute la période. Ce
-            résultat ne constitue pas un classement officiel complet.
+            résultat ne constitue pas un classement officiel complet. Les opérations
+            anciennes restent consultables dans le journal de chaque agent ; une
+            participation non établie à l’époque ne peut pas être déduite de son
+            rôle actuel.
           </p>
         )}
         {data.correctionNeeded && (
@@ -219,9 +227,10 @@ export default async function RankingPage({
               {number.format(data.own.operations)} opération(s) ·{" "}
               {comparison(data.own.comparison)}
             </span>
+            <Link href={`/classement/agents/${data.viewerId}?${agentPeriod}`}>Voir mes opérations de la semaine →</Link>
           </div>
         )}
-        {data.manager && (
+        {(
           <form className="filter-bar" method="get">
             <input type="hidden" name="semaine" value={data.week.key} />
             {data.version !== null && (
@@ -283,8 +292,8 @@ export default async function RankingPage({
                   >
                     <td>{row.rank}</td>
                     <th scope="row">
-                      {data.manager ? (
-                        <Link href={`/equipe/${row.userId}?${agentPeriod}`}>
+                      {data.manager || row.userId === data.viewerId ? (
+                        <Link href={`/classement/agents/${row.userId}?${agentPeriod}`}>
                           {row.name}
                         </Link>
                       ) : (
@@ -318,7 +327,7 @@ export default async function RankingPage({
             description={
               query
                 ? "Essayez une autre identité ou effacez la recherche."
-                : "Les responsables renseignent les périodes de participation dans l’espace Équipe."
+                : "Le classement exige une période de participation établie. Consultez le journal complet pour retrouver les opérations historiques conservées."
             }
           />
         )}

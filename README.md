@@ -97,9 +97,12 @@ contournement HTTP d’authentification. Le parcours OAuth Discord complet néce
 les identifiants de l’application Discord et reste distinct.
 
 Sous Windows, si l’arrêt du serveur Playwright intégré attend indéfiniment,
-utiliser `E2E_EXTERNAL_SERVER=true` avec le serveur explicitement démarré :
+utiliser `E2E_EXTERNAL_SERVER=true` avec le serveur explicitement démarré pour les
+parcours métier uniquement (`workflows`, `pilotage-resources`, `resource-values-agent-taxes`) :
 les [commandes complètes vérifiées](docs/KOEKI_V2_VALIDATION.md#reproduire-sous-powershell)
 décrivent les deux terminaux. Arrêter le serveur de développement avant un build.
+Les suites d’invitations et d’identité Discord exigent le serveur de fixtures
+piloté par Playwright : retirer `E2E_EXTERNAL_SERVER` avant de les exécuter.
 Les E2E historiques de démonstration disposent de `E2E_DEMO_EXTERNAL_SERVER=true`
 pour le même usage et activent désormais JavaScript sur tous leurs formats.
 

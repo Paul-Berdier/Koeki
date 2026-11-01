@@ -90,8 +90,8 @@ export default async function OperationsPage() {
             </Link>
             <Link className="work-row" href="/equipement">
               <span className="work-row-main">
-                <strong>Équipement</strong>
-                <small>Matériel des Jōnin</small>
+                <strong>Équipements Jōnin+</strong>
+                <small>Panoplies des Jōnin et grades supérieurs</small>
               </span>
               <ArrowRight size={18} aria-hidden="true" />
             </Link>

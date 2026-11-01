@@ -1,6 +1,6 @@
 # Refonte du front Kōeki — suivi
 
-Branche : `codex/frontend-rebuild`, base `b60a9186396500fa367d204c8159f7472d9848de` (V2 déjà fusionnée).
+Refonte initiale : PR #3, fusionnée dans `f381792`. Corrections des retours utilisateur : branche `codex/restore-jonin-equipment`, depuis cette révision.
 
 ## Demande
 
@@ -8,11 +8,13 @@ Reprendre la logique du front, supprimer les doublons, revoir la direction artis
 
 ## Réalisation
 
-- Navigation par espaces : Bureau, Dossiers, Opérations, Stocks et catalogue, Tâches et rapports, Pilotage, Village et Administration. Les sous-rubriques sont locales à chaque espace et filtrées par les permissions centrales.
+- Navigation par espaces : Bureau, Dossiers, Équipements Jōnin+, Opérations, Stocks et catalogue, Tâches et rapports, Pilotage, Village et Administration. Les sous-rubriques sont locales à chaque espace et filtrées par les permissions centrales. L'équipement conserve un accès direct dans le menu ordinateur et mobile ; les sept emplacements et les grades Jōnin, commandant Jōnin, Kage et Sanin restent inchangés.
 - Nouveau système clair « Sable & encre » : surfaces claires, navigation en encre verte, typographie sans empattement, accents sable, composants et états partagés. Feuilles séparées en fondations, modules existants et nouveaux espaces.
 - Bureau recentré sur les actions et échéances ; espace responsable distinct.
-- `/equipe` : synthèse, courbes quotidiennes, file de travail, registre recherchable/triable/paginé et affectations séparées. Périodes civiles de 7, 30 ou 90 jours, ou intervalle de 1 à 366 jours.
-- Fiche agent : aperçu avec courbe, dossiers, journal des opérations et accompagnement confidentiel. Les liens conservent la période ; les mutations d’accompagnement conservent l’onglet.
+- `/equipe` : synthèse, courbes quotidiennes, tâches à traiter et registre recherchable/triable/paginé. Périodes civiles de 7, 30 ou 90 jours, ou intervalle de 1 à 366 jours pour les indicateurs.
+- Les dossiers ninjas sont communs au service : aucun référent, filtre « mes dossiers », transfert ou indicateur d’affectation ninja. Les tâches restent attribuables à des agents.
+- Fiche agent : aperçu avec courbe, journal paginé des opérations et accompagnement confidentiel. Les liens conservent la période ; les mutations d’accompagnement conservent l’onglet.
+- Journal complet `/classement/agents/[userId]` : aucune limite d’ancienneté par défaut, 25 écritures par page, accessible à l’agent pour lui-même et aux dirigeants pour tous. Les imports et écritures sans preuve restent consultables avec leur provenance ; leur affichage ne les rend pas éligibles au classement.
 - Les courbes et les agents utilisent les mêmes agrégats SQL. Jours sans opération inclus, montants fiscaux BigInt sérialisés en chaînes exactes. Aucun montant n’est converti en Number pour ces graphiques.
 - Charge actuelle et activité de période sont explicitement distinguées. Les agents sans activité et les périodes de participation/absence restent visibles.
 - La page Économie ne contient plus de second classement 60/40 ; le classement hebdomadaire demeure la référence collective.
@@ -21,9 +23,11 @@ Reprendre la logique du front, supprimer les doublons, revoir la direction artis
 
 ## Protection des données
 
-Aucune migration, modification de barème, suppression de données, modification de `.env` ou écriture en production. Le fichier personnel `.claude/settings.local.json` reste hors périmètre. Base de rendu et tests authentifiés nouvellement créée sur PostgreSQL local : `koeki_front_test_20261004`, serveur loopback port 55432. Les fixtures y sont fictives ; elles ne constituent pas des données de production. Base d’intégration distincte : `koeki_v2_integration_test`.
+Aucune modification de barème, suppression de données, modification de `.env` ou écriture manuelle en production. La migration additive `0021_receipt_audit_backfill` récupère des preuves de règlements anciens uniquement quand auteur, reçu et date concordent avec un audit unique. Les montants, dates financières, participations et versions publiées restent inchangés ; les périodes publiées concernées sont signalées pour examen. Les références ninja anciennes restent conservées dans le schéma, mais ne pilotent plus les parcours, y compris après un retrait d’accès.
 
-## Validation
+Le fichier personnel `.claude/settings.local.json` reste hors périmètre. Base de rendu et tests authentifiés locale : `koeki_front_test_20261004`, serveur loopback port 55432. Les fixtures sont fictives. Les tests d’intégration utilisent les bases jetables explicitement autorisées ; les vérifications de reprise créent une nouvelle base par exécution sans réinitialiser les bases existantes.
+
+## Validation de la refonte initiale (PR #3)
 
 - Domaine : 94 tests réussis. Web : 73 tests réussis, dont 55 PostgreSQL et 18 unitaires. Total : 167, sans test ignoré et avec `REQUIRE_TEST_DATABASE=true`.
 - ESLint du dépôt, TypeScript et compilation complète de production : réussis.
@@ -32,6 +36,10 @@ Aucune migration, modification de barème, suppression de données, modification
 - Démonstration sur compilation de production : 24 parcours réussis ; les 10 exclusions prévues par format restent explicites. Aucun échec de parcours, de rendu ou de CSP.
 
 Les contrôles authentifiés utilisent de vraies sessions Auth.js et des fixtures PostgreSQL isolées. Aucune capture de démonstration n’est présentée comme une preuve d’accès authentifié. Les agents sans opération, les changements continus de rôle et les véritables interruptions de participation sont couverts par les tests du service analytique.
+
+## Validation des corrections
+
+La reprise `0021` possède un test PostgreSQL dédié (`pnpm test:ranking-backfill`), inclus dans la CI, qui vérifie les preuves concordantes, les cas ambigus exclus, l’immuabilité des montants et la réexécution. Les tests de navigation ouvrent désormais les équipements depuis le menu ordinateur et mobile, plutôt que directement par URL. Les parcours authentifiés couvrent le registre partagé et l’historique individuel paginé.
 
 ### Preuves visuelles authentifiées
 

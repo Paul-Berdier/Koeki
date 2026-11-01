@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { exemptionUse, planLegacySettlement } from "@koeki/domain";
@@ -151,6 +152,7 @@ export async function createOwnProfile(formData: FormData) {
     if (isUniqueViolation(error)) redirect(`/profil?erreur=${encodeURIComponent("Cette fiche vient déjà d’être créée ou liée")}`);
     throw error;
   }
+  revalidatePath("/", "layout");
   redirect(`/ninjas/${ninjaId}`);
 }
 

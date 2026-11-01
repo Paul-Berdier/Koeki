@@ -73,6 +73,7 @@ function toRow(resource: ResourceWithRelations, context: { flows: FlowTotals; la
 }
 
 export const listNinjaOptions = cache(async () => {
+  if (demoMode) return demoInventoryBoard.ninjas;
   const ninjas = await prisma.ninjaProfile.findMany({ where: { status: "ACTIVE" }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, code: true, firstName: true, lastName: true } });
   return ninjas.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`.trim(), code: ninja.code }));
 });

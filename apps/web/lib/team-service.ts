@@ -12,7 +12,6 @@ import { demoMode, hasPermission, type SessionInfo } from "./session";
 import {
   formatReportDate,
   normalizeReportHistoryRange,
-  reportDayBoundary,
   shiftReportDate,
 } from "./report-period";
 
@@ -88,7 +87,7 @@ export async function assertAssignee(
     )
   )
     throw new Error(
-      "VALIDATION:Le référent doit disposer d’un accès humain actif au service",
+      "VALIDATION:L’agent doit disposer d’un accès humain actif au service",
     );
 }
 export async function notifyInternal(
@@ -143,10 +142,9 @@ export async function getMyWorkSummary(session: SessionInfo) {
       priority: string;
       dueAt: Date | null;
     }[],
-    assignedDossiers: 0,
     returnedReports: 0,
     awaitingReview: 0,
-    unassignedDossiers: 0,
+    unassignedTasks: 0,
     blockedTasks: 0,
     overdueTasks: 0,
     activeAgents: 0,
@@ -156,10 +154,9 @@ export async function getMyWorkSummary(session: SessionInfo) {
   const scope = manager ? {} : { assigneeId: session.userId };
   const [
     tasks,
-    assignedDossiers,
     returnedReports,
     awaitingReview,
-    unassignedDossiers,
+    unassignedTasks,
     blockedTasks,
     overdueTasks,
     activeAgents,
@@ -176,9 +173,6 @@ export async function getMyWorkSummary(session: SessionInfo) {
       orderBy: [{ dueAt: "asc" }, { createdAt: "asc" }],
       take: 6,
     }),
-    prisma.ninjaProfile.count({
-      where: { referenceAgentId: session.userId, status: "ACTIVE" },
-    }),
     prisma.agentReport.count({
       where: { authorId: session.userId, status: "RETURNED" },
     }),
@@ -188,8 +182,8 @@ export async function getMyWorkSummary(session: SessionInfo) {
         })
       : 0,
     manager
-      ? prisma.ninjaProfile.count({
-          where: { referenceAgentId: null, status: "ACTIVE" },
+      ? prisma.followUpTask.count({
+          where: { assigneeId: null, status: { in: activeTaskStatuses } },
         })
       : 0,
     prisma.followUpTask.count({ where: { ...scope, status: "BLOCKED" } }),
@@ -208,10 +202,9 @@ export async function getMyWorkSummary(session: SessionInfo) {
   ]);
   return {
     tasks,
-    assignedDossiers,
     returnedReports,
     awaitingReview,
-    unassignedDossiers,
+    unassignedTasks,
     blockedTasks,
     overdueTasks,
     activeAgents,
@@ -309,7 +302,6 @@ export async function getTeamOverview(
       total: 0,
       page: 1,
       pageCount: 1,
-      unassigned: 0,
       awaiting: 0,
     };
   const searchTokens = (filters.search ?? "")
@@ -381,12 +373,10 @@ export async function getTeamOverview(
   const [
     payments,
     transactions,
-    dossiers,
     tasks,
     reports,
     lastPayments,
     lastTransactions,
-    unassigned,
     awaiting,
     expectations,
   ] = await Promise.all([
@@ -412,11 +402,6 @@ export async function getTeamOverview(
       },
       _count: true,
       _sum: { totalAmount: true },
-    }),
-    prisma.ninjaProfile.groupBy({
-      by: ["referenceAgentId"],
-      where: { referenceAgentId: { in: ids }, status: "ACTIVE" },
-      _count: true,
     }),
     prisma.followUpTask.groupBy({
       by: ["assigneeId"],
@@ -452,9 +437,6 @@ export async function getTeamOverview(
         status: "VALIDATED",
       },
       _max: { validatedAt: true },
-    }),
-    prisma.ninjaProfile.count({
-      where: { referenceAgentId: null, status: "ACTIVE" },
     }),
     prisma.agentReport.count({ where: { status: "SUBMITTED" } }),
     prisma.reportExpectation.findMany({
@@ -532,8 +514,6 @@ export async function getTeamOverview(
         hasActivity: operations > 0,
       }),
       entryKnown: Boolean(participation?.startsAt),
-      dossiers:
-        dossiers.find((row) => row.referenceAgentId === user.id)?._count ?? 0,
       payments: payment?._count ?? 0,
       collected: payment?._sum.amount ?? 0n,
       donations: donation?._count ?? 0,
@@ -554,16 +534,11 @@ export async function getTeamOverview(
     total,
     page,
     pageCount,
-    unassigned,
     awaiting,
   };
 }
 
-export async function getAgentDetail(
-  session: SessionInfo,
-  userId: string,
-  filters: { from?: string | undefined; to?: string | undefined } = {},
-) {
+export async function getAgentDetail(session: SessionInfo, userId: string) {
   if (!hasPermission(session, "team:read")) throw new Error("FORBIDDEN");
   if (demoMode) return null;
   const user = await prisma.user.findUnique({
@@ -575,80 +550,7 @@ export async function getAgentDetail(
     },
   });
   if (!user) return null;
-  const since = reportDayBoundary(
-    shiftReportDate(formatReportDate(new Date()), -90),
-  );
-  const period = normalizeReportHistoryRange(filters.from, filters.to);
-  const range = {
-    gte: period.from ?? since,
-    ...(period.to ? { lte: period.to } : {}),
-  };
-  const activityDate = {
-    OR: [{ validatedAt: range }, { validatedAt: null, createdAt: range }],
-  };
-  const [
-    payments,
-    transactions,
-    dossiers,
-    reports,
-    tasks,
-    notes,
-    assignments,
-    rankingPeriods,
-  ] = await Promise.all([
-    prisma.taxPayment.findMany({
-      where: { recordedById: userId, ...activityDate },
-      select: {
-        id: true,
-        receiptNumber: true,
-        ninjaId: true,
-        amount: true,
-        status: true,
-        validatedAt: true,
-        createdAt: true,
-        operationOrigin: true,
-      },
-      orderBy: [
-        { validatedAt: { sort: "desc", nulls: "last" } },
-        { createdAt: "desc" },
-      ],
-      take: 50,
-    }),
-    prisma.resourceTransaction.findMany({
-      where: {
-        AND: [
-          {
-            OR: [
-              { recordedById: userId },
-              { recordedById: null, agentId: userId },
-            ],
-          },
-          activityDate,
-        ],
-      },
-      select: {
-        id: true,
-        receiptNumber: true,
-        ninjaId: true,
-        totalAmount: true,
-        status: true,
-        type: true,
-        validatedAt: true,
-        createdAt: true,
-        operationOrigin: true,
-      },
-      orderBy: [
-        { validatedAt: { sort: "desc", nulls: "last" } },
-        { createdAt: "desc" },
-      ],
-      take: 50,
-    }),
-    prisma.ninjaProfile.findMany({
-      where: { referenceAgentId: userId },
-      select: { id: true, firstName: true, lastName: true, status: true },
-      orderBy: { lastName: "asc" },
-      take: 100,
-    }),
+  const [reports, tasks, notes, rankingPeriods] = await Promise.all([
     prisma.agentReport.findMany({
       where: {
         authorId: userId,
@@ -672,11 +574,6 @@ export async function getAgentDetail(
           take: 30,
         })
       : [],
-    prisma.assignmentHistory.findMany({
-      where: { OR: [{ previousAgentId: userId }, { assignedAgentId: userId }] },
-      orderBy: { createdAt: "desc" },
-      take: 30,
-    }),
     prisma.rankingPeriod.findMany({
       orderBy: { startsAt: "desc" },
       take: 12,
@@ -714,16 +611,12 @@ export async function getAgentDetail(
   );
   return {
     user: { ...user, name: agentName(user) },
-    payments,
-    transactions,
-    dossiers,
     reports,
     tasks,
     notes: notes.map((note) => ({
       ...note,
       authorName: names.get(note.authorId) ?? "Auteur historique",
     })),
-    assignments,
     weekly,
   };
 }

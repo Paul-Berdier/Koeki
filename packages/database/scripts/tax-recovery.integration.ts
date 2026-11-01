@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import pg from "pg";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -26,7 +27,7 @@ async function main() {
     created = true;
     const target = new URL(configured); target.pathname = `/${name}`;
     const connectionString = target.toString();
-    execFileSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", ["exec", "prisma", "migrate", "deploy"], {
+    execFileSync(process.execPath, [path.resolve("node_modules/prisma/build/index.js"), "migrate", "deploy"], {
       cwd: process.cwd(), env: { ...process.env, DATABASE_URL: connectionString }, stdio: "inherit", timeout: 120_000
     });
     db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });

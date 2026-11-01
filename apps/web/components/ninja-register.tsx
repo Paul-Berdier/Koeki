@@ -9,7 +9,7 @@ import type { BadgeStatus } from "@/lib/format";
 import { matchesNinjaQuery } from "@/lib/ninja-search";
 
 /** Serialisable register row (the debt travels as a string: bigint cannot cross the RSC boundary). */
-export interface NinjaRegisterRow { id: string; code: string; name: string; alias: string | null; grade: string; points: number; debt: string; badge: BadgeStatus; statusLabel: string; agent: string; due: string }
+export interface NinjaRegisterRow { id: string; code: string; name: string; alias: string | null; grade: string; points: number; debt: string; badge: BadgeStatus; statusLabel: string; due: string }
 
 const readView = () => { try { return localStorage.getItem("koeki.ninjas.view") === "cards" ? "cards" : "table"; } catch { return "table"; } };
 const storeView = (view: "table" | "cards") => { try { localStorage.setItem("koeki.ninjas.view", view); } catch { /* private mode */ } };
@@ -80,7 +80,7 @@ export function NinjaRegister({ ninjas, grades, initialQuery, initialGrade, init
       </div>
     </div>
     {showTable && <section className="panel ninja-table-panel">
-      {visible.length ? <div className="table-scroll"><table className="ninja-table"><thead><tr><th>Ninja</th><th>Grade</th><th>Situation</th><th className="num">Dette</th><th className="num">Points</th><th>Agent</th><th>Échéance</th></tr></thead><tbody>{visible.map((ninja) => <tr key={ninja.code}><td><Link href={`/ninjas/${ninja.id}`} className="person-cell" prefetch={false}><NinjaAvatar name={ninja.name} /><span><strong>{ninja.name}</strong><small>{ninja.code}{ninja.alias && ` · ${ninja.alias}`}</small></span></Link></td><td><GradeBadge>{ninja.grade}</GradeBadge></td><td><StatusBadge status={ninja.badge}>{ninja.statusLabel}</StatusBadge></td><td className={`num ${ninja.debt !== "0" ? "negative" : "muted"}`}>{ninja.debt !== "0" ? <MoneyDisplay amount={BigInt(ninja.debt)} /> : "Aucune"}</td><td className="num"><PointDisplay points={ninja.points} /></td><td>{ninja.agent}</td><td>{ninja.due}</td></tr>)}</tbody></table></div>
+      {visible.length ? <div className="table-scroll"><table className="ninja-table"><thead><tr><th>Ninja</th><th>Grade</th><th>Situation</th><th className="num">Dette</th><th className="num">Points</th><th>Échéance</th></tr></thead><tbody>{visible.map((ninja) => <tr key={ninja.code}><td><Link href={`/ninjas/${ninja.id}`} className="person-cell" prefetch={false}><NinjaAvatar name={ninja.name} /><span><strong>{ninja.name}</strong><small>{ninja.code}{ninja.alias && ` · ${ninja.alias}`}</small></span></Link></td><td><GradeBadge>{ninja.grade}</GradeBadge></td><td><StatusBadge status={ninja.badge}>{ninja.statusLabel}</StatusBadge></td><td className={`num ${ninja.debt !== "0" ? "negative" : "muted"}`}>{ninja.debt !== "0" ? <MoneyDisplay amount={BigInt(ninja.debt)} /> : "Aucune"}</td><td className="num"><PointDisplay points={ninja.points} /></td><td>{ninja.due}</td></tr>)}</tbody></table></div>
         : <EmptyState title="Aucun ninja trouvé" description="Ajustez la recherche ou les filtres — ou créez un nouveau dossier." />}
     </section>}
     {showCards && <section className="ninja-card-grid" aria-label="Registre des ninjas en cartes">{visible.map((ninja) => <article className="ninja-card" key={ninja.code}>

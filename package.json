@@ -14,6 +14,7 @@
     "test:e2e": "pnpm --filter @koeki/web test:e2e",
     "test:e2e:auth": "pnpm --filter @koeki/web exec playwright test --config playwright.auth.config.ts",
     "test:upgrade": "node scripts/verify-v2-upgrade.cjs",
+    "test:ranking-backfill": "node scripts/verify-ranking-backfill.cjs",
     "format:check": "prettier --check .",
     "db:generate": "pnpm --filter @koeki/database run generate",
     "db:migrate": "pnpm --filter @koeki/database run migrate",

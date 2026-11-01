@@ -53,6 +53,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
   </form>;
   return <div className="page-wrap">
     <PageHeader eyebrow="Bienvenue à la Kōeki" title="Liez votre fiche ninja" description="Votre compte doit être rattaché à un shinobi de Suna. Vérifiez le nom complet et le code : aucune fiche n’est choisie automatiquement à partir d’un prénom." />
+    {!demoMode && <p className="notice" role="status">Vos rôles et vos droits sont conservés. Les opérations et les autres rubriques autorisées pour votre compte seront accessibles dès que votre fiche ninja sera liée. Choisissez votre personnage ci-dessous et confirmez son nom complet et son code.</p>}
     {error && <p className="notice error" role="alert">{error}</p>}
     {demoMode ? <p className="notice" role="status">Mode démonstration : les écritures sont désactivées.</p> : <div className="detail-grid" style={{ alignItems: "start" }}>
       {unclaimed.length > 0 && <section className="panel">

@@ -24,13 +24,13 @@ Les anciens tokens `ink-*`, `paper-*`, `sand-*` servent de passerelle vers les n
 
 ## Navigation et hiérarchie
 
-Le menu principal expose les espaces, les onglets horizontaux leurs rubriques. La matrice de permissions alimente `allowedNavigation` ; `workspaceNavigation` organise seulement la présentation. Un lien masqué n’est jamais un contrôle d’accès.
+Le menu principal expose les espaces, dont un accès direct « Équipements Jōnin+ » sur ordinateur et mobile ; les onglets horizontaux exposent leurs rubriques. La matrice de permissions alimente `allowedNavigation` ; `workspaceNavigation` organise seulement la présentation. Un lien masqué n’est jamais un contrôle d’accès.
 
 Le profil et la déconnexion sont des actions distinctes. La navigation mobile utilise un dialogue Radix avec fermeture par Échap, focus contraint et retour au déclencheur. Le lien d’évitement mène au contenu principal.
 
 ## Pilotage
 
-La synthèse montre quatre indicateurs, une courbe et les interventions actuelles. Le registre des agents permet recherche, tri et pagination. Les dossiers à attribuer ont leur propre vue. Une fiche distingue aperçu, dossiers, opérations et accompagnement pour éviter une page interminable.
+La synthèse montre quatre indicateurs, une courbe et les interventions actuelles. Le registre des agents permet recherche, tri et pagination, avec un lien explicite vers chaque historique complet. Les dossiers ninjas sont communs au service ; seules les tâches sont assignées. Une fiche distingue aperçu, opérations et accompagnement. Le journal individuel est paginé et accessible sans limite d’ancienneté ; les dates et attributions incertaines sont indiquées.
 
 Les graphiques portent sur les opérations validées, à la date réelle de validation, groupées par jour Europe/Paris. Les jours à zéro restent présents. Les légendes activables, infobulles et tableaux de valeurs rendent les courbes consultables. Les définitions précisent origine, auteur, exclusions, périmètre des dates et charge actuelle. La période est conservée quand on ouvre un agent.
 

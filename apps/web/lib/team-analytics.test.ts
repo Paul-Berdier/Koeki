@@ -440,7 +440,6 @@ describe.skipIf(!inject("dbReady"))(
         filters,
       );
       expect(analytics!.agents[0]).toMatchObject({
-        dossiers: 1,
         tasksOpen: 2,
         tasksOverdue: 1,
         tasksBlocked: 1,
@@ -452,13 +451,18 @@ describe.skipIf(!inject("dbReady"))(
         state: "ABSENT",
       });
       expect(analytics!.totals).toMatchObject({
-        unassignedDossiers: 0,
         unassignedTasks: 0,
         reportsToReview: 2,
       });
       expect(
         analytics!.attention.every((entry) => entry.href.includes(agent.id)),
       ).toBe(true);
+      // Legacy references must no longer create personal ninja ownership or workload.
+      expect(analytics!.agents[0]).not.toHaveProperty("dossiers");
+      expect(analytics!.totals).not.toHaveProperty("unassignedDossiers");
+      expect(
+        analytics!.attention.some((entry) => entry.kind.includes("dossier")),
+      ).toBe(false);
       const serialized = JSON.stringify(analytics);
       expect(JSON.parse(serialized).totals.collected).toBe("9007199254741003");
       expect(serialized).not.toMatch(
@@ -493,6 +497,159 @@ describe.skipIf(!inject("dbReady"))(
       const empty = await getAgentAnalytics(managerSession(), idle.id, filters);
       expect(empty!.daily).toHaveLength(3);
       expect(empty!.daily.every((day) => day.total === 0)).toBe(true);
+    });
+    it("retains a historical human author without a current service role or participation and keeps their amount exact", async () => {
+      const historical = await createUserWithRoles(
+        "Analytique ancien auteur sans période",
+        ["NINJA"],
+      );
+      await prisma.taxPayment.create({
+        data: {
+          receiptNumber: `ANALYTICS-HISTORY-${randomUUID()}`,
+          ninjaId: ninja.id,
+          recordedById: historical.id,
+          amount: hugeAmount,
+          method: "FIXTURE",
+          status: "VALIDATED",
+          balanceBefore: hugeAmount,
+          balanceAfter: 0n,
+          idempotencyKey: randomUUID(),
+          validatedAt: inPeriod,
+          operationOrigin: "BUSINESS",
+        },
+      });
+      await prisma.resourceTransaction.create({
+        data: {
+          ninjaId: ninja.id,
+          agentId: manager.id,
+          recordedById: historical.id,
+          type: "DONATION",
+          totalAmount: 600n,
+          status: "VALIDATED",
+          operationOrigin: "BUSINESS",
+          validatedAt: inPeriod,
+          receiptNumber: `ANALYTICS-HISTORY-DON-${randomUUID()}`,
+          idempotencyKey: randomUUID(),
+        },
+      });
+      expect(
+        await prisma.agentParticipation.count({
+          where: { userId: historical.id },
+        }),
+      ).toBe(0);
+      const team = await getTeamAnalytics(managerSession(), filters);
+      expect(team.agents.find((row) => row.id === historical.id)).toMatchObject(
+        {
+          payments: 1,
+          donations: 1,
+          buybacks: 0,
+          total: 2,
+          collected: hugeAmount.toString(),
+          state: "UNKNOWN",
+          entryDateKnown: false,
+          participationStartsAt: null,
+        },
+      );
+      const detail = await getAgentAnalytics(
+        managerSession(),
+        historical.id,
+        filters,
+      );
+      expect(detail!.totals).toMatchObject({
+        total: 2,
+        collected: hugeAmount.toString(),
+        activeAgents: 0,
+      });
+      expect(detail!.daily.reduce((sum, day) => sum + day.total, 0)).toBe(2);
+    });
+    it("shows uncertain historical associations without crediting them, and excludes technical and self-declaring accounts", async () => {
+      const [associated, declaring] = await Promise.all([
+        createUserWithRoles("Analytique association historique incertaine", [
+          "NINJA",
+        ]),
+        createUserWithRoles("Analytique don personnel seul", ["NINJA"]),
+      ]);
+      const bootstrap = await prisma.user.upsert({
+        where: { email: "systeme@koeki.local" },
+        create: {
+          email: "systeme@koeki.local",
+          name: "Système fixture analytique",
+        },
+        update: {},
+      });
+      const before = await getTeamAnalytics(managerSession(), filters);
+      await prisma.resourceTransaction.createMany({
+        data: [
+          {
+            ninjaId: ninja.id,
+            agentId: associated.id,
+            recordedById: null,
+            type: "BUYBACK",
+            totalAmount: 700n,
+            status: "VALIDATED",
+            operationOrigin: "BUSINESS",
+            validatedAt: inPeriod,
+            receiptNumber: `ANALYTICS-UNCERTAIN-${randomUUID()}`,
+            idempotencyKey: randomUUID(),
+          },
+          {
+            ninjaId: ninja.id,
+            agentId: declaring.id,
+            recordedById: declaring.id,
+            type: "DONATION",
+            totalAmount: 800n,
+            status: "VALIDATED",
+            operationOrigin: "SELF_DECLARED",
+            validatedAt: inPeriod,
+            receiptNumber: `ANALYTICS-SELF-${randomUUID()}`,
+            idempotencyKey: randomUUID(),
+          },
+        ],
+      });
+      await prisma.taxPayment.create({
+        data: {
+          receiptNumber: `ANALYTICS-TECHNICAL-${randomUUID()}`,
+          ninjaId: ninja.id,
+          recordedById: bootstrap.id,
+          amount: 900n,
+          method: "FIXTURE",
+          status: "VALIDATED",
+          balanceBefore: 900n,
+          balanceAfter: 0n,
+          idempotencyKey: randomUUID(),
+          validatedAt: inPeriod,
+          operationOrigin: "BUSINESS",
+        },
+      });
+      const team = await getTeamAnalytics(managerSession(), filters);
+      expect(team.agents.find((row) => row.id === associated.id)).toMatchObject(
+        {
+          state: "UNKNOWN",
+          entryDateKnown: false,
+          total: 0,
+          collected: "0",
+        },
+      );
+      expect(
+        team.agents.some(
+          (row) => row.id === declaring.id || row.id === bootstrap.id,
+        ),
+      ).toBe(false);
+      expect(team.totals.total).toBe(before.totals.total);
+      expect(team.totals.collected).toBe(before.totals.collected);
+      const detail = await getAgentAnalytics(
+        managerSession(),
+        associated.id,
+        filters,
+      );
+      expect(detail!.dataQuality.excludedTransactions).toBe(1);
+      expect(detail!.daily.every((day) => day.total === 0)).toBe(true);
+      expect(
+        await getAgentAnalytics(managerSession(), bootstrap.id, filters),
+      ).toBeNull();
+      expect(
+        await getAgentAnalytics(managerSession(), declaring.id, filters),
+      ).toBeNull();
     });
     it("excludes disabled and former agents from service absences while preserving their absence context", async () => {
       const before = await getTeamAnalytics(managerSession(), filters);

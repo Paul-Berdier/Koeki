@@ -11,7 +11,7 @@ export interface DashboardData {
   activity: ActivityRow[];
 }
 
-export interface NinjaRow { id: string; code: string; name: string; alias: string | null; grade: string; points: number; debt: bigint; badge: BadgeStatus; statusLabel: string; agent: string; due: string }
+export interface NinjaRow { id: string; code: string; name: string; alias: string | null; grade: string; points: number; debt: bigint; badge: BadgeStatus; statusLabel: string; due: string }
 export interface NinjasData { summaryLine: string; stats: { total: number; upToDate: number; needsUpdate: number; overdue: number; deceased: number; debt: bigint }; grades: Array<{ code: string; label: string }>; ninjas: NinjaRow[]; total: number; page: number; pageCount: number }
 
 export interface AssessmentRow { id: string; rpYear: number; period: string; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; statusLabel: string; badge: BadgeStatus; dueAt: string }
@@ -26,7 +26,7 @@ export interface NinjaDetailData {
   preview: { amount: bigint; lines: Array<{ label: string; amount: bigint }>; unallocated: bigint } | null;
 }
 
-export interface RecoveryRow { id: string; name: string; code: string; debt: bigint; legacyWeeks: number; due: string; agent: string }
+export interface RecoveryRow { id: string; name: string; code: string; debt: bigint; legacyWeeks: number; due: string }
 export interface RecoveryData { metrics: { priorityDebt: bigint; priorityCount: number; averageLate: string; totalDebt: bigint; unassigned: number }; rows: RecoveryRow[] }
 
 export interface ResourceRow { id: string; code: string; name: string; category: string; unit: string; unitDecimals: number; points: number; exemption: bigint; price: bigint; stock: number; counted: boolean; badge: BadgeStatus; stateLabel: string; demand: "NONE" | "NEEDED" | "CRITICAL" }

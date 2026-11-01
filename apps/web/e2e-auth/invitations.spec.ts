@@ -171,6 +171,61 @@ test("first signup creates a session and consumes once; second visitor cannot re
   expect(await prisma.auditLog.count({ where: { entityId: used.id, action: "INVITATION_CONSUMED" } })).toBe(1);
 });
 
+test("an authorized responsable and agent without a character links a targeted invitation without changing access", async ({ page, context }) => {
+  const id = discordId();
+  const managerRole = await prisma.role.findUniqueOrThrow({ where: { code: "KOEKI_MANAGER" } });
+  const existing = await prisma.user.create({
+    data: {
+      name: `Unlinked responsable ${randomUUID()}`,
+      discordId: id,
+      roles: { create: [{ roleId: managerRole.id, assignedById: managerId }, { roleId, assignedById: managerId }] },
+      accounts: { create: { provider: "discord", providerAccountId: id, type: "oauth" } },
+      participations: { create: { startsAt: new Date(Date.now() - 86_400_000), dateSource: "DECLARED", serviceRole: "ECONOMIC_AGENT", rankingEligible: false, createdById: managerId } },
+    },
+  });
+  const rolesBefore = await prisma.userRole.findMany({ where: { userId: existing.id }, orderBy: { roleId: "asc" } });
+  const participationsBefore = await prisma.agentParticipation.findMany({ where: { userId: existing.id }, orderBy: { id: "asc" } });
+  expect(await prisma.ninjaProfile.findUnique({ where: { userId: existing.id } })).toBeNull();
+  const grade = await prisma.ninjaGrade.upsert({ where: { code: "INVITATION_LINK_E2E" }, create: { code: "INVITATION_LINK_E2E", label: "Fixture rattachement invitation", sortOrder: 994 }, update: {} });
+  const sequence = await prisma.$queryRaw<Array<{ value: bigint }>>`SELECT nextval('"NinjaProfile_code_seq"') AS value`;
+  const reserved = await prisma.ninjaProfile.create({ data: { code: `NIN-${String(sequence[0]!.value).padStart(6, "0")}`, firstName: "ResponsableRéservé", lastName: randomUUID(), currentGradeId: grade.id, status: "ACTIVE", userId: null } });
+  const { token, tokenHash } = createInvitationToken(process.env.KOEKI_E2E_INVITE_PEPPER!);
+  const invitation = await prisma.invitation.create({ data: { tokenHash, roleId, createdById: managerId, ninjaProfileId: reserved.id, expiresAt: new Date(Date.now() + 3_600_000) } });
+  const observed = await mockDiscord(context, id);
+
+  await page.goto(`/invite/${token}`);
+  await expect(page.getByText(`Personnage réservé : ${reserved.firstName} ${reserved.lastName}`, { exact: true })).toBeVisible();
+  await page.getByRole("checkbox", { name: /Je confirme que/ }).check();
+  await page.getByRole("button", { name: "Continuer avec Discord" }).click();
+  await expect(page).toHaveURL("http://localhost:3100/");
+  expect(observed.authorizations).toBe(1);
+  const sessionResponse = await context.request.get("/api/auth/session");
+  expect(sessionResponse.ok()).toBe(true);
+  const session = await sessionResponse.json();
+  expect(session.user.id).toBe(existing.id);
+  expect([...session.user.roles].sort()).toEqual(["ECONOMIC_AGENT", "KOEKI_MANAGER"]);
+  expect(await prisma.session.count({ where: { userId: existing.id } })).toBe(1);
+  expect((await prisma.ninjaProfile.findUniqueOrThrow({ where: { id: reserved.id } })).userId).toBe(existing.id);
+  // Linking an identity must preserve the manager role and the existing service
+  // history, including its ranking setting; the invitation grants no new access.
+  expect(await prisma.userRole.findMany({ where: { userId: existing.id }, orderBy: { roleId: "asc" } })).toEqual(rolesBefore);
+  expect(await prisma.agentParticipation.findMany({ where: { userId: existing.id }, orderBy: { id: "asc" } })).toEqual(participationsBefore);
+  const used = await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.id } });
+  expect(used.status).toBe("USED");
+  expect(used.consumedById).toBe(existing.id);
+  expect(used.consumedAt).not.toBeNull();
+  expect(await prisma.auditLog.count({ where: { entityId: invitation.id, action: "INVITATION_CONSUMED" } })).toBe(1);
+  expect((await context.cookies()).some((cookie) => cookie.name === "koeki_invite")).toBe(false);
+
+  const operations = await page.goto("/operations");
+  expect(operations?.ok()).toBe(true);
+  await expect(page).toHaveURL("http://localhost:3100/operations");
+  await expect(page.getByRole("heading", { level: 1, name: "Opérations", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Enregistrer un paiement/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Enregistrer un don/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Enregistrer un rachat/ })).toBeVisible();
+});
+
 test("first signup works without JavaScript and without weakening the OAuth checks", async ({ browser }, info) => {
   const context = await browser.newContext({ javaScriptEnabled: false, serviceWorkers: "block", baseURL: "http://localhost:3100", viewport: { width: 390, height: 844 } });
   try {
