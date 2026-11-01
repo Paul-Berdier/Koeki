@@ -6,14 +6,14 @@ import type {
 export const demoShell: ShellInfo = { rpYear: 48, rpDayLabel: "Mois RP 3 sur 7", rpProgress: 0.43, overdueCount: 12, userName: "Sonemi Hakumei", userRoleLabel: "Responsable Kōeki" };
 
 const ninjaRows: NinjaRow[] = [
-  { id: "demo-41", code: "NIN-000041", name: "Aoki Hoki", alias: "La Cigale", grade: "Chunin", points: 2440, debt: 0n, badge: "paid", statusLabel: "À jour", agent: "Sonemi H.", due: "—" },
-  { id: "demo-58", code: "NIN-000058", name: "Araki Hoki", alias: null, grade: "Jonin", points: 2000, debt: 32000n, badge: "overdue", statusLabel: "En retard", agent: "Sonemi H.", due: "2 ans RP" },
-  { id: "demo-63", code: "NIN-000063", name: "Inao Hoki", alias: "Sirocco", grade: "Genin confirmé", points: 500, debt: 0n, badge: "paid", statusLabel: "À jour", agent: "Kaemon T.", due: "—" },
-  { id: "demo-72", code: "NIN-000072", name: "Izen Hoki", alias: null, grade: "Tokubetsu Jonin", points: 1290, debt: 8000n, badge: "due", statusLabel: "À payer", agent: "Kaemon T.", due: "4 jours" },
-  { id: "demo-87", code: "NIN-000087", name: "Kagami Hoki", alias: "L’Œil du désert", grade: "Konin", points: 0, debt: 27000n, badge: "overdue", statusLabel: "En retard", agent: "Sonemi H.", due: "2 ans RP" },
-  { id: "demo-94", code: "NIN-000094", name: "Tao Hoki", alias: null, grade: "Jonin", points: 2000, debt: 56000n, badge: "overdue", statusLabel: "En retard", agent: "Kaemon T.", due: "4 ans RP" },
-  { id: "demo-109", code: "NIN-000109", name: "Yukiro Hoki", alias: null, grade: "Chunin", points: 860, debt: 15000n, badge: "warning", statusLabel: "Échéance proche", agent: "Sonemi H.", due: "1 jour" },
-  { id: "demo-118", code: "NIN-000118", name: "Ren Kaze", alias: "Le Veilleur", grade: "Jonin", points: 1740, debt: 0n, badge: "draft", statusLabel: "Décédé", agent: "Kaemon T.", due: "—" }
+  { id: "demo-41", code: "NIN-000041", name: "Aoki Hoki", alias: "La Cigale", grade: "Chunin", points: 2440, debt: 0n, badge: "paid", statusLabel: "À jour", due: "—" },
+  { id: "demo-58", code: "NIN-000058", name: "Araki Hoki", alias: null, grade: "Jonin", points: 2000, debt: 32000n, badge: "overdue", statusLabel: "En retard", due: "2 ans RP" },
+  { id: "demo-63", code: "NIN-000063", name: "Inao Hoki", alias: "Sirocco", grade: "Genin confirmé", points: 500, debt: 0n, badge: "paid", statusLabel: "À jour", due: "—" },
+  { id: "demo-72", code: "NIN-000072", name: "Izen Hoki", alias: null, grade: "Tokubetsu Jonin", points: 1290, debt: 8000n, badge: "due", statusLabel: "À payer", due: "4 jours" },
+  { id: "demo-87", code: "NIN-000087", name: "Kagami Hoki", alias: "L’Œil du désert", grade: "Konin", points: 0, debt: 27000n, badge: "overdue", statusLabel: "En retard", due: "2 ans RP" },
+  { id: "demo-94", code: "NIN-000094", name: "Tao Hoki", alias: null, grade: "Jonin", points: 2000, debt: 56000n, badge: "overdue", statusLabel: "En retard", due: "4 ans RP" },
+  { id: "demo-109", code: "NIN-000109", name: "Yukiro Hoki", alias: null, grade: "Chunin", points: 860, debt: 15000n, badge: "warning", statusLabel: "Échéance proche", due: "1 jour" },
+  { id: "demo-118", code: "NIN-000118", name: "Ren Kaze", alias: "Le Veilleur", grade: "Jonin", points: 1740, debt: 0n, badge: "draft", statusLabel: "Décédé", due: "—" }
 ];
 
 export const demoDashboard: DashboardData = {
@@ -51,7 +51,7 @@ export const demoNinjaDetail: NinjaDetailData = {
 
 export const demoRecovery: RecoveryData = {
   metrics: { priorityDebt: 115000n, priorityCount: 3, averageLate: "2,7 ans RP", totalDebt: 143000n, unassigned: 2 },
-  rows: ninjaRows.filter((ninja) => ninja.badge === "overdue").map((ninja) => ({ id: ninja.id, name: ninja.name, code: ninja.code, debt: ninja.debt, legacyWeeks: 0, due: ninja.due, agent: ninja.agent }))
+  rows: ninjaRows.filter((ninja) => ninja.badge === "overdue").map((ninja) => ({ id: ninja.id, name: ninja.name, code: ninja.code, debt: ninja.debt, legacyWeeks: 0, due: ninja.due }))
 };
 
 export const demoResources: ResourcesData = {

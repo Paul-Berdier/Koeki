@@ -2,7 +2,8 @@
 const modules = [
   { id: "desk", label: "Bureau", routes: [{ href: "/", label: "Bureau" }] },
   { id: "dossiers", label: "Dossiers ninjas", routes: [{ href: "/ninjas", label: "Dossiers" }, { href: "/recouvrement", label: "Recouvrement" }] },
-  { id: "operations", label: "Opérations", routes: [{ href: "/operations", label: "Nouvelle opération" }, { href: "/dons", label: "Dons" }, { href: "/resources/transaction", label: "Rachats" }, { href: "/equipement", label: "Équipement" }] },
+  { id: "equipment", label: "Équipements Jōnin+", routes: [{ href: "/equipement", label: "Équipements Jōnin+" }] },
+  { id: "operations", label: "Opérations", routes: [{ href: "/operations", label: "Nouvelle opération" }, { href: "/dons", label: "Dons" }, { href: "/resources/transaction", label: "Rachats" }] },
   { id: "stocks", label: "Stocks & catalogue", routes: [{ href: "/inventory", label: "Inventaire" }, { href: "/inventory/movements", label: "Mouvements" }, { href: "/inventory/counts", label: "Comptages" }, { href: "/resources", label: "Catalogue" }, { href: "/resources/valeurs", label: "Valeurs & tarifs" }, { href: "/crafting", label: "Artisanat" }] },
   { id: "work", label: "Tâches & rapports", routes: [{ href: "/taches", label: "Tâches" }, { href: "/reports", label: "Rapports" }] },
   { id: "management", label: "Pilotage", routes: [{ href: "/equipe", label: "Équipe" }, { href: "/equipe/taxes", label: "Taxes par agent" }, { href: "/classement", label: "Classement hebdomadaire" }, { href: "/statistics", label: "Économie" }] },

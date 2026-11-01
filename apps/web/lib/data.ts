@@ -27,7 +27,6 @@ export const getUserNames = cache(async () => {
   const users = await prisma.user.findMany({ select: { id: true, name: true, ninjaProfile: { select: { firstName: true, lastName: true } } } });
   return new Map(users.map((user) => [user.id, user.ninjaProfile ? `${user.ninjaProfile.firstName} ${user.ninjaProfile.lastName}`.trim() : user.name ?? "Agent Kōeki"]));
 });
-const shortName = (name: string) => { const [first, second] = name.trim().split(/\s+/); return first && second ? `${first} ${second.charAt(0)}.` : name; };
 const ninjaLifecycle = (status: string): { label: string; badge: BadgeStatus } | null =>
   status === "DECEASED" ? { label: "Décédé", badge: "draft" }
   : status === "INACTIVE" ? { label: "Inactif", badge: "pending" }
@@ -38,7 +37,7 @@ const ninjaLifecycle = (status: string): { label: string; badge: BadgeStatus } |
 interface AssessmentAggregate { id: string; rpYear: number; gradeCode: string; gradeLabel: string; original: bigint; penalties: bigint; adjustments: bigint; exemptions: bigint; paid: bigint; remaining: bigint; dueAt: Date; status: TaxAssessmentStatus }
 interface NinjaAggregate {
   id: string; code: string; firstName: string; lastName: string; alias: string | null; clan: string | null; status: string; diedAt: Date | null;
-  gradeCode: string; gradeLabel: string; referenceAgentId: string | null; userId: string | null; notes: string | null;
+  gradeCode: string; gradeLabel: string; userId: string | null; notes: string | null;
   points: number; debt: bigint; lateYears: number; legacyLate: number; badge: BadgeStatus; statusLabel: string; due: string; nextDueAt: Date | null; assessments: AssessmentAggregate[];
 }
 
@@ -70,9 +69,9 @@ function computeAssessment(assessment: {
   return { id: assessment.id, rpYear: assessment.taxYear.rpYear, gradeCode: assessment.gradeCodeSnapshot, gradeLabel: assessment.gradeLabelSnapshot, original: assessment.originalAmount, penalties, adjustments, exemptions, paid, remaining, dueAt: assessment.dueAt, status };
 }
 
-const loadNinjaAggregates = cache(async (ninjaId?: string, referenceAgentId?: string): Promise<NinjaAggregate[]> => {
+const loadNinjaAggregates = cache(async (ninjaId?: string): Promise<NinjaAggregate[]> => {
   const [service, ninjas] = await Promise.all([getRpService(), prisma.ninjaProfile.findMany({
-    where: { ...(ninjaId ? { id: ninjaId } : {}), ...(referenceAgentId ? { referenceAgentId } : {}) },
+    where: ninjaId ? { id: ninjaId } : {},
     include: {
       currentGrade: true, pointEntries: { select: { points: true } },
       assessments: { include: { penalties: { select: { amount: true } }, adjustments: { select: { amount: true } }, exemptions: { select: { amount: true } }, allocations: { select: { amount: true, payment: { select: { status: true } } } }, taxYear: { select: { rpYear: true } } } }
@@ -104,7 +103,7 @@ const loadNinjaAggregates = cache(async (ninjaId?: string, referenceAgentId?: st
     const due = lifecycle ? "—" : overdue.length ? lateYearsLabel(Math.max(1, lateYears)) : upcoming ? `${Math.max(1, Math.ceil((upcoming.dueAt.getTime() - now.getTime()) / 86_400_000))} jours` : gradeNeedsUpdate ? "Paiement non à jour" : legacyLate ? `${legacyLate} sem. ancien registre` : "—";
     return {
       id: ninja.id, code: ninja.code, firstName: ninja.firstName, lastName: ninja.lastName, alias: ninja.alias, clan: ninja.clan, status: ninja.status, diedAt: ninja.diedAt,
-      gradeCode: ninja.currentGrade.code, gradeLabel: ninja.currentGrade.label, referenceAgentId: ninja.referenceAgentId, userId: ninja.userId, notes: ninja.notes,
+      gradeCode: ninja.currentGrade.code, gradeLabel: ninja.currentGrade.label, userId: ninja.userId, notes: ninja.notes,
       points: ninja.pointEntries.reduce((total, entry) => total + entry.points, 0), debt, lateYears, legacyLate, badge, statusLabel, due, nextDueAt: upcoming?.dueAt ?? null, assessments
     };
   });
@@ -191,10 +190,10 @@ export async function getDashboard(session?: SessionInfo): Promise<DashboardData
 
 /** Rows of the register for a grade / situation. The free-text search is applied in the browser
  *  (see components/ninja-register.tsx), so every dossier of the selection is returned. */
-export async function getNinjas(params: { grade?: string | undefined; statut?: string | undefined; assignedToMe?: boolean }): Promise<NinjasData> {
-  const session = await requirePermission("business:read");
+export async function getNinjas(params: { grade?: string | undefined; statut?: string | undefined }): Promise<NinjasData> {
+  await requirePermission("business:read");
   if (demoMode) return demoNinjas;
-  const [aggregates, users, grades] = await Promise.all([loadNinjaAggregates(undefined, params.assignedToMe ? session.userId : undefined), getUserNames(), prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })]);
+  const [aggregates, grades] = await Promise.all([loadNinjaAggregates(), prisma.ninjaGrade.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } })]);
   const registry = aggregates.filter((ninja) => ninja.status !== "ARCHIVED");
   let rows = params.statut === "archived" ? aggregates.filter((ninja) => ninja.status === "ARCHIVED") : registry;
   if (params.grade) rows = rows.filter((ninja) => ninja.gradeCode === params.grade);
@@ -218,7 +217,7 @@ export async function getNinjas(params: { grade?: string | undefined; statut?: s
     grades: grades.map((grade) => ({ code: grade.code, label: grade.label })),
     ninjas: rows.map((ninja): NinjaRow => ({
       id: ninja.id, code: ninja.code, name: `${ninja.firstName} ${ninja.lastName}`, alias: ninja.alias, grade: ninja.gradeLabel, points: ninja.points,
-      debt: ninja.debt, badge: ninja.badge, statusLabel: ninja.statusLabel, agent: ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "—", due: ninja.due
+      debt: ninja.debt, badge: ninja.badge, statusLabel: ninja.statusLabel, due: ninja.due
     })),
     total, page: 1, pageCount: 1
   };
@@ -318,21 +317,20 @@ async function ninjaHasLinkedUser(ninjaId: string) {
 export async function getRecovery(): Promise<RecoveryData> {
   await requirePermission("business:read");
   if (demoMode) return demoRecovery;
-  const [aggregates, users] = await Promise.all([loadNinjaAggregates(), getUserNames()]);
+  const aggregates = await loadNinjaAggregates();
   const active = aggregates.filter((ninja) => ninja.status === "ACTIVE");
   const overdue = active.filter((ninja) => ninja.badge === "overdue").sort((a, b) => b.lateYears - a.lateYears || (b.debt > a.debt ? 1 : -1));
   const legacyOnly = active.filter((ninja) => ninja.badge !== "overdue" && ninja.legacyLate > 0).sort((a, b) => b.legacyLate - a.legacyLate);
   const critical = overdue.filter((ninja) => ninja.lateYears >= 2);
   const averageLate = overdue.length ? (overdue.reduce((total, ninja) => total + ninja.lateYears, 0) / overdue.length).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : "0";
-  const agentName = (ninja: NinjaAggregate) => (ninja.referenceAgentId ? shortName(users.get(ninja.referenceAgentId) ?? "—") : "À attribuer");
   return {
     metrics: {
       priorityDebt: sumBig(critical.map((ninja) => ninja.debt)), priorityCount: critical.length, averageLate: `${averageLate} ans RP`,
       totalDebt: sumBig(overdue.map((ninja) => ninja.debt)), unassigned: legacyOnly.length
     },
     rows: [
-      ...overdue.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: ninja.debt, legacyWeeks: ninja.legacyLate, due: ninja.due, agent: agentName(ninja) })),
-      ...legacyOnly.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: 0n, legacyWeeks: ninja.legacyLate, due: ninja.due, agent: agentName(ninja) }))
+      ...overdue.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: ninja.debt, legacyWeeks: ninja.legacyLate, due: ninja.due })),
+      ...legacyOnly.map((ninja) => ({ id: ninja.id, name: `${ninja.firstName} ${ninja.lastName}`, code: ninja.code, debt: 0n, legacyWeeks: ninja.legacyLate, due: ninja.due }))
     ]
   };
 }

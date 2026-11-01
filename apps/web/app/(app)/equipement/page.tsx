@@ -40,8 +40,8 @@ export default async function EquipmentPage({ searchParams }: { searchParams: Pr
   return <div className="page-wrap equipment-page">
     <PageHeader
       eyebrow="Forces de Suna"
-      title="Équipement des Jōnin"
-      description="Consultez les panoplies, repérez les slots manquants et mettez un ninja à jour sans quitter la liste."
+      title="Équipements des Jōnin+"
+      description="Panoplies des Jōnin, commandants Jōnin, Kage et Sanin : consultez les pièces manquantes et mettez chaque équipement à jour."
       metrics={[
         { label: "Ninjas suivis", value: rows.length },
         { label: "Panoplies complètes", value: complete },

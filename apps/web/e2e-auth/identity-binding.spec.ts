@@ -77,6 +77,10 @@ test("switching Discord identities in the same browser never merges accounts or 
   const oldToken = await browserSession(context, old.user.id);
   const anotherDevice = randomUUID();
   await prisma.session.create({ data: { userId: old.user.id, sessionToken: anotherDevice, sessionVersion: old.user.sessionVersion, expires: new Date(Date.now() + 3_600_000) } });
+  // Establish the visible original identity before switching, and compile the
+  // shared detail route outside the OAuth redirect assertion in local dev.
+  await page.goto(`/ninjas/${old.profile!.id}`);
+  await expect(page.getByRole("heading", { name: `${old.profile!.firstName} ${old.profile!.lastName}`, exact: true })).toBeVisible();
   const failures = await discord(context, page, next.discordId);
   await page.goto("/connexion");
   // A same-origin native form exercises account switching with a live old cookie.

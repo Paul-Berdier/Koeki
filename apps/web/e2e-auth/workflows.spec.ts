@@ -127,10 +127,6 @@ test.beforeAll(async () => {
         },
       });
   }
-  await prisma.ninjaProfile.update({
-    where: { id: people.ninja!.ninjaId },
-    data: { referenceAgentId: people.agent!.id },
-  });
   await prisma.agentNote.create({
     data: {
       userId: people.agent!.id,
@@ -331,6 +327,164 @@ test("role restrictions and private data hold through real Auth.js sessions", as
   expect(await page.locator('a[href^="/equipe/"]').count()).toBe(0);
 });
 
+test("responsable can open every operational and management area", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(240_000);
+  await login(context, people.manager!);
+  const routes = [
+    "/",
+    "/ninjas",
+    "/ninjas/new",
+    `/ninjas/${people.ninja!.ninjaId}`,
+    `/ninjas/${people.ninja!.ninjaId}/modifier`,
+    "/recouvrement",
+    "/equipement",
+    "/operations",
+    "/dons",
+    "/resources/transaction",
+    "/resources/transaction?type=DONATION",
+    "/inventory",
+    "/inventory/movements",
+    "/inventory/counts",
+    "/inventory/counts/new",
+    "/resources",
+    "/resources/new",
+    "/resources/valeurs",
+    "/crafting",
+    "/crafting/new",
+    "/taches",
+    "/reports",
+    "/reports/new",
+    "/equipe",
+    "/equipe?vue=agents",
+    "/equipe?vue=ressources",
+    "/equipe/taxes",
+    `/equipe/${people.agent!.id}`,
+    `/classement/agents/${people.agent!.id}`,
+    "/classement",
+    "/statistics",
+    "/events",
+    "/admin/comptes",
+    "/admin",
+    "/admin?section=economic",
+    "/admin?section=technical",
+    "/audit",
+    "/profil?identite=1",
+    "/notifications",
+  ];
+  for (const route of routes) {
+    await test.step(route, async () => {
+      const response = await page.goto(route);
+      expect(response?.status(), `HTTP status for ${route}`).toBeLessThan(400);
+      await expect(page.locator("main h1")).toBeVisible();
+      expect(new URL(page.url()).pathname).toBe(
+        new URL(route, "http://localhost:3100").pathname,
+      );
+      await expect(page.getByText("Accès refusé", { exact: true })).toHaveCount(
+        0,
+      );
+    });
+  }
+});
+
+test("responsable and multirole accounts reach operations, stock and administration through navigation", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(180_000);
+  const expectScreen = async (route: string, title: string) => {
+    await expect(page).toHaveURL(`http://localhost:3100${route}`);
+    await expect(page.locator("main h1")).toHaveText(title);
+  };
+  const openModule = async (label: string) => {
+    const trigger = page.getByRole("button", {
+      name: "Ouvrir la navigation",
+      exact: true,
+    });
+    const mobile = await trigger.isVisible();
+    if (mobile) {
+      await trigger.click();
+      await expect(
+        page.getByRole("dialog", { name: "Navigation Kōeki", exact: true }),
+      ).toBeVisible();
+    }
+    await page
+      .getByRole("navigation", {
+        name: mobile ? "Navigation mobile" : "Navigation principale",
+        exact: true,
+      })
+      .getByRole("link", { name: label, exact: true })
+      .click();
+    if (mobile) {
+      await expect(
+        page.getByRole("dialog", { name: "Navigation Kōeki", exact: true }),
+      ).toBeHidden();
+    }
+  };
+  const openTab = async (module: string, label: string) => {
+    await page
+      .getByRole("navigation", { name: `Rubriques ${module}`, exact: true })
+      .getByRole("link", { name: label, exact: true })
+      .click();
+  };
+
+  for (const identity of ["manager", "multi"] as const) {
+    await test.step(identity, async () => {
+      await login(context, people[identity]!);
+      await page.goto("/");
+      await expect(page.locator("main h1")).toBeVisible();
+
+      // After the initial landing, every destination is reached by a visible
+      // sidebar or tab link, including the mobile drawer and its close behavior.
+      await openModule("Opérations");
+      await expectScreen("/operations", "Opérations");
+      await expect(
+        page.getByRole("link", { name: /Enregistrer un paiement/ }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("link", { name: /Enregistrer un rachat/ }),
+      ).toBeVisible();
+      await openTab("Opérations", "Dons");
+      await expectScreen("/dons", "Dons");
+      await openTab("Opérations", "Rachats");
+      await expectScreen("/resources/transaction", "Nouvelle transaction");
+      await expect(
+        page.getByRole("combobox", { name: "Type d’opération", exact: true }),
+      ).toHaveValue("BUYBACK");
+      await expect(
+        page.getByRole("button", {
+          name: "Enregistrer le rachat",
+          exact: true,
+        }),
+      ).toBeVisible();
+
+      await openModule("Stocks & catalogue");
+      await expectScreen("/inventory", "Inventaire");
+      await openTab("Stocks & catalogue", "Comptages");
+      await expectScreen("/inventory/counts", "Comptages");
+      await openTab("Stocks & catalogue", "Valeurs & tarifs");
+      await expectScreen("/resources/valeurs", "Valeurs & tarifs");
+
+      await openModule("Administration");
+      await expectScreen("/admin/comptes", "Comptes");
+      await openTab("Administration", "Réglages");
+      await expectScreen("/admin", "Invitations");
+      await page
+        .getByRole("navigation", {
+          name: "Catégories de réglages",
+          exact: true,
+        })
+        .getByRole("link", { name: "Fiscalité et rachats", exact: true })
+        .click();
+      await expectScreen("/admin?section=economic", "Réglages économiques");
+      await openTab("Administration", "Journal d’audit");
+      await expectScreen("/audit", "Registre d’audit");
+    });
+  }
+});
+
 test("authenticated screens, responsive reflow and accessible mobile navigation", async ({
   page,
   context,
@@ -481,9 +635,7 @@ test("automated accessibility scan and 200 percent layout", async ({
       const axe = (
         window as unknown as {
           axe: {
-            run: (
-              options: unknown,
-            ) => Promise<{
+            run: (options: unknown) => Promise<{
               violations: Array<{
                 id: string;
                 impact: string;
@@ -604,13 +756,11 @@ test("report and task follow-up use motivated reviews and preserve their history
       .filter({ hasText: `Vérifier le dossier ${run}` }),
   ).toBeVisible();
   await expect(
-    page
-      .locator(".task-item")
-      .filter({
-        has: page
-          .locator(".task-summary strong")
-          .filter({ hasText: `Vérifier le dossier ${run}` }),
-      }),
+    page.locator(".task-item").filter({
+      has: page
+        .locator(".task-summary strong")
+        .filter({ hasText: `Vérifier le dossier ${run}` }),
+    }),
   ).toHaveAttribute("open", "");
   await page
     .getByRole("combobox", { name: "Nouvel état", exact: true })
@@ -811,13 +961,11 @@ test("manager analytics keep period, chart totals, zero agents and private detai
   await page.getByLabel("Du", { exact: true }).fill(thirtyDaysFrom);
   await page.getByRole("button", { name: "Actualiser", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`du=${thirtyDaysFrom}.*au=${today}`));
-  const chartDisclosure = page
-    .locator("details")
-    .filter({
-      has: page
-        .locator("summary")
-        .filter({ hasText: /^Voir les données de la courbe$/ }),
-    });
+  const chartDisclosure = page.locator("details").filter({
+    has: page
+      .locator("summary")
+      .filter({ hasText: /^Voir les données de la courbe$/ }),
+  });
   if ((await chartDisclosure.getAttribute("open")) === null)
     await chartDisclosure.locator("summary").click();
   const thirtyRows = page
@@ -844,9 +992,18 @@ test("manager analytics keep period, chart totals, zero agents and private detai
     exact: true,
   });
   await agentNavigation
-    .getByRole("link", { name: "Dossiers", exact: true })
+    .getByRole("link", { name: "Ninjas concernés", exact: true })
     .click();
   await expect(page).toHaveURL(/vue=dossiers/);
+  await expect(
+    page.getByRole("heading", {
+      name: "Ninjas concernés par ses opérations",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Réaffecter le dossier", exact: true }),
+  ).toHaveCount(0);
   await page.locator("summary").filter({ hasText: people.ninja!.name }).click();
   await expect(
     page.getByRole("link", { name: "Ouvrir le dossier ninja", exact: true }),
@@ -862,13 +1019,13 @@ test("manager analytics keep period, chart totals, zero agents and private detai
   await expect(operationJournal.locator("tbody tr")).toHaveCount(22);
   await expect(
     operationJournal.getByRole("link", {
-      name: `Paiement E2E-PAY-${run}`,
+      name: `Paiement fiscal E2E-PAY-${run}`,
       exact: true,
     }),
   ).toBeVisible();
   await expect(
     operationJournal.getByRole("link", {
-      name: `Paiement E2E-PAY-${run}-27`,
+      name: `Paiement fiscal E2E-PAY-${run}-27`,
       exact: true,
     }),
   ).toBeVisible();
@@ -876,13 +1033,19 @@ test("manager analytics keep period, chart totals, zero agents and private detai
   await expect(page).toHaveURL(
     new RegExp(`du=${sevenDaysFrom}.*au=${today}.*vue=activite`),
   );
-  await expect(operationJournal.locator("tbody tr")).toHaveCount(8);
+  // These isolated fixtures backdate validatedAt for the analytics chart.
+  // The database proves their first validation at insertion time, so the full
+  // history correctly keeps all 22 in the current seven-day proof period.
+  await expect(operationJournal.locator("tbody tr")).toHaveCount(22);
+  await expect(
+    operationJournal.getByText("Première validation prouvée", { exact: true }),
+  ).toHaveCount(22);
   await expect(
     operationJournal.getByRole("link", {
-      name: `Paiement E2E-PAY-${run}-27`,
+      name: `Paiement fiscal E2E-PAY-${run}-27`,
       exact: true,
     }),
-  ).toHaveCount(0);
+  ).toBeVisible();
   await agentNavigation
     .getByRole("link", { name: "Accompagnement", exact: true })
     .click();

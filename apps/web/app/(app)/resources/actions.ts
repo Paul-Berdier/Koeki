@@ -1,10 +1,11 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma, prisma } from "@koeki/database";
 import { suggestResourceCode } from "@koeki/domain";
-import { activePrice, applyValidatedTransaction, isUniqueViolation, lockActiveNinja, lockResources, nextTransactionReceipt, parseFourDecimal, scaledTimes, withReceiptRetry, writeAudit } from "@/lib/finance";
+import { activePrice, applyValidatedTransaction, isUniqueViolation, lockActiveNinja, lockResources, nextTransactionReceipt, parseFourDecimal, scaledTimes, uniqueViolationTarget, withReceiptRetry, writeAudit } from "@/lib/finance";
 import { hasPermission, requireWriteAccess } from "@/lib/session";
 
 const MAX_UNIT_PRICE = 100_000_000;
@@ -45,9 +46,27 @@ export async function recordResourceTransaction(formData: FormData) {
     }
   }
   if (!lines.length) back("Ajoutez au moins une ressource — tapez son nom puis choisissez une proposition de la liste");
+  // Keep the submitted intent, including an omitted negotiated price, separate
+  // from catalog snapshots so a retry still matches after catalog changes.
+  const requestFingerprint = createHash("sha256").update(JSON.stringify({
+    version: 1, actorId: session.userId, type, ninjaId,
+    lines: [...lines].sort((a, b) => a.resourceId.localeCompare(b.resourceId)).map((line) => ({ resourceId: line.resourceId, quantity: line.quantity.toFixed(4), negotiated: line.negotiated?.toString() ?? null }))
+  })).digest("hex");
   let receipt = "";
   try {
     receipt = await withReceiptRetry(() => prisma.$transaction(async (tx) => {
+      // Serialize this key before checking it, including concurrent requests
+      // that change the ninja or actor. Hash collisions only serialize extra work.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`resource-transaction:${idempotencyKey}`}, 0))`;
+      const existing = await tx.resourceTransaction.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        const audit = existing.recordedById === session.userId && existing.type === type && existing.ninjaId === ninjaId
+          ? await tx.auditLog.findFirst({ where: { actorId: session.userId, entityType: "ResourceTransaction", entityId: existing.id, action: { in: ["BUYBACK_PENDING_APPROVAL", "BUYBACK_RECORDED", "DONATION_RECORDED"] } }, select: { newValues: true } })
+          : null;
+        const values = audit?.newValues;
+        if (values && typeof values === "object" && !Array.isArray(values) && values.requestFingerprint === requestFingerprint && (existing.status === "VALIDATED" || existing.status === "PENDING_APPROVAL")) return existing.receiptNumber;
+        throw new Error("VALIDATION:Ce formulaire a déjà été utilisé pour une transaction. Rechargez la page avant une nouvelle saisie");
+      }
       if (!await lockActiveNinja(tx, ninjaId)) throw new Error("VALIDATION:Ninja introuvable ou dossier inactif");
       const items: Array<{ resourceId: string; quantity: number; unitPrice: bigint; lineTotal: bigint; exemptionPerUnit: bigint; pointsPerUnit: number }> = [];
       for (const line of lines) {
@@ -71,12 +90,12 @@ export async function recordResourceTransaction(formData: FormData) {
       } });
       await tx.resourceTransactionItem.createMany({ data: items.map((item) => ({ transactionId: transaction.id, resourceId: item.resourceId, quantity: new Prisma.Decimal(item.quantity), unitPriceSnapshot: item.unitPrice, lineTotal: item.lineTotal })) });
       if (!needsApproval) await applyValidatedTransaction(tx, { id: transaction.id, type, ninjaId, receiptNumber, totalAmount, idempotencyKey }, items, session.userId);
-      await writeAudit(tx, { actorId: session.userId, action: type === "BUYBACK" ? (needsApproval ? "BUYBACK_PENDING_APPROVAL" : "BUYBACK_RECORDED") : "DONATION_RECORDED", entityType: "ResourceTransaction", entityId: transaction.id, reason: `${type === "BUYBACK" ? "Rachat" : "Don"} ${receiptNumber} — ${Number(totalAmount)} Ryō`, newValues: { items: items.map((item) => ({ resourceId: item.resourceId, quantity: item.quantity, unitPrice: Number(item.unitPrice) })) } });
+      await writeAudit(tx, { actorId: session.userId, action: type === "BUYBACK" ? (needsApproval ? "BUYBACK_PENDING_APPROVAL" : "BUYBACK_RECORDED") : "DONATION_RECORDED", entityType: "ResourceTransaction", entityId: transaction.id, reason: `${type === "BUYBACK" ? "Rachat" : "Don"} ${receiptNumber} — ${Number(totalAmount)} Ryō`, newValues: { requestFingerprint, items: items.map((item) => ({ resourceId: item.resourceId, quantity: item.quantity, unitPrice: Number(item.unitPrice) })) } });
       return receiptNumber;
     }));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("VALIDATION:")) back(error.message.slice("VALIDATION:".length));
-    if (isUniqueViolation(error)) back("Cette transaction a déjà été enregistrée (double soumission détectée)");
+    if (uniqueViolationTarget(error).includes("idempotencyKey")) back("Ce formulaire a déjà été utilisé pour une transaction. Rechargez la page avant une nouvelle saisie");
     throw error;
   }
   redirect(`/resources?recu=${encodeURIComponent(receipt)}`);

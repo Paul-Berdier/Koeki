@@ -110,6 +110,10 @@ Pour l’E2E authentifié, `corepack pnpm test:e2e:auth` gère normalement son s
 Dans cet environnement Windows, son arrêt automatique a parfois attendu sans
 terminer après les assertions. La passe finale utilise donc le serveur externe
 explicitement lancé ci-dessous, puis l’exécution séparée des tests.
+Ce mode externe concerne les parcours métier. Les suites OAuth ajoutées ensuite
+(`invitations`, `identity-binding`, `identity-invitation-mismatch`) exigent le
+serveur isolé et son préchargement, gérés par Playwright : retirer
+`E2E_EXTERNAL_SERVER` et arrêter tout serveur sur le port 3100 pour ces suites.
 
 Terminal 1, depuis la racine, pour lancer le serveur local :
 
@@ -130,7 +134,7 @@ Terminal 2, depuis la racine :
 $env:DATABASE_URL_TEST = 'postgresql://koeki:koeki-local-fixture@127.0.0.1:55432/koeki_v2_test?schema=public'
 $env:E2E_EXTERNAL_SERVER = 'true'
 Set-Location apps/web
-node node_modules/@playwright/test/cli.js test --config playwright.auth.config.ts
+node node_modules/@playwright/test/cli.js test --config playwright.auth.config.ts workflows.spec.ts pilotage-resources.spec.ts resource-values-agent-taxes.spec.ts
 ```
 
 Les tests créent leurs sessions sans endpoint, header ni rôle de secours en

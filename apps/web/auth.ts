@@ -19,7 +19,7 @@ async function consumeInvitation(userId: string, token: string) {
   const check = await checkInvitation(token);
   if (!check.ok) throw new Error(check.error);
   // The transaction rechecks status, expiry, creator rights and the ninja reservation.
-  await consumeInvitationAccess(userId, check.id);
+  await consumeInvitationAccess(userId, check.id, token);
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -47,9 +47,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // silently open its old character after a different one was confirmed.
           const check = await checkInvitation(token);
           if (!check.ok) return refuse(check.error);
-          const invitation = await prisma.invitation.findUnique({ where: { id: check.id }, select: { ninjaProfileId: true, ninjaProfile: { select: { userId: true } } } });
+          const invitation = await prisma.invitation.findUnique({ where: { id: check.id }, select: { ninjaProfileId: true } });
           if (!invitation) return refuse("InvitationUnavailable");
-          if (invitation.ninjaProfileId && invitation.ninjaProfile?.userId !== existing.id) return refuse("AccountIdentityMismatch");
+          if (invitation.ninjaProfileId) {
+            try { await consumeInvitation(existing.id, token); }
+            catch (error) {
+              if (error instanceof Error && error.message === "ACCOUNT_IDENTITY_MISMATCH") return refuse("AccountIdentityMismatch");
+              const latest = await checkInvitation(token);
+              return refuse(latest.ok ? "InvitationUnavailable" : latest.error);
+            }
+          }
         }
         return true;
       }

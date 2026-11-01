@@ -190,39 +190,25 @@ export function WorkloadChart({
   from: string;
   to: string;
 }) {
-  const [metric, setMetric] = useState<"tasksOpen" | "dossiers">("tasksOpen");
   const sorted = [...rows]
-    .sort((a, b) => b[metric] - a[metric] || a.name.localeCompare(b.name, "fr"))
+    .sort(
+      (a, b) => b.tasksOpen - a.tasksOpen || a.name.localeCompare(b.name, "fr"),
+    )
     .slice(0, 6);
-  const maximum = Math.max(1, ...sorted.map((row) => row[metric]));
+  const maximum = Math.max(1, ...sorted.map((row) => row.tasksOpen));
   const period = new URLSearchParams({ du: from, au: to });
   return (
     <div className="workload-chart">
-      <div className="segmented-control" aria-label="Charge à comparer">
-        <button
-          type="button"
-          aria-pressed={metric === "tasksOpen"}
-          onClick={() => setMetric("tasksOpen")}
-        >
-          Tâches ouvertes
-        </button>
-        <button
-          type="button"
-          aria-pressed={metric === "dossiers"}
-          onClick={() => setMetric("dossiers")}
-        >
-          Dossiers actifs
-        </button>
-      </div>
+      <p className="chart-caption">Tâches ouvertes par agent</p>
       <ul>
         {sorted.map((row) => (
           <li key={row.id}>
             <div>
               <Link href={`/equipe/${row.id}?${period}`}>{row.name}</Link>
-              <strong>{row[metric]}</strong>
+              <strong>{row.tasksOpen}</strong>
             </div>
             <div className="load-track" aria-hidden="true">
-              <span style={{ width: `${(row[metric] / maximum) * 100}%` }} />
+              <span style={{ width: `${(row.tasksOpen / maximum) * 100}%` }} />
             </div>
           </li>
         ))}
@@ -230,7 +216,8 @@ export function WorkloadChart({
       {!rows.length && <p className="muted">Aucun agent à afficher.</p>}
       <p className="chart-caption">
         Situation actuelle · jusqu’à 6 agents les plus chargés. La charge ne
-        mesure pas la difficulté des dossiers.
+        mesure pas la difficulté des tâches. Les dossiers ninjas sont communs au
+        service.
       </p>
     </div>
   );

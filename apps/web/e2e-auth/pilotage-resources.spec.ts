@@ -2,9 +2,10 @@ import { test, expect, type BrowserContext, type Locator, type Page } from "@pla
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { prisma } from "@koeki/database";
+import { formatReportDate } from "../lib/report-period";
 
 let managerId: string, agentId: string, receipt: string, metalName: string;
-const period = "du=2026-10-19&au=2026-10-25";
+let period: string;
 
 async function login(context: BrowserContext, userId: string) {
   const sessionToken = randomUUID();
@@ -35,11 +36,12 @@ async function expectReadableObjects(page: Page, region: Locator, row: Locator) 
 
 test.beforeAll(async () => {
   const key = randomUUID();
+  const validatedAt = new Date();
   const grade = await prisma.ninjaGrade.upsert({ where: { code: "GENIN" }, create: { code: "GENIN", label: "Genin", sortOrder: 2 }, update: {} });
   const managerRole = await prisma.role.upsert({ where: { code: "KOEKI_MANAGER" }, create: { code: "KOEKI_MANAGER", label: "Responsable" }, update: {} });
   const agentRole = await prisma.role.upsert({ where: { code: "ECONOMIC_AGENT" }, create: { code: "ECONOMIC_AGENT", label: "Agent" }, update: {} });
   managerId = (await prisma.user.create({ data: { name: `Manager ${key}`, roles: { create: { roleId: managerRole.id } }, ninjaProfile: { create: { code: `M-${key}`, firstName: "Responsable", lastName: "Pilotage", currentGradeId: grade.id } } } })).id;
-  agentId = (await prisma.user.create({ data: { name: `Agent ${key}`, roles: { create: { roleId: agentRole.id } }, ninjaProfile: { create: { code: `A-${key}`, firstName: "Agent", lastName: "Pilotage", currentGradeId: grade.id } }, participations: { create: { startsAt: new Date("2026-10-01T00:00:00Z"), dateSource: "DECLARED", rankingEligible: true } } } })).id;
+  agentId = (await prisma.user.create({ data: { name: `Agent ${key}`, roles: { create: { roleId: agentRole.id } }, ninjaProfile: { create: { code: `A-${key}`, firstName: "Agent", lastName: "Pilotage", currentGradeId: grade.id } }, participations: { create: { startsAt: new Date(validatedAt.getTime() - 86_400_000), dateSource: "DECLARED", rankingEligible: true } } } })).id;
   const ninja = await prisma.ninjaProfile.create({ data: { code: `N-${key}`, firstName: "Donateur", lastName: "Pilotage", currentGradeId: grade.id } });
   const category = await prisma.resourceCategory.create({ data: { code: key, label: "Fixture pilotage" } });
   const unit = await prisma.resourceUnit.create({ data: { code: key, label: "unité", decimals: 0 } });
@@ -49,10 +51,16 @@ test.beforeAll(async () => {
   receipt = `DON-PILOTAGE-${key}`;
   const transaction = await prisma.resourceTransaction.create({ data: {
     receiptNumber: receipt, ninjaId: ninja.id, agentId, recordedById: agentId, type: "DONATION", status: "VALIDATED", totalAmount: 246n,
-    operationOrigin: "BUSINESS", validatedAt: new Date("2026-10-20T12:00:00Z"), idempotencyKey: randomUUID(),
+    operationOrigin: "BUSINESS", validatedAt, idempotencyKey: randomUUID(),
     items: { create: [{ resourceId: metal.id, quantity: 2, unitPriceSnapshot: 123n, lineTotal: 246n }, { resourceId: wood.id, quantity: 5, unitPriceSnapshot: 0n, lineTotal: 0n }] },
   } });
-  await prisma.inventoryMovement.create({ data: { resourceId: metal.id, transactionId: transaction.id, agentId, type: "DONATION_IN", quantity: 2, quantityBefore: 0, quantityAfter: 2, reason: "Fixture pilotage", idempotencyKey: randomUUID(), occurredAt: new Date("2026-10-20T12:00:00Z") } });
+  // The database proves first validation at insertion time. Keep both journals
+  // in that real period; backdating validatedAt cannot backdate the proof.
+  expect(transaction.validationEvidence).toBe("SERVER");
+  expect(transaction.firstValidatedAt).not.toBeNull();
+  const dates = [formatReportDate(validatedAt), formatReportDate(transaction.firstValidatedAt!)].sort();
+  period = new URLSearchParams({ du: dates[0]!, au: dates[1]! }).toString();
+  await prisma.inventoryMovement.create({ data: { resourceId: metal.id, transactionId: transaction.id, agentId, type: "DONATION_IN", quantity: 2, quantityBefore: 0, quantityAfter: 2, reason: "Fixture pilotage", idempotencyKey: randomUUID(), occurredAt: validatedAt } });
 });
 test.afterAll(async () => { await prisma.$disconnect(); });
 

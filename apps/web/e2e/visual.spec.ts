@@ -84,11 +84,17 @@ test("equipment board stays readable without horizontal scrolling", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop-only assertion");
-  await page.goto("/equipement");
+  await page.goto("/");
+  await page
+    .getByRole("navigation", { name: "Navigation principale", exact: true })
+    .getByRole("link", { name: "Équipements Jōnin+", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/equipement$/);
   await expect(
-    page.getByRole("heading", { name: "Équipement des Jōnin" }),
+    page.getByRole("heading", { name: "Équipements des Jōnin+", level: 1, exact: true }),
   ).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".equipment-row")).toHaveCount(6);
+  await expect(page.locator(".equipment-slot").first()).toBeVisible();
   await expect(page.locator(".equipment-person").first()).toHaveAttribute(
     "href",
     /\/ninjas\//,
@@ -109,10 +115,18 @@ test("equipment board becomes a compact card list on mobile", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "Mobile-only assertion");
-  await page.goto("/equipement");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Ouvrir la navigation", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Navigation mobile", exact: true })
+    .getByRole("link", { name: "Équipements Jōnin+", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/equipement$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Équipement des Jōnin" }),
+    page.getByRole("heading", { name: "Équipements des Jōnin+", level: 1, exact: true }),
   ).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".equipment-row")).toHaveCount(6);
   await expect(page.locator(".equipment-slot").first()).toBeVisible();
   const overflow = await page.evaluate(
     () =>

@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   Settings2,
+  ShieldCheck,
   UserCircle2,
   Users,
   X,
@@ -25,6 +26,7 @@ import { workspaceNavigation } from "@/lib/workspace-navigation";
 const icons = {
   desk: LayoutDashboard,
   dossiers: Users,
+  equipment: ShieldCheck,
   operations: ArrowLeftRight,
   stocks: Boxes,
   work: ClipboardList,
